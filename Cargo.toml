@@ -1,0 +1,13 @@
+[package]
+name = "skreaver"
+version = "0.1.0"
+edition = "2024"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Skreaver — Rust-based open agentic infrastructure platform"
+repository = "https://github.com/shurankain/skreaver"
+homepage = "https://ohusiev.com"
+keywords = ["agent", "infrastructure", "ai", "rust"]
+categories = ["development-tools", "ai"]
+
+[dependencies]
