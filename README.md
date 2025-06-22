@@ -75,7 +75,10 @@ MIT — see [LICENSE](./LICENSE)
 Skreaver is an open-source Rust-native agentic infrastructure platform.  
 If you believe in the mission, consider supporting its development:
 
-- 💖 [Sponsor via GitHub](https://github.com/sponsors/shurankain)
+- 💛💙 [Sponsor via GitHub](https://github.com/sponsors/shurankain)  
+  → [View all sponsor tiers](./sponsorship/SPONSORS.md)  
+  → [Hall of Sponsors](./sponsorship/hall-of-sponsors.md)
+
 - 💸 [Donate via PayPal](https://www.paypal.com/paypalme/olhusiev)
 
 > Every contribution helps keep the core open and evolving.
