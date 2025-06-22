@@ -69,3 +69,13 @@ Skreaver gives you the scaffolding. You build the logic.
 ## 📄 License
 
 MIT — see [LICENSE](./LICENSE)
+
+## ☕ Support Skreaver
+
+Skreaver is an open-source Rust-native agentic infrastructure platform.  
+If you believe in the mission, consider supporting its development:
+
+- 💖 [Sponsor via GitHub](https://github.com/sponsors/shurankain)
+- 💸 [Donate via PayPal](https://www.paypal.com/paypalme/olhusiev)
+
+> Every contribution helps keep the core open and evolving.
