@@ -41,11 +41,25 @@ Skreaver gives you the scaffolding. You build the logic.
 
 ---
 
-## 📦 Status
+📦 Status: Skreaver is in active development.
 
-> 🚧 Skreaver is in early development.
-> First `Agent` trait, memory module, and coordinator runtime coming soon.
-> Follow to stay updated.
+Core components implemented:
+- `Agent`, `Memory`, and `Tool` traits
+- Basic Coordinator runtime
+- Self-hosted CI pipeline
+- First working example: Echo Agent (`cargo run --example echo`)
+
+Next steps:
+- Tool execution integration
+- Modular memory backends
+- CLI scaffolding and docs
+
+---
+
+▶️ Try it now:
+```bash
+cargo run --example echo
+```
 
 ---
 
