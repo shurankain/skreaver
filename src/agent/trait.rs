@@ -1,4 +1,5 @@
 use crate::memory::MemoryUpdate;
+use crate::tool::{ExecutionResult, ToolCall};
 
 pub trait Agent {
     type Observation;
@@ -8,6 +9,14 @@ pub trait Agent {
     fn observe(&mut self, input: Self::Observation);
     fn act(&mut self) -> Self::Action;
     fn update_context(&mut self, update: MemoryUpdate);
+
+    /// Optional: agent may request a tool call
+    fn call_tool(&self) -> Option<ToolCall> {
+        None
+    }
+
+    /// Optional: agent may handle tool result
+    fn handle_result(&mut self, _result: ExecutionResult) {}
 }
 
 #[cfg(test)]
