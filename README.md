@@ -45,14 +45,15 @@ Skreaver gives you the scaffolding. You build the logic.
 
 Core components implemented:
 - `Agent`, `Memory`, and `Tool` traits
-- Basic Coordinator runtime
-- Self-hosted CI pipeline
-- First working example: Echo Agent (`cargo run --example echo`)
+- Basic `Coordinator` runtime with `ToolRegistry` support
+- Self-hosted CI pipeline (GitHub Actions)
+- First working example: **Echo Agent**
 
 Next steps:
-- Tool execution integration
-- Modular memory backends
-- CLI scaffolding and docs
+- Enhanced tool execution with multi-tool dispatch
+- Pluggable memory backends
+- CLI scaffolding for agents/tools
+- Developer onboarding & documentation
 
 ---
 
