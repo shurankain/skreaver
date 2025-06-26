@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
 use skreaver::memory::{Memory, MemoryUpdate};
 use skreaver::runtime::Coordinator;
+use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
 struct DummyMemory {
@@ -83,7 +86,10 @@ fn main() {
         last_input: None,
     };
 
-    let mut coordinator = Coordinator::new(agent, UppercaseTool);
+    let registry = InMemoryToolRegistry::new().with_tool("uppercase", Arc::new(UppercaseTool));
+
+    let mut coordinator = Coordinator::new(agent, registry);
+
     let output = coordinator.step("Skreaver".into());
 
     println!("Agent said: {output}");
