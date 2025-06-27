@@ -10,6 +10,10 @@ pub trait Agent {
     fn act(&mut self) -> Self::Action;
     fn update_context(&mut self, update: MemoryUpdate);
 
+    fn call_tools(&self) -> Vec<ToolCall> {
+        self.call_tool().into_iter().collect()
+    }
+
     /// Optional: agent may request a tool call
     fn call_tool(&self) -> Option<ToolCall> {
         None
