@@ -1,29 +1,15 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
+use skreaver::memory::InMemoryMemory;
 use skreaver::memory::{Memory, MemoryUpdate};
 use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
-struct DummyMemory {
-    store: HashMap<String, String>,
-}
-
-impl Memory for DummyMemory {
-    fn load(&self, key: &str) -> Option<String> {
-        self.store.get(key).cloned()
-    }
-
-    fn store(&mut self, update: MemoryUpdate) {
-        self.store.insert(update.key, update.value);
-    }
-}
-
 struct MultiToolAgent {
-    memory: DummyMemory,
+    memory: InMemoryMemory,
     last_input: Option<String>,
     tool_results: Vec<String>,
 }
@@ -31,7 +17,7 @@ struct MultiToolAgent {
 impl Agent for MultiToolAgent {
     type Observation = String;
     type Action = String;
-    type Memory = DummyMemory;
+    type Memory = InMemoryMemory;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
@@ -115,9 +101,7 @@ impl Tool for ReverseTool {
 
 fn main() {
     let agent = MultiToolAgent {
-        memory: DummyMemory {
-            store: Default::default(),
-        },
+        memory: InMemoryMemory::new(),
         last_input: None,
         tool_results: vec![],
     };

@@ -1,35 +1,22 @@
 use std::sync::Arc;
 
+use skreaver::Memory;
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
-use skreaver::memory::{Memory, MemoryUpdate};
+use skreaver::memory::{InMemoryMemory, MemoryUpdate};
 use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
-struct DummyMemory {
-    store: std::collections::HashMap<String, String>,
-}
-
-impl Memory for DummyMemory {
-    fn load(&self, key: &str) -> Option<String> {
-        self.store.get(key).cloned()
-    }
-
-    fn store(&mut self, update: MemoryUpdate) {
-        self.store.insert(update.key, update.value);
-    }
-}
-
 struct EchoAgent {
-    memory: DummyMemory,
+    memory: InMemoryMemory,
     last_input: Option<String>,
 }
 
 impl Agent for EchoAgent {
     type Observation = String;
     type Action = String;
-    type Memory = DummyMemory;
+    type Memory = InMemoryMemory;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
@@ -80,9 +67,7 @@ impl Tool for UppercaseTool {
 
 fn main() {
     let agent = EchoAgent {
-        memory: DummyMemory {
-            store: Default::default(),
-        },
+        memory: InMemoryMemory::new(),
         last_input: None,
     };
 
