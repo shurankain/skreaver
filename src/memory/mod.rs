@@ -1,7 +1,7 @@
-mod r#trait;
-mod in_memory;
 mod file_memory;
+mod in_memory;
+mod r#trait;
 
-pub use r#trait::{Memory, MemoryUpdate};
-pub use in_memory::InMemoryMemory;
 pub use file_memory::FileMemory;
+pub use in_memory::InMemoryMemory;
+pub use r#trait::{Memory, MemoryUpdate};
