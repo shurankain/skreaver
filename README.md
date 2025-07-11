@@ -6,6 +6,16 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 
 ---
 
+## ✨ Highlights
+
+- Rust-native agent architecture
+- Decoupled `Agent`/`Memory`/`Tool` model
+- Multi-tool execution with result aggregation
+- Built-in tool registry system
+- Designed for performance and modularity
+
+---
+
 ## 🧠 Why Skreaver?
 
 Modern AI agents suffer from:
@@ -45,21 +55,25 @@ Skreaver gives you the scaffolding. You build the logic.
 
 Core components implemented:
 - `Agent`, `Memory`, and `Tool` traits
-- Basic `Coordinator` runtime with `ToolRegistry` support
-- Self-hosted CI pipeline (GitHub Actions)
-- First working example: **Echo Agent**
+- Modular `Coordinator` runtime
+- `ToolRegistry` with dispatch and test coverage
+- Support for multiple tool calls per step
+- Fully working examples (`echo`, `multi_tool`)
+- Self-hosted CI pipeline
 
 Next steps:
-- Enhanced tool execution with multi-tool dispatch
-- Pluggable memory backends
-- CLI scaffolding for agents/tools
-- Developer onboarding & documentation
+- File- and DB-backed memory modules
+- `skreaver-cli` (agent scaffolding & testing)
+- Axum-based HTTP runtime
+- Playground & live examples
+- Developer docs (powered by skreaver-docs-starter)
 
 ---
 
 ▶️ Try it now:
 ```bash
 cargo run --example echo
+cargo run --example multi_tool
 ```
 
 ---
