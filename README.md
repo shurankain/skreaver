@@ -9,9 +9,10 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 ## ✨ Highlights
 
 - Rust-native agent architecture
-- Decoupled `Agent`/`Memory`/`Tool` model
+- Decoupled `Agent` / `Memory` / `Tool` model
 - Multi-tool execution with result aggregation
 - Built-in tool registry system
+- File-backed memory support via `FileMemory`
 - Designed for performance and modularity
 
 ---
@@ -30,10 +31,10 @@ Modern AI agents suffer from:
 
 ## ⚙️ Core Principles
 
-- **Rust 2024-first**: zero-cost abstractions, full control
-- **Agent-centric**: traits and modules for memory, tools, goals
-- **Composable runtime**: run agents locally or integrate with infra
-- **Open by design**: build your own memory/tool systems, no lock-in
+- **Rust 2024-first**: zero-cost abstractions, full control  
+- **Agent-centric**: traits and modules for memory, tools, goals  
+- **Composable runtime**: run agents locally or integrate with infra  
+- **Open by design**: build your own memory/tool systems, no lock-in  
 
 ---
 
@@ -58,11 +59,12 @@ Core components implemented:
 - Modular `Coordinator` runtime
 - `ToolRegistry` with dispatch and test coverage
 - Support for multiple tool calls per step
+- `FileMemory` (persistent key-value storage)
 - Fully working examples (`echo`, `multi_tool`)
 - Self-hosted CI pipeline
 
 Next steps:
-- File- and DB-backed memory modules
+- Pluggable DB-backed memory modules
 - `skreaver-cli` (agent scaffolding & testing)
 - Axum-based HTTP runtime
 - Playground & live examples
@@ -101,11 +103,11 @@ MIT — see [LICENSE](./LICENSE)
 
 ## ☕ Support Skreaver
 
-Skreaver is an open-source Rust-native agentic infrastructure platform.  
+Skreaver is an open-source Rust-native agentic infrastructure platform.
 If you believe in the mission, consider supporting its development:
 
-- 💛💙 [Sponsor via GitHub](https://github.com/sponsors/shurankain)  
-  → [View all sponsor tiers](./sponsorship/SPONSORS.md)  
+- 💛💙 [Sponsor via GitHub](https://github.com/sponsors/shurankain)
+  → [View all sponsor tiers](./sponsorship/SPONSORS.md)
   → [Hall of Sponsors](./sponsorship/hall-of-sponsors.md)
 
 - 💸 [Donate via PayPal](https://www.paypal.com/paypalme/olhusiev)
