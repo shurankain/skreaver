@@ -4,24 +4,33 @@ use std::path::PathBuf;
 
 use super::{Memory, MemoryUpdate};
 
+/// A simple persistent key-value memory that syncs to a JSON file.
 pub struct FileMemory {
     path: PathBuf,
     cache: HashMap<String, String>,
 }
 
 impl FileMemory {
+    /// Initializes a new FileMemory and loads existing data if available.
     pub fn new(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
-        let cache = fs::read_to_string(&path)
+        let cache = Self::load_cache(&path).unwrap_or_default();
+        Self { path, cache }
+    }
+
+    fn load_cache(path: &PathBuf) -> Option<HashMap<String, String>> {
+        fs::read_to_string(path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        Self { path, cache }
     }
 
     fn persist(&self) {
         if let Ok(json) = serde_json::to_string_pretty(&self.cache) {
-            let _ = fs::write(&self.path, json);
+            // Attempt to write atomically: write to temp then rename
+            let tmp_path = self.path.with_extension("tmp");
+            if fs::write(&tmp_path, json).is_ok() {
+                let _ = fs::rename(&tmp_path, &self.path);
+            }
         }
     }
 }

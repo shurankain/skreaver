@@ -1,22 +1,23 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use skreaver::Memory;
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
-use skreaver::memory::{InMemoryMemory, MemoryUpdate};
+use skreaver::memory::{FileMemory, MemoryUpdate};
 use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
 struct EchoAgent {
-    memory: InMemoryMemory,
+    memory: FileMemory,
     last_input: Option<String>,
 }
 
 impl Agent for EchoAgent {
     type Observation = String;
     type Action = String;
-    type Memory = InMemoryMemory;
+    type Memory = FileMemory;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
@@ -49,7 +50,6 @@ impl Agent for EchoAgent {
     fn update_context(&mut self, _update: MemoryUpdate) {}
 }
 
-// Simple tool that uppercases input
 struct UppercaseTool;
 
 impl Tool for UppercaseTool {
@@ -66,13 +66,14 @@ impl Tool for UppercaseTool {
 }
 
 fn main() {
+    let memory_path = PathBuf::from("echo_memory.json");
+
     let agent = EchoAgent {
-        memory: InMemoryMemory::new(),
+        memory: FileMemory::new(memory_path),
         last_input: None,
     };
 
     let registry = InMemoryToolRegistry::new().with_tool("uppercase", Arc::new(UppercaseTool));
-
     let mut coordinator = Coordinator::new(agent, registry);
 
     let output = coordinator.step("Skreaver".into());
