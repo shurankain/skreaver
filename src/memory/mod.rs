@@ -4,4 +4,4 @@ mod r#trait;
 
 pub use file_memory::FileMemory;
 pub use in_memory::InMemoryMemory;
-pub use r#trait::{Memory, MemoryUpdate};
+pub use r#trait::{Memory, MemoryUpdate, SnapshotableMemory};
