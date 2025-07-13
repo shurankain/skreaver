@@ -1,16 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use skreaver::Memory;
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
-use skreaver::memory::{FileMemory, MemoryUpdate};
+use skreaver::memory::{FileMemory, Memory, MemoryUpdate};
 use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
 struct MultiToolAgent {
-    memory: FileMemory,
+    memory: Box<dyn Memory>,
     last_input: Option<String>,
     tool_results: Vec<String>,
 }
@@ -18,7 +17,6 @@ struct MultiToolAgent {
 impl Agent for MultiToolAgent {
     type Observation = String;
     type Action = String;
-    type Memory = FileMemory;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
@@ -67,7 +65,13 @@ impl Agent for MultiToolAgent {
         }
     }
 
-    fn update_context(&mut self, _update: MemoryUpdate) {}
+    fn update_context(&mut self, update: MemoryUpdate) {
+        self.memory.store(update);
+    }
+
+    fn memory(&mut self) -> &mut dyn Memory {
+        &mut *self.memory
+    }
 }
 
 struct UppercaseTool;
@@ -104,7 +108,7 @@ fn main() {
     let memory_path = PathBuf::from("multi_memory.json");
 
     let agent = MultiToolAgent {
-        memory: FileMemory::new(memory_path),
+        memory: Box::new(FileMemory::new(memory_path)),
         last_input: None,
         tool_results: vec![],
     };
