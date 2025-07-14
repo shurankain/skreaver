@@ -19,9 +19,12 @@ pub fn run_echo_agent() {
     let registry = InMemoryToolRegistry::new().with_tool("uppercase", Arc::new(UppercaseTool));
     let mut coordinator = Coordinator::new(agent, registry);
 
-    let output = coordinator.step("Skreaver".into());
-
-    println!("Agent said: {output}");
+    loop {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let output = coordinator.step(input.trim().to_string());
+        println!("Agent said: {output}");
+    }
 }
 
 struct EchoAgent {
