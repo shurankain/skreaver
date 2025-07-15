@@ -72,6 +72,22 @@ Next steps:
 
 ---
 
+🖥️ `skreaver-cli`
+
+A dedicated command-line interface for running agents directly from terminal.
+
+Examples:
+
+```bash
+cargo run -p skreaver-cli -- --name echo
+````
+
+* Supports interactive agent execution
+* Uses `FileMemory` for persistent state
+* Includes tool dispatch (e.g., `uppercase` tool in echo agent)
+
+---
+
 ▶️ Try it now:
 ```bash
 cargo run --example echo
