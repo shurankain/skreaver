@@ -8,6 +8,26 @@ use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
+pub fn run_multi_agent() {
+    let memory_path = PathBuf::from("multi_memory.json");
+
+    let agent = MultiToolAgent {
+        memory: Box::new(FileMemory::new(memory_path)),
+        last_input: None,
+        tool_results: vec![],
+    };
+
+    let registry = InMemoryToolRegistry::new()
+        .with_tool("uppercase", Arc::new(UppercaseTool))
+        .with_tool("reverse", Arc::new(ReverseTool));
+
+    let mut coordinator = Coordinator::new(agent, registry);
+
+    let output = coordinator.step("Skreaver".into());
+
+    println!("Agent said: {output}");
+}
+
 struct MultiToolAgent {
     memory: Box<dyn Memory>,
     last_input: Option<String>,
@@ -102,24 +122,4 @@ impl Tool for ReverseTool {
             success: true,
         }
     }
-}
-
-fn main() {
-    let memory_path = PathBuf::from("multi_memory.json");
-
-    let agent = MultiToolAgent {
-        memory: Box::new(FileMemory::new(memory_path)),
-        last_input: None,
-        tool_results: vec![],
-    };
-
-    let registry = InMemoryToolRegistry::new()
-        .with_tool("uppercase", Arc::new(UppercaseTool))
-        .with_tool("reverse", Arc::new(ReverseTool));
-
-    let mut coordinator = Coordinator::new(agent, registry);
-
-    let output = coordinator.step("Skreaver".into());
-
-    println!("Agent said: {output}");
 }
