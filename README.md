@@ -55,24 +55,26 @@ Skreaver gives you the scaffolding. You build the logic.
 📦 Status: Skreaver is in active development.
 
 Core components implemented:
-- `Agent`, `Memory`, and `Tool` traits
-- Modular `Coordinator` runtime
-- `ToolRegistry` with dispatch and test coverage
-- Support for multiple tool calls per step
-- `FileMemory` (persistent key-value storage)
-- Fully working examples (`echo`, `multi_tool`)
-- Self-hosted CI pipeline
+
+* `Agent`, `Memory`, and `Tool` traits
+* Modular `Coordinator` runtime
+* `ToolRegistry` with dispatch and test coverage
+* Support for multiple tool calls per step
+* `FileMemory` (persistent key-value storage)
+* Fully working examples (`echo`, `multi_tool`)
+* Self-hosted CI pipeline
 
 Next steps:
-- Pluggable DB-backed memory modules
-- `skreaver-cli` (agent scaffolding & testing)
-- Axum-based HTTP runtime
-- Playground & live examples
-- Developer docs (powered by skreaver-docs-starter)
+
+* Pluggable DB-backed memory modules
+* `skreaver-cli` (agent scaffolding & testing)
+* Axum-based HTTP runtime
+* Playground & live examples
+* Developer docs (powered by skreaver-docs-starter)
 
 ---
 
-🖥️ `skreaver-cli`
+## 🖥️ `skreaver-cli`
 
 A dedicated command-line interface for running agents directly from terminal.
 
@@ -80,15 +82,20 @@ Examples:
 
 ```bash
 cargo run -p skreaver-cli -- --name echo
-````
+cargo run -p skreaver-cli -- --name multi
+```
 
 * Supports interactive agent execution
 * Uses `FileMemory` for persistent state
-* Includes tool dispatch (e.g., `uppercase` tool in echo agent)
+* Includes tool dispatch (e.g., `uppercase`, `reverse`)
+* Echo and MultiTool agents available out of the box
+
+> Add your own agents in `skreaver-cli/src/agents/`, plug into the CLI via `match`, and extend.
 
 ---
 
 ▶️ Try it now:
+
 ```bash
 cargo run --example echo
 cargo run --example multi_tool
@@ -122,10 +129,10 @@ MIT — see [LICENSE](./LICENSE)
 Skreaver is an open-source Rust-native agentic infrastructure platform.
 If you believe in the mission, consider supporting its development:
 
-- 💛💙 [Sponsor via GitHub](https://github.com/sponsors/shurankain)
+* 💛💙 [Sponsor via GitHub](https://github.com/sponsors/shurankain)
   → [View all sponsor tiers](./sponsorship/SPONSORS.md)
   → [Hall of Sponsors](./sponsorship/hall-of-sponsors.md)
 
-- 💸 [Donate via PayPal](https://www.paypal.com/paypalme/olhusiev)
+* 💸 [Donate via PayPal](https://www.paypal.com/paypalme/olhusiev)
 
 > Every contribution helps keep the core open and evolving.
