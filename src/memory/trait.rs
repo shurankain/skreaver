@@ -12,7 +12,7 @@ pub trait Memory {
 
 /// Optional extension for memory types that support snapshot/restore
 pub trait SnapshotableMemory: Memory {
-    fn snapshot(&self) -> Option<String>;
+    fn snapshot(&mut self) -> Option<String>;
     fn restore(&mut self, snapshot: &str) -> Result<(), String>;
 }
 
@@ -36,7 +36,7 @@ mod tests {
     }
 
     impl SnapshotableMemory for DummyMemory {
-        fn snapshot(&self) -> Option<String> {
+        fn snapshot(&mut self) -> Option<String> {
             serde_json::to_string_pretty(&self.store).ok()
         }
 
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn memory_can_snapshot_and_restore() {
-        let mem = DummyMemory {
+        let mut mem = DummyMemory {
             store: HashMap::from([("a".into(), "1".into())]),
         };
 

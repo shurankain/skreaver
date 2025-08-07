@@ -1,5 +1,7 @@
 use super::{Memory, MemoryUpdate};
+use crate::memory::SnapshotableMemory;
 use redis::{Commands, Connection, RedisResult};
+use std::collections::HashMap;
 
 /// Redis-based memory backend.
 pub struct RedisMemory {
@@ -29,6 +31,32 @@ impl RedisMemory {
     /// Store a key-value pair with TTL in seconds.
     pub fn store_with_ttl(&mut self, update: MemoryUpdate, ttl_secs: u64) {
         let _: redis::RedisResult<()> = self.conn.set_ex(&update.key, &update.value, ttl_secs);
+    }
+}
+
+impl SnapshotableMemory for RedisMemory {
+    fn snapshot(&mut self) -> Option<String> {
+        let keys: Vec<String> = self.conn.keys("*").ok()?;
+        let mut map = HashMap::new();
+
+        for key in keys {
+            if let Ok(Some(value)) = self.conn.get::<_, Option<String>>(&key) {
+                map.insert(key, value);
+            }
+        }
+
+        serde_json::to_string_pretty(&map).ok()
+    }
+
+    fn restore(&mut self, snapshot: &str) -> Result<(), String> {
+        let data: HashMap<String, String> =
+            serde_json::from_str(snapshot).map_err(|e| format!("Parse failed: {e}"))?;
+
+        for (key, value) in data {
+            let _ = self.conn.set::<_, _, ()>(key, value);
+        }
+
+        Ok(())
     }
 }
 
@@ -102,6 +130,49 @@ mod tests {
         let full_key = "agent:47:target";
         let raw_value = mem.inner().load(full_key);
         assert_eq!(raw_value, Some("Eliminate the client".into()));
+    }
+
+    #[test]
+    fn redis_memory_snapshot_and_restore() {
+        use crate::memory::{NamespacedMemory, SnapshotableMemory};
+
+        // Step 1: Write data to a namespaced Redis memory for Agent 47
+        let mut redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
+        let prefix = "agent:47";
+
+        // Clean up before test
+        let keys: Vec<String> = redis.conn.keys(format!("{}:*", prefix)).unwrap();
+        for k in keys {
+            let _: () = redis.conn.del(&k).unwrap();
+        }
+
+        let mut mem = NamespacedMemory::new(prefix, redis);
+
+        // Store agent's current objective
+        mem.store(MemoryUpdate {
+            key: "goal".into(),
+            value: "Eat cake".into(),
+        });
+
+        // Take a snapshot of all keys in Redis (not just this agent)
+        let snapshot = mem.inner().snapshot().unwrap();
+        println!("Snapshot: {}", snapshot);
+
+        // Step 2: Restore that snapshot into a fresh Redis connection
+        let mut redis_restored = RedisMemory::new("redis://127.0.0.1/").unwrap();
+
+        // Clear before restore just in case
+        let keys: Vec<String> = redis_restored.conn.keys(format!("{}:*", prefix)).unwrap();
+        for k in keys {
+            let _: () = redis_restored.conn.del(&k).unwrap();
+        }
+
+        redis_restored.restore(&snapshot).unwrap();
+
+        // Confirm the restored value exists
+        let full_key = "agent:47:goal";
+        let value = redis_restored.load(full_key);
+        assert_eq!(value, Some("Eat cake".into()));
     }
 
     fn clear_test_keys(mem: &mut RedisMemory) {
