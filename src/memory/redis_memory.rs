@@ -32,29 +32,48 @@ impl RedisMemory {
     }
 }
 
-#[test]
-fn redis_memory_works() {
-    let mut mem = RedisMemory::new("redis://127.0.0.1/").unwrap();
-    mem.store(MemoryUpdate {
-        key: "foo".into(),
-        value: "bar".into(),
-    });
-    let value = mem.load("foo");
-    assert_eq!(value, Some("bar".into()));
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
 
-#[test]
-fn redis_memory_with_ttl() {
-    let mut mem = RedisMemory::new("redis://127.0.0.1/").unwrap();
-    mem.store_with_ttl(
-        MemoryUpdate {
-            key: "temp".into(),
-            value: "short-lived".into(),
-        },
-        2,
-    );
+    #[test]
+    fn redis_memory_works() {
+        let mut mem = RedisMemory::new("redis://127.0.0.1/").unwrap();
+        clear_test_keys(&mut mem);
 
-    println!("Stored. Wait 3s...");
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    println!("Loaded: {:?}", mem.load("temp"));
+        let key = format!("test:{}:foo", Uuid::new_v4());
+        mem.store(MemoryUpdate {
+            key: key.clone(),
+            value: "bar".into(),
+        });
+        let value = mem.load(&key);
+        assert_eq!(value, Some("bar".into()));
+    }
+
+    #[test]
+    fn redis_memory_with_ttl() {
+        let mut mem = RedisMemory::new("redis://127.0.0.1/").unwrap();
+        clear_test_keys(&mut mem);
+
+        let key = format!("test:{}:foo", Uuid::new_v4());
+        mem.store_with_ttl(
+            MemoryUpdate {
+                key: key.clone(),
+                value: "short-lived".into(),
+            },
+            2,
+        );
+
+        println!("Stored. Wait 3s...");
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        println!("Loaded: {:?}", mem.load(&key));
+    }
+
+    fn clear_test_keys(mem: &mut RedisMemory) {
+        let keys: Vec<String> = mem.conn.keys("test:*").unwrap();
+        for k in keys {
+            let _: () = mem.conn.del(&k).unwrap();
+        }
+    }
 }
