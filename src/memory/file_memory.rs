@@ -36,7 +36,7 @@ impl FileMemory {
 }
 
 impl Memory for FileMemory {
-    fn load(&self, key: &str) -> Option<String> {
+    fn load(&mut self, key: &str) -> Option<String> {
         self.cache.get(key).cloned()
     }
 

@@ -32,7 +32,7 @@ mod tests {
     }
 
     impl Memory for DummyMemory {
-        fn load(&self, key: &str) -> Option<String> {
+        fn load(&mut self, key: &str) -> Option<String> {
             self.store
                 .iter()
                 .find(|(k, _)| k == key)

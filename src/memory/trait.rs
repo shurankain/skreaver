@@ -6,7 +6,7 @@ pub struct MemoryUpdate {
 
 /// Basic trait for agent memory
 pub trait Memory {
-    fn load(&self, key: &str) -> Option<String>;
+    fn load(&mut self, key: &str) -> Option<String>;
     fn store(&mut self, update: MemoryUpdate);
 }
 
@@ -26,7 +26,7 @@ mod tests {
     }
 
     impl Memory for DummyMemory {
-        fn load(&self, key: &str) -> Option<String> {
+        fn load(&mut self, key: &str) -> Option<String> {
             self.store.get(key).cloned()
         }
 

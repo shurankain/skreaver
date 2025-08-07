@@ -21,7 +21,7 @@ impl InMemoryMemory {
 }
 
 impl Memory for InMemoryMemory {
-    fn load(&self, key: &str) -> Option<String> {
+    fn load(&mut self, key: &str) -> Option<String> {
         self.store.get(key).cloned()
     }
 
