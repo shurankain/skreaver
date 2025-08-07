@@ -70,6 +70,40 @@ mod tests {
         println!("Loaded: {:?}", mem.load(&key));
     }
 
+    #[test]
+    fn redis_memory_with_namespace() {
+        use crate::memory::NamespacedMemory;
+
+        // Create a Redis backend
+        let mut redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
+
+        // Define a namespace for Agent 47 (Hitman)
+        let prefix = "agent:47";
+
+        // Clean up any leftover keys from previous test runs
+        let keys: Vec<String> = redis.conn.keys(format!("{}:*", prefix)).unwrap();
+        for k in keys {
+            let _: () = redis.conn.del(&k).unwrap();
+        }
+
+        // Wrap Redis with NamespacedMemory for agent:47
+        let mut mem = NamespacedMemory::new(prefix, redis);
+
+        // Store a memory entry using logical key (without prefix)
+        mem.store(MemoryUpdate {
+            key: "target".into(),
+            value: "Eliminate the client".into(),
+        });
+
+        // Should be retrievable using just "target"
+        assert_eq!(mem.load("target"), Some("Eliminate the client".into()));
+
+        // Confirm that the actual Redis key is prefixed
+        let full_key = "agent:47:target";
+        let raw_value = mem.inner().load(full_key);
+        assert_eq!(raw_value, Some("Eliminate the client".into()));
+    }
+
     fn clear_test_keys(mem: &mut RedisMemory) {
         let keys: Vec<String> = mem.conn.keys("test:*").unwrap();
         for k in keys {
