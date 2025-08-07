@@ -35,4 +35,3 @@ impl<M: Memory> Memory for NamespacedMemory<M> {
         });
     }
 }
-
