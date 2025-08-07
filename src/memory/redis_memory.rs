@@ -25,6 +25,13 @@ impl Memory for RedisMemory {
     }
 }
 
+impl RedisMemory {
+    /// Store a key-value pair with TTL in seconds.
+    pub fn store_with_ttl(&mut self, update: MemoryUpdate, ttl_secs: u64) {
+        let _: redis::RedisResult<()> = self.conn.set_ex(&update.key, &update.value, ttl_secs);
+    }
+}
+
 #[test]
 fn redis_memory_works() {
     let mut mem = RedisMemory::new("redis://127.0.0.1/").unwrap();
@@ -34,4 +41,20 @@ fn redis_memory_works() {
     });
     let value = mem.load("foo");
     assert_eq!(value, Some("bar".into()));
+}
+
+#[test]
+fn redis_memory_with_ttl() {
+    let mut mem = RedisMemory::new("redis://127.0.0.1/").unwrap();
+    mem.store_with_ttl(
+        MemoryUpdate {
+            key: "temp".into(),
+            value: "short-lived".into(),
+        },
+        2,
+    );
+
+    println!("Stored. Wait 3s...");
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    println!("Loaded: {:?}", mem.load("temp"));
 }
