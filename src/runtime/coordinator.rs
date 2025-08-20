@@ -42,4 +42,25 @@ where
         self.agent.memory().store(update.clone());
         self.agent.update_context(update);
     }
+
+    // Wrapper methods for encapsulation
+    pub fn observe(&mut self, observation: A::Observation) {
+        self.agent.observe(observation);
+    }
+
+    pub fn get_tool_calls(&self) -> Vec<crate::tool::ToolCall> {
+        self.agent.call_tools()
+    }
+
+    pub fn dispatch_tool(&self, tool_call: crate::tool::ToolCall) -> Option<crate::tool::ExecutionResult> {
+        self.registry.dispatch(tool_call)
+    }
+
+    pub fn handle_tool_result(&mut self, result: crate::tool::ExecutionResult) {
+        self.agent.handle_result(result);
+    }
+
+    pub fn get_action(&mut self) -> A::Action {
+        self.agent.act()
+    }
 }
