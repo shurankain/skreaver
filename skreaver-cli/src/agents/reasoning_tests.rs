@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod reasoning_tests {
+mod tests {
     use crate::agents::reasoning::*;
     use skreaver::memory::InMemoryMemory;
     use skreaver::tool::{ExecutionResult, Tool};

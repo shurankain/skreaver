@@ -476,7 +476,7 @@ impl Tool for AnalyzeTool {
 
         ExecutionResult {
             // Serialize to string for current Coordinator API
-            output: serde_json::to_string(&payload).unwrap_or_else(|_| payload.summary),
+            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
             success: true,
         }
     }
@@ -500,7 +500,7 @@ impl Tool for DeduceTool {
         };
 
         ExecutionResult {
-            output: serde_json::to_string(&payload).unwrap_or_else(|_| payload.summary),
+            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
             success: true,
         }
     }
@@ -524,7 +524,7 @@ impl Tool for ConcludeTool {
         };
 
         ExecutionResult {
-            output: serde_json::to_string(&payload).unwrap_or_else(|_| payload.summary),
+            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
             success: true,
         }
     }
@@ -562,7 +562,7 @@ impl Tool for ReflectTool {
         };
 
         ExecutionResult {
-            output: serde_json::to_string(&payload).unwrap_or_else(|_| payload.summary),
+            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
             success: true,
         }
     }
