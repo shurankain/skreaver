@@ -52,7 +52,10 @@ where
         self.agent.call_tools()
     }
 
-    pub fn dispatch_tool(&self, tool_call: crate::tool::ToolCall) -> Option<crate::tool::ExecutionResult> {
+    pub fn dispatch_tool(
+        &self,
+        tool_call: crate::tool::ToolCall,
+    ) -> Option<crate::tool::ExecutionResult> {
         self.registry.dispatch(tool_call)
     }
 
