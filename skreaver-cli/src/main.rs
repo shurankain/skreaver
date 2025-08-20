@@ -1,7 +1,7 @@
 use clap::Parser;
 
 mod agents;
-use agents::{run_echo_agent, run_multi_agent};
+use agents::{run_echo_agent, run_multi_agent, run_reasoning_agent};
 
 #[derive(Parser, Debug)]
 #[command(name = "skreaver", version)]
@@ -21,6 +21,10 @@ fn main() {
         "multi" => {
             println!("Running multi-tool agent...");
             run_multi_agent();
+        }
+        "reasoning" => {
+            println!("Running reasoning agent...");
+            run_reasoning_agent();
         }
         _ => eprintln!("Unknown agent: {}", cli.name),
     }
