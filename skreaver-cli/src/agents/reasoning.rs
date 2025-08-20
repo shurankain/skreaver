@@ -1,26 +1,40 @@
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 
-// Constants for limits (no magic numbers)
-const MAX_LOOP_ITERS: usize = 16;
-const MAX_PREV_OUTPUT: usize = 1024;
-const MAX_CHAIN_LINE: usize = 512;
-const MAX_CHAIN_SUMMARY: usize = 2048;
+// Configuration profile for reasoning behavior
+#[derive(Clone, Debug)]
+pub struct ReasoningProfile {
+    pub max_loop_iters: usize,
+    pub max_prev_output: usize,
+    pub max_chain_line: usize,
+    pub max_chain_summary: usize,
+}
+
+impl Default for ReasoningProfile {
+    fn default() -> Self {
+        Self {
+            max_loop_iters: 16,
+            max_prev_output: 1024,
+            max_chain_line: 512,
+            max_chain_summary: 2048,
+        }
+    }
+}
 
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
 use skreaver::memory::{FileMemory, Memory, MemoryUpdate};
 use skreaver::runtime::Coordinator;
-use skreaver::tool::registry::{InMemoryToolRegistry, ToolRegistry};
+use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
 
 // Structured tool output format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RichResult {
     pub summary: String,
-    pub confidence: f32,     // 0.0..1.0
-    pub evidence: Vec<String>
+    pub confidence: f32, // 0.0..1.0
+    pub evidence: Vec<String>,
 }
 
 // Agent result types
@@ -29,14 +43,48 @@ pub enum AgentFinal {
     InProgress,
 }
 
+impl std::fmt::Display for AgentFinal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentFinal::Complete { steps, answer } => {
+                write!(f, "Final Answer ({} steps): {}", steps, answer)
+            }
+            AgentFinal::InProgress => write!(f, "In progress"),
+        }
+    }
+}
+
 // Extension trait for reasoning-specific coordinator methods
-trait ReasoningCoordinatorExt {
+pub(crate) trait ReasoningCoordinatorExt {
     fn is_complete(&self) -> bool;
+    fn drive_until_complete(&mut self, max_iters: usize);
 }
 
 impl ReasoningCoordinatorExt for Coordinator<ReasoningAgent, InMemoryToolRegistry> {
     fn is_complete(&self) -> bool {
         matches!(self.agent.reasoning_state, ReasoningState::Complete)
+    }
+
+    fn drive_until_complete(&mut self, max_iters: usize) {
+        let mut iters = 0;
+        while !self.is_complete() && iters < max_iters {
+            iters += 1;
+            let calls = self.get_tool_calls();
+            if calls.is_empty() {
+                break;
+            }
+            for call in calls {
+                if let Some(res) = self.dispatch_tool(call) {
+                    self.handle_tool_result(res);
+                } else {
+                    tracing::error!("Tool not found in registry");
+                    return;
+                }
+            }
+        }
+        if iters >= max_iters {
+            tracing::warn!("Reasoning loop guard triggered at {}", iters);
+        }
     }
 }
 
@@ -48,6 +96,7 @@ pub fn run_reasoning_agent() {
         current_problem: None,
         reasoning_chain: Vec::new(),
         reasoning_state: ReasoningState::Initial,
+        profile: ReasoningProfile::default(),
     };
 
     let registry = InMemoryToolRegistry::new()
@@ -63,10 +112,16 @@ pub fn run_reasoning_agent() {
 
     loop {
         print!("\n🤔 Problem: ");
-        std::io::Write::flush(&mut std::io::stdout()).unwrap();
-        
+        if let Err(e) = std::io::Write::flush(&mut std::io::stdout()) {
+            eprintln!("Error flushing stdout: {}", e);
+            continue;
+        }
+
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+        if let Err(e) = std::io::stdin().read_line(&mut input) {
+            eprintln!("Error reading input: {}", e);
+            continue;
+        }
         let input = input.trim();
 
         if input == "quit" {
@@ -78,41 +133,11 @@ pub fn run_reasoning_agent() {
         }
 
         println!("\n🔍 Reasoning Process:");
-        
-        // Reset agent state for new problem
+
         coordinator.observe(input.to_string());
-        
-        // Execute reasoning chain step by step
-        let mut guard = 0usize;
-        while !coordinator.is_complete() && guard < MAX_LOOP_ITERS {
-            guard += 1;
-            let tool_calls = coordinator.get_tool_calls();
-            if tool_calls.is_empty() {
-                break;
-            }
-            
-            for tool_call in tool_calls {
-                if let Some(result) = coordinator.dispatch_tool(tool_call) {
-                    coordinator.handle_tool_result(result);
-                } else {
-                    eprintln!("Tool not found in registry");
-                    break;
-                }
-            }
-        }
-        
-        if guard >= MAX_LOOP_ITERS {
-            tracing::warn!("Reasoning loop guard triggered - stopped after {} iterations", guard);
-        }
-        
-        match coordinator.agent.final_result() {
-            AgentFinal::Complete { steps, answer } => {
-                println!("\n✅ Final Answer ({} steps): {}", steps, answer);
-            }
-            AgentFinal::InProgress => {
-                println!("\n⚠️ Incomplete.");
-            }
-        }
+        coordinator.drive_until_complete(coordinator.agent.profile.max_loop_iters);
+
+        println!("\n✅ {}", coordinator.agent.final_result());
         println!("{}", "─".repeat(50));
     }
 }
@@ -138,23 +163,32 @@ pub struct ReasoningStep {
 }
 
 impl ReasoningStep {
-    pub fn new(step_type: &str, input: &str, output: &str, confidence: f32, evidence: Vec<String>) -> Self {
+    pub fn new(
+        step_type: &str,
+        input: &str,
+        output: &str,
+        confidence: f32,
+        evidence: Vec<String>,
+    ) -> Self {
         Self {
             step_type: step_type.to_string(),
             input: input.to_string(),
             output: output.to_string(),
             confidence,
             evidence,
-            timestamp: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+            timestamp: chrono::Utc::now()
+                .format("%Y-%m-%d %H:%M:%S UTC")
+                .to_string(),
         }
     }
 }
 
 pub struct ReasoningAgent {
-    memory: Box<dyn Memory>,
+    memory: Box<dyn Memory + Send>,
     current_problem: Option<String>,
     reasoning_chain: Vec<ReasoningStep>,
     reasoning_state: ReasoningState,
+    profile: ReasoningProfile,
 }
 
 impl Agent for ReasoningAgent {
@@ -165,7 +199,7 @@ impl Agent for ReasoningAgent {
         self.current_problem = Some(input.clone());
         self.reasoning_chain.clear();
         self.reasoning_state = ReasoningState::Initial;
-        
+
         self.memory.store(MemoryUpdate {
             key: "current_problem".into(),
             value: input,
@@ -208,8 +242,11 @@ impl Agent for ReasoningAgent {
                     if let Some(last_step) = self.reasoning_chain.last() {
                         vec![ToolCall {
                             name: "deduce".into(),
-                            input: format!("Problem: '{}'\nPrevious analysis: '{}'", 
-                                problem, self.clip_utf8(&last_step.output, MAX_PREV_OUTPUT)),
+                            input: format!(
+                                "Problem: '{}'\nPrevious analysis: '{}'",
+                                problem,
+                                self.clip_utf8(&last_step.output, self.profile.max_prev_output)
+                            ),
                         }]
                     } else {
                         vec![]
@@ -219,29 +256,42 @@ impl Agent for ReasoningAgent {
                     if let Some(last_step) = self.reasoning_chain.last() {
                         vec![ToolCall {
                             name: "conclude".into(),
-                            input: format!("Problem: '{}'\nPrevious deduction: '{}'", 
-                                problem, self.clip_utf8(&last_step.output, MAX_PREV_OUTPUT)),
+                            input: format!(
+                                "Problem: '{}'\nPrevious deduction: '{}'",
+                                problem,
+                                self.clip_utf8(&last_step.output, self.profile.max_prev_output)
+                            ),
                         }]
                     } else {
                         vec![]
                     }
                 }
                 ReasoningState::Concluding => {
-                    let chain_summary = self.reasoning_chain
+                    let chain_summary = self
+                        .reasoning_chain
                         .iter()
                         .rev()
                         .take(5)
                         .collect::<Vec<_>>()
                         .into_iter()
                         .rev() // keep chronological order
-                        .map(|step| format!("{}: {}", step.step_type, self.clip_utf8(&step.output, MAX_CHAIN_LINE)))
+                        .map(|step| {
+                            format!(
+                                "{}: {}",
+                                step.step_type,
+                                self.clip_utf8(&step.output, self.profile.max_chain_line)
+                            )
+                        })
                         .collect::<Vec<_>>()
                         .join("\n");
-                    
+
                     vec![ToolCall {
                         name: "reflect".into(),
-                        input: format!("Problem: '{}'\nReasoning chain:\n{}", 
-                            problem, self.clip_utf8(&chain_summary, MAX_CHAIN_SUMMARY)),
+                        input: format!(
+                            "Problem: '{}'\nReasoning chain:\n{}",
+                            problem,
+                            self.clip_utf8(&chain_summary, self.profile.max_chain_summary)
+                        ),
                     }]
                 }
                 ReasoningState::Reflecting | ReasoningState::Complete => vec![],
@@ -268,20 +318,32 @@ impl Agent for ReasoningAgent {
         let parsed: Option<RichResult> = serde_json::from_str(&result.output).ok();
         let (out_text, conf, evidence) = match parsed {
             Some(rr) => (rr.summary, rr.confidence, rr.evidence),
-            None => (result.output.clone(), self.extract_confidence(&result.output), vec![]),
+            None => (
+                result.output.clone(),
+                self.extract_confidence(&result.output),
+                vec![],
+            ),
         };
 
+        let evidence_count = evidence.len();
         let step = ReasoningStep::new(
             step_type,
             &self.current_problem.clone().unwrap_or_default(),
-            &out_text,   // Store summary, not raw JSON
+            &out_text, // Store summary, not raw JSON
             conf,
             evidence,
         );
 
-        println!("  {} {} (conf {:.2}): {}", self.get_step_emoji(step_type), step_type.to_uppercase(), conf, out_text);
+        println!(
+            "  {} {} (conf {:.2}, evidence {}): {}",
+            self.get_step_emoji(step_type),
+            step_type.to_uppercase(),
+            conf,
+            evidence_count,
+            out_text
+        );
         tracing::info!(step=%step_type, state=?self.reasoning_state, next=?next_state, "step complete");
-        
+
         self.reasoning_chain.push(step);
         self.reasoning_state = next_state;
 
@@ -326,31 +388,26 @@ impl Agent for ReasoningAgent {
 }
 
 impl ReasoningAgent {
-    fn parse_confidence(&self, output: &str) -> Option<f32> {
-        serde_json::from_str::<RichResult>(output)
-            .map(|r| r.confidence)
-            .ok()
-    }
-
     pub fn final_result(&self) -> AgentFinal {
         match self.reasoning_state {
             ReasoningState::Complete => {
-                let answer = self.reasoning_chain
+                let answer = self
+                    .reasoning_chain
                     .last()
                     .map(|s| s.output.clone())
                     .unwrap_or_default();
-                AgentFinal::Complete { 
-                    steps: self.reasoning_chain.len(), 
-                    answer 
+                AgentFinal::Complete {
+                    steps: self.reasoning_chain.len(),
+                    answer,
                 }
             }
-            _ => AgentFinal::InProgress
+            _ => AgentFinal::InProgress,
         }
     }
 
     #[cfg(test)]
     pub fn new_for_test(
-        memory: Box<dyn Memory>,
+        memory: Box<dyn Memory + Send>,
         current_problem: Option<String>,
         reasoning_chain: Vec<ReasoningStep>,
         reasoning_state: ReasoningState,
@@ -360,6 +417,7 @@ impl ReasoningAgent {
             current_problem,
             reasoning_chain,
             reasoning_state,
+            profile: ReasoningProfile::default(),
         }
     }
 
@@ -415,7 +473,7 @@ impl Tool for AnalyzeTool {
             confidence: 0.75,
             evidence: vec![],
         };
-        
+
         ExecutionResult {
             // Serialize to string for current Coordinator API
             output: serde_json::to_string(&payload).unwrap_or_else(|_| payload.summary),
@@ -481,13 +539,21 @@ impl Tool for ReflectTool {
 
     fn call(&self, input: String) -> ExecutionResult {
         let word_count = input.split_whitespace().count();
-        let complexity = if word_count > 20 { "comprehensive" } else { "focused" };
-        let quality = if input.len() > 50 { "thorough" } else { "concise" };
-        
+        let complexity = if word_count > 20 {
+            "comprehensive"
+        } else {
+            "focused"
+        };
+        let quality = if input.len() > 50 {
+            "thorough"
+        } else {
+            "concise"
+        };
+
         let payload = RichResult {
             summary: format!(
                 "Meta-Reflection: Evaluating reasoning quality for '{}'. The chain of thought was {} and {}, maintaining logical coherence throughout the process.",
-                input.trim(), 
+                input.trim(),
                 complexity,
                 quality
             ),
