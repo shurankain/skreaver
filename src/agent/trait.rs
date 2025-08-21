@@ -43,6 +43,11 @@ use crate::tool::{ExecutionResult, ToolCall};
 ///         self.last_input.clone().unwrap_or_default()
 ///     }
 ///
+///     fn call_tools(&self) -> Vec<ToolCall> {
+///         // Example: return empty vec (no tools needed)
+///         Vec::new()
+///     }
+///
 ///     fn update_context(&mut self, update: MemoryUpdate) {
 ///         self.memory().store(update);
 ///     }
@@ -101,26 +106,16 @@ pub trait Agent {
     /// Return all tool calls the agent wants to make.
     ///
     /// This method is called by the runtime to determine what external
-    /// capabilities the agent needs to invoke. The default implementation
-    /// collects calls from `call_tool()` for backward compatibility.
+    /// capabilities the agent needs to invoke. Agents can return:
+    /// - Empty vector if no tools are needed
+    /// - Single tool call in a vector for simple cases
+    /// - Multiple tool calls for complex operations
     ///
     /// # Returns
     ///
     /// Vector of tool calls to be executed by the runtime
     fn call_tools(&self) -> Vec<ToolCall> {
-        self.call_tool().into_iter().collect()
-    }
-
-    /// Return a single tool call (deprecated).
-    ///
-    /// This method is provided for backward compatibility. New implementations
-    /// should override `call_tools()` instead for multiple tool support.
-    ///
-    /// # Returns
-    ///
-    /// Optional tool call to be executed
-    fn call_tool(&self) -> Option<ToolCall> {
-        None
+        Vec::new()
     }
 
     /// Handle the result of a tool execution.

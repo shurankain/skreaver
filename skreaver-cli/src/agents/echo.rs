@@ -54,11 +54,15 @@ impl Agent for EchoAgent {
             .unwrap_or_else(|| "No input".into())
     }
 
-    fn call_tool(&self) -> Option<ToolCall> {
-        self.last_input.as_ref().map(|input| ToolCall {
-            name: "uppercase".into(),
-            input: input.clone(),
-        })
+    fn call_tools(&self) -> Vec<ToolCall> {
+        if let Some(input) = &self.last_input {
+            vec![ToolCall {
+                name: "uppercase".into(),
+                input: input.clone(),
+            }]
+        } else {
+            Vec::new()
+        }
     }
 
     fn handle_result(&mut self, result: ExecutionResult) {
