@@ -52,11 +52,13 @@
 //! AI systems with clear separation of concerns and robust error handling.
 
 pub mod agent;
+pub mod error;
 pub mod memory;
 pub mod runtime;
 pub mod tool;
 
 pub use agent::Agent;
+pub use error::{SkreverError, SkreverResult};
 pub use memory::{Memory, MemoryUpdate};
 pub use runtime::Coordinator;
 pub use tool::{ExecutionResult, Tool, ToolCall};

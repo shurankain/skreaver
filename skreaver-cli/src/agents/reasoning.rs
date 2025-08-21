@@ -474,11 +474,9 @@ impl Tool for AnalyzeTool {
             evidence: vec![],
         };
 
-        ExecutionResult {
-            // Serialize to string for current Coordinator API
-            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
-            success: true,
-        }
+        ExecutionResult::success(
+            serde_json::to_string(&payload).unwrap_or(payload.summary)
+        )
     }
 }
 
@@ -499,10 +497,9 @@ impl Tool for DeduceTool {
             evidence: vec!["Previous analysis context".into()],
         };
 
-        ExecutionResult {
-            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
-            success: true,
-        }
+        ExecutionResult::success(
+            serde_json::to_string(&payload).unwrap_or(payload.summary)
+        )
     }
 }
 
@@ -523,10 +520,9 @@ impl Tool for ConcludeTool {
             evidence: vec!["Analysis".into(), "Deduction".into()],
         };
 
-        ExecutionResult {
-            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
-            success: true,
-        }
+        ExecutionResult::success(
+            serde_json::to_string(&payload).unwrap_or(payload.summary)
+        )
     }
 }
 
@@ -561,9 +557,8 @@ impl Tool for ReflectTool {
             evidence: vec!["Complete reasoning chain".into(), "Step coherence".into()],
         };
 
-        ExecutionResult {
-            output: serde_json::to_string(&payload).unwrap_or(payload.summary),
-            success: true,
-        }
+        ExecutionResult::success(
+            serde_json::to_string(&payload).unwrap_or(payload.summary)
+        )
     }
 }

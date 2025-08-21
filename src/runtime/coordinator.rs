@@ -96,14 +96,23 @@ where
 
         self.agent.observe(observation);
 
-        for tool_call in self.agent.call_tools() {
+        let tool_calls = self.agent.call_tools();
+        let mut failed_tools = Vec::new();
+        
+        for tool_call in tool_calls {
             if let Some(result) = self.registry.dispatch(tool_call.clone()) {
                 self.agent.handle_result(result);
             } else {
+                failed_tools.push(tool_call.name.clone());
                 tracing::warn!(
                     tool_name = %tool_call.name,
                     "Tool not found in registry"
                 );
+                
+                // Provide failure feedback to the agent
+                self.agent.handle_result(crate::tool::ExecutionResult::failure(
+                    format!("Tool '{}' not found in registry", tool_call.name)
+                ));
             }
         }
 

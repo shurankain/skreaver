@@ -81,6 +81,16 @@ pub trait Memory {
 /// use skreaver::memory::{Memory, MemoryUpdate, SnapshotableMemory};
 /// use std::collections::HashMap;
 ///
+/// // Simple error type for this example
+/// #[derive(Debug)]
+/// struct SimpleError(String);
+/// impl std::fmt::Display for SimpleError {
+///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+///         write!(f, "{}", self.0)
+///     }
+/// }
+/// impl std::error::Error for SimpleError {}
+///
 /// // Example implementation that supports snapshots
 /// struct ExampleMemory {
 ///     store: HashMap<String, String>,
@@ -99,10 +109,12 @@ pub trait Memory {
 ///     fn snapshot(&mut self) -> Option<String> {
 ///         serde_json::to_string(&self.store).ok()
 ///     }
-///     fn restore(&mut self, snapshot: &str) -> Result<(), String> {
+///     fn restore(&mut self, snapshot: &str) -> Result<(), skreaver::error::MemoryError> {
 ///         match serde_json::from_str(snapshot) {
 ///             Ok(data) => { self.store = data; Ok(()) }
-///             Err(e) => Err(e.to_string())
+///             Err(e) => Err(skreaver::error::MemoryError::RestoreFailed { 
+///                 reason: e.to_string() 
+///             })
 ///         }
 ///     }
 /// }
@@ -116,7 +128,7 @@ pub trait Memory {
 /// // Create a snapshot
 /// let snapshot = memory.snapshot().unwrap();
 ///
-/// // Restore to a new memory instance
+/// // Restore to a new memory instance  
 /// let mut new_memory = ExampleMemory { store: HashMap::new() };
 /// new_memory.restore(&snapshot).unwrap();
 /// assert_eq!(new_memory.load("data"), Some("important".to_string()));
@@ -144,8 +156,8 @@ pub trait SnapshotableMemory: Memory {
     ///
     /// # Returns
     ///
-    /// `Ok(())` if successful, `Err(message)` if restoration fails
-    fn restore(&mut self, snapshot: &str) -> Result<(), String>;
+    /// `Ok(())` if successful, `Err(MemoryError)` if restoration fails
+    fn restore(&mut self, snapshot: &str) -> Result<(), crate::error::MemoryError>;
 }
 
 #[cfg(test)]
@@ -172,13 +184,15 @@ mod tests {
             serde_json::to_string_pretty(&self.store).ok()
         }
 
-        fn restore(&mut self, snapshot: &str) -> Result<(), String> {
+        fn restore(&mut self, snapshot: &str) -> Result<(), crate::error::MemoryError> {
             match serde_json::from_str::<HashMap<String, String>>(snapshot) {
                 Ok(data) => {
                     self.store = data;
                     Ok(())
                 }
-                Err(err) => Err(format!("Restore failed: {err}")),
+                Err(err) => Err(crate::error::MemoryError::RestoreFailed { 
+                    reason: format!("JSON parsing failed: {}", err) 
+                }),
             }
         }
     }

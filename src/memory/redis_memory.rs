@@ -48,9 +48,11 @@ impl SnapshotableMemory for RedisMemory {
         serde_json::to_string_pretty(&map).ok()
     }
 
-    fn restore(&mut self, snapshot: &str) -> Result<(), String> {
+    fn restore(&mut self, snapshot: &str) -> Result<(), crate::error::MemoryError> {
         let data: HashMap<String, String> =
-            serde_json::from_str(snapshot).map_err(|e| format!("Parse failed: {e}"))?;
+            serde_json::from_str(snapshot).map_err(|e| crate::error::MemoryError::RestoreFailed {
+                reason: format!("JSON parsing failed: {}", e)
+            })?;
 
         for (key, value) in data {
             let _ = self.conn.set::<_, _, ()>(key, value);

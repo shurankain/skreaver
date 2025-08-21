@@ -22,6 +22,24 @@ pub trait ToolRegistry {
     ///
     /// `Some(ExecutionResult)` if the tool exists, `None` otherwise
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult>;
+
+    /// Dispatch a tool call with structured error handling.
+    ///
+    /// This method provides the same functionality as `dispatch` but with
+    /// proper error types for better error handling and debugging.
+    ///
+    /// # Parameters
+    ///
+    /// * `call` - The tool call containing name and input data
+    ///
+    /// # Returns
+    ///
+    /// `Ok(ExecutionResult)` if successful, `Err(ToolError)` if the tool is not found
+    fn try_dispatch(&self, call: ToolCall) -> Result<ExecutionResult, crate::error::ToolError> {
+        self.dispatch(call.clone()).ok_or_else(|| crate::error::ToolError::NotFound {
+            name: call.name
+        })
+    }
 }
 
 /// In-memory tool registry for local tool storage and dispatch.

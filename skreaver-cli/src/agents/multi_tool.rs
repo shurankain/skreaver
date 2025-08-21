@@ -102,10 +102,7 @@ impl Tool for UppercaseTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        ExecutionResult {
-            output: input.to_uppercase(),
-            success: true,
-        }
+        ExecutionResult::success(input.to_uppercase())
     }
 }
 
@@ -117,9 +114,6 @@ impl Tool for ReverseTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        ExecutionResult {
-            output: input.chars().rev().collect(),
-            success: true,
-        }
+        ExecutionResult::success(input.chars().rev().collect())
     }
 }

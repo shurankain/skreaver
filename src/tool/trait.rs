@@ -35,6 +35,53 @@ pub struct ExecutionResult {
     pub success: bool,
 }
 
+impl ExecutionResult {
+    /// Create a successful execution result.
+    ///
+    /// # Parameters
+    ///
+    /// * `output` - The successful output from the tool
+    ///
+    /// # Returns
+    ///
+    /// An `ExecutionResult` with `success = true`
+    pub fn success(output: String) -> Self {
+        Self {
+            output,
+            success: true,
+        }
+    }
+
+    /// Create a failed execution result.
+    ///
+    /// # Parameters
+    ///
+    /// * `error_message` - Description of what went wrong
+    ///
+    /// # Returns
+    ///
+    /// An `ExecutionResult` with `success = false`
+    pub fn failure(error_message: String) -> Self {
+        Self {
+            output: error_message,
+            success: false,
+        }
+    }
+
+    /// Convert to a Result type for easier error handling.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(output)` if successful, `Err(output)` if failed
+    pub fn into_result(self) -> Result<String, String> {
+        if self.success {
+            Ok(self.output)
+        } else {
+            Err(self.output)
+        }
+    }
+}
+
 /// Trait defining an external capability that agents can invoke.
 ///
 /// Tools extend agent functionality beyond internal reasoning to include
