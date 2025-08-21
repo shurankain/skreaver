@@ -32,5 +32,6 @@
 //! let result = coordinator.step("user input");
 //! ```
 
+/// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
 pub use coordinator::Coordinator;

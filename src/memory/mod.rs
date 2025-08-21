@@ -32,6 +32,7 @@ mod file_memory;
 mod in_memory;
 mod namespaced;
 mod redis_memory;
+/// Core memory trait definitions and data structures.
 mod r#trait;
 
 pub use file_memory::FileMemory;

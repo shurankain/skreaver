@@ -37,7 +37,9 @@
 //! }
 //! ```
 
+/// Tool registry implementations for managing collections of tools.
 pub mod registry;
+/// Core tool trait definitions and data structures.
 pub mod r#trait;
 pub use registry::ToolRegistry;
 pub use r#trait::{ExecutionResult, Tool, ToolCall};

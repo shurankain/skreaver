@@ -18,5 +18,6 @@
 //! 3. **Act** - Execute tools and generate output
 //! 4. **Update** - Store results in memory for future use
 
+/// Core agent trait definition and associated types.
 pub mod r#trait;
 pub use r#trait::Agent;

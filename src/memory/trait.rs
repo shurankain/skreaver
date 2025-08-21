@@ -1,18 +1,124 @@
+/// A key-value update for storing data in agent memory.
+///
+/// `MemoryUpdate` represents a single piece of information to be
+/// persisted in the agent's memory system. Both key and value are
+/// string-based for maximum flexibility across different storage backends.
 #[derive(Debug, Clone)]
 pub struct MemoryUpdate {
+    /// The key identifier for the data.
+    ///
+    /// Keys should be unique within an agent's memory space and follow
+    /// a consistent naming convention (e.g., "context", "last_action").
     pub key: String,
+
+    /// The value data to store.
+    ///
+    /// Values can be any string data - plain text, JSON, serialized objects, etc.
+    /// The format depends on the agent's requirements and implementation.
     pub value: String,
 }
 
-/// Basic trait for agent memory
+/// Basic trait for agent memory systems.
+///
+/// Memory provides persistent storage for agent state, context, and learned
+/// information across interactions. Different implementations can provide
+/// varying levels of persistence, performance, and distribution capabilities.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver::memory::{Memory, MemoryUpdate};
+/// use skreaver::memory::InMemoryMemory;
+///
+/// let mut memory = InMemoryMemory::new();
+///
+/// // Store some context
+/// memory.store(MemoryUpdate {
+///     key: "user_preference".to_string(),
+///     value: "concise responses".to_string(),
+/// });
+///
+/// // Retrieve it later
+/// let preference = memory.load("user_preference");
+/// assert_eq!(preference, Some("concise responses".to_string()));
+/// ```
 pub trait Memory {
+    /// Load a value from memory by its key.
+    ///
+    /// Returns the stored value if the key exists, or `None` if the key
+    /// is not found in the memory system.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The key identifier to look up
+    ///
+    /// # Returns
+    ///
+    /// `Some(value)` if the key exists, `None` otherwise
     fn load(&mut self, key: &str) -> Option<String>;
+
+    /// Store a key-value pair in memory.
+    ///
+    /// If the key already exists, its value will be updated with the new data.
+    /// The specific persistence behavior (immediate vs. batched writes) depends
+    /// on the memory implementation.
+    ///
+    /// # Parameters
+    ///
+    /// * `update` - The memory update containing key and value data
     fn store(&mut self, update: MemoryUpdate);
 }
 
-/// Optional extension for memory types that support snapshot/restore
+/// Optional extension for memory types that support snapshot/restore operations.
+///
+/// This trait provides backup and restore capabilities for memory systems
+/// that can serialize their entire state. Useful for checkpointing,
+/// debugging, and migration scenarios.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver::memory::{Memory, MemoryUpdate, SnapshotableMemory};
+/// use skreaver::memory::InMemoryMemory;
+///
+/// let mut memory = InMemoryMemory::new();
+/// memory.store(MemoryUpdate {
+///     key: "data".to_string(),
+///     value: "important".to_string(),
+/// });
+///
+/// // Create a snapshot
+/// let snapshot = memory.snapshot().unwrap();
+///
+/// // Restore to a new memory instance
+/// let mut new_memory = InMemoryMemory::new();
+/// new_memory.restore(&snapshot).unwrap();
+/// assert_eq!(new_memory.load("data"), Some("important".to_string()));
+/// ```
 pub trait SnapshotableMemory: Memory {
+    /// Create a snapshot of the current memory state.
+    ///
+    /// Returns a serialized representation of all stored data that can
+    /// be used to restore the memory to its current state later.
+    ///
+    /// # Returns
+    ///
+    /// `Some(snapshot)` if successful, `None` if serialization fails
     fn snapshot(&mut self) -> Option<String>;
+
+    /// Restore memory state from a previously created snapshot.
+    ///
+    /// Replaces the current memory contents with the data from the snapshot.
+    /// This operation should be atomic - either it succeeds completely or
+    /// leaves the memory in its original state.
+    ///
+    /// # Parameters
+    ///
+    /// * `snapshot` - The snapshot data to restore from
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if successful, `Err(message)` if restoration fails
     fn restore(&mut self, snapshot: &str) -> Result<(), String>;
 }
 
