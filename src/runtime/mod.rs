@@ -22,12 +22,12 @@
 //! use skreaver::{Coordinator, Agent, Memory, MemoryUpdate};
 //! use skreaver::memory::InMemoryMemory;
 //! use skreaver::tool::registry::InMemoryToolRegistry;
-//! 
+//!
 //! // Example agent implementation
 //! struct SimpleAgent {
 //!     memory: Box<dyn Memory + Send>,
 //! }
-//! 
+//!
 //! impl Agent for SimpleAgent {
 //!     type Observation = String;
 //!     type Action = String;

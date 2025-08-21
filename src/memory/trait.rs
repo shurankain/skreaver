@@ -112,8 +112,8 @@ pub trait Memory {
 ///     fn restore(&mut self, snapshot: &str) -> Result<(), skreaver::error::MemoryError> {
 ///         match serde_json::from_str(snapshot) {
 ///             Ok(data) => { self.store = data; Ok(()) }
-///             Err(e) => Err(skreaver::error::MemoryError::RestoreFailed { 
-///                 reason: e.to_string() 
+///             Err(e) => Err(skreaver::error::MemoryError::RestoreFailed {
+///                 reason: e.to_string()
 ///             })
 ///         }
 ///     }
@@ -190,8 +190,8 @@ mod tests {
                     self.store = data;
                     Ok(())
                 }
-                Err(err) => Err(crate::error::MemoryError::RestoreFailed { 
-                    reason: format!("JSON parsing failed: {}", err) 
+                Err(err) => Err(crate::error::MemoryError::RestoreFailed {
+                    reason: format!("JSON parsing failed: {}", err),
                 }),
             }
         }

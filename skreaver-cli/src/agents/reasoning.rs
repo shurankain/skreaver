@@ -474,9 +474,7 @@ impl Tool for AnalyzeTool {
             evidence: vec![],
         };
 
-        ExecutionResult::success(
-            serde_json::to_string(&payload).unwrap_or(payload.summary)
-        )
+        ExecutionResult::success(serde_json::to_string(&payload).unwrap_or(payload.summary))
     }
 }
 
@@ -497,9 +495,7 @@ impl Tool for DeduceTool {
             evidence: vec!["Previous analysis context".into()],
         };
 
-        ExecutionResult::success(
-            serde_json::to_string(&payload).unwrap_or(payload.summary)
-        )
+        ExecutionResult::success(serde_json::to_string(&payload).unwrap_or(payload.summary))
     }
 }
 
@@ -520,9 +516,7 @@ impl Tool for ConcludeTool {
             evidence: vec!["Analysis".into(), "Deduction".into()],
         };
 
-        ExecutionResult::success(
-            serde_json::to_string(&payload).unwrap_or(payload.summary)
-        )
+        ExecutionResult::success(serde_json::to_string(&payload).unwrap_or(payload.summary))
     }
 }
 
@@ -557,8 +551,6 @@ impl Tool for ReflectTool {
             evidence: vec!["Complete reasoning chain".into(), "Step coherence".into()],
         };
 
-        ExecutionResult::success(
-            serde_json::to_string(&payload).unwrap_or(payload.summary)
-        )
+        ExecutionResult::success(serde_json::to_string(&payload).unwrap_or(payload.summary))
     }
 }

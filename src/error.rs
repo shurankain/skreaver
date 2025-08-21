@@ -15,13 +15,13 @@ use std::fmt;
 pub enum SkreverError {
     /// Tool-related errors during execution or dispatch.
     Tool(ToolError),
-    
+
     /// Memory-related errors during storage or retrieval operations.
     Memory(MemoryError),
-    
+
     /// Agent-related errors during lifecycle operations.
     Agent(AgentError),
-    
+
     /// Coordinator-related errors during orchestration.
     Coordinator(CoordinatorError),
 }
@@ -31,16 +31,20 @@ pub enum SkreverError {
 pub enum ToolError {
     /// Tool was not found in the registry.
     NotFound { name: String },
-    
+
     /// Tool execution failed with an error message.
     ExecutionFailed { name: String, message: String },
-    
+
     /// Tool input was invalid or malformed.
-    InvalidInput { name: String, input: String, reason: String },
-    
+    InvalidInput {
+        name: String,
+        input: String,
+        reason: String,
+    },
+
     /// Tool timed out during execution.
     Timeout { name: String, duration_ms: u64 },
-    
+
     /// Tool registry is full or cannot accept more tools.
     RegistryFull,
 }
@@ -50,19 +54,19 @@ pub enum ToolError {
 pub enum MemoryError {
     /// Failed to store data in memory.
     StoreFailed { key: String, reason: String },
-    
+
     /// Failed to load data from memory.
     LoadFailed { key: String, reason: String },
-    
+
     /// Snapshot creation failed.
     SnapshotFailed { reason: String },
-    
+
     /// Snapshot restoration failed.
     RestoreFailed { reason: String },
-    
+
     /// Memory backend connection failed.
     ConnectionFailed { backend: String, reason: String },
-    
+
     /// Serialization/deserialization error.
     SerializationError { reason: String },
 }
@@ -72,15 +76,18 @@ pub enum MemoryError {
 pub enum AgentError {
     /// Agent failed to process an observation.
     ObservationFailed { reason: String },
-    
+
     /// Agent failed to generate an action.
     ActionFailed { reason: String },
-    
+
     /// Agent's memory access failed.
     MemoryAccessFailed { operation: String, reason: String },
-    
+
     /// Agent is in an invalid state for the requested operation.
-    InvalidState { current_state: String, operation: String },
+    InvalidState {
+        current_state: String,
+        operation: String,
+    },
 }
 
 /// Errors that can occur during coordinator operations.
@@ -88,10 +95,10 @@ pub enum AgentError {
 pub enum CoordinatorError {
     /// Agent step execution failed.
     StepFailed { reason: String },
-    
+
     /// Tool dispatch failed for all requested tools.
     ToolDispatchFailed { failed_tools: Vec<String> },
-    
+
     /// Context update failed.
     ContextUpdateFailed { key: String, reason: String },
 }
@@ -111,9 +118,21 @@ impl fmt::Display for ToolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ToolError::NotFound { name } => write!(f, "Tool '{}' not found in registry", name),
-            ToolError::ExecutionFailed { name, message } => write!(f, "Tool '{}' execution failed: {}", name, message),
-            ToolError::InvalidInput { name, input, reason } => write!(f, "Tool '{}' received invalid input '{}': {}", name, input, reason),
-            ToolError::Timeout { name, duration_ms } => write!(f, "Tool '{}' timed out after {}ms", name, duration_ms),
+            ToolError::ExecutionFailed { name, message } => {
+                write!(f, "Tool '{}' execution failed: {}", name, message)
+            }
+            ToolError::InvalidInput {
+                name,
+                input,
+                reason,
+            } => write!(
+                f,
+                "Tool '{}' received invalid input '{}': {}",
+                name, input, reason
+            ),
+            ToolError::Timeout { name, duration_ms } => {
+                write!(f, "Tool '{}' timed out after {}ms", name, duration_ms)
+            }
             ToolError::RegistryFull => write!(f, "Tool registry is full"),
         }
     }
@@ -122,12 +141,24 @@ impl fmt::Display for ToolError {
 impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MemoryError::StoreFailed { key, reason } => write!(f, "Failed to store key '{}': {}", key, reason),
-            MemoryError::LoadFailed { key, reason } => write!(f, "Failed to load key '{}': {}", key, reason),
-            MemoryError::SnapshotFailed { reason } => write!(f, "Snapshot creation failed: {}", reason),
-            MemoryError::RestoreFailed { reason } => write!(f, "Snapshot restoration failed: {}", reason),
-            MemoryError::ConnectionFailed { backend, reason } => write!(f, "Connection to {} backend failed: {}", backend, reason),
-            MemoryError::SerializationError { reason } => write!(f, "Serialization error: {}", reason),
+            MemoryError::StoreFailed { key, reason } => {
+                write!(f, "Failed to store key '{}': {}", key, reason)
+            }
+            MemoryError::LoadFailed { key, reason } => {
+                write!(f, "Failed to load key '{}': {}", key, reason)
+            }
+            MemoryError::SnapshotFailed { reason } => {
+                write!(f, "Snapshot creation failed: {}", reason)
+            }
+            MemoryError::RestoreFailed { reason } => {
+                write!(f, "Snapshot restoration failed: {}", reason)
+            }
+            MemoryError::ConnectionFailed { backend, reason } => {
+                write!(f, "Connection to {} backend failed: {}", backend, reason)
+            }
+            MemoryError::SerializationError { reason } => {
+                write!(f, "Serialization error: {}", reason)
+            }
         }
     }
 }
@@ -135,10 +166,19 @@ impl fmt::Display for MemoryError {
 impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AgentError::ObservationFailed { reason } => write!(f, "Observation processing failed: {}", reason),
-            AgentError::ActionFailed { reason } => write!(f, "Action generation failed: {}", reason),
-            AgentError::MemoryAccessFailed { operation, reason } => write!(f, "Memory {} failed: {}", operation, reason),
-            AgentError::InvalidState { current_state, operation } => write!(f, "Cannot {} in state '{}'", operation, current_state),
+            AgentError::ObservationFailed { reason } => {
+                write!(f, "Observation processing failed: {}", reason)
+            }
+            AgentError::ActionFailed { reason } => {
+                write!(f, "Action generation failed: {}", reason)
+            }
+            AgentError::MemoryAccessFailed { operation, reason } => {
+                write!(f, "Memory {} failed: {}", operation, reason)
+            }
+            AgentError::InvalidState {
+                current_state,
+                operation,
+            } => write!(f, "Cannot {} in state '{}'", operation, current_state),
         }
     }
 }
@@ -147,8 +187,12 @@ impl fmt::Display for CoordinatorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CoordinatorError::StepFailed { reason } => write!(f, "Agent step failed: {}", reason),
-            CoordinatorError::ToolDispatchFailed { failed_tools } => write!(f, "Tool dispatch failed for: {}", failed_tools.join(", ")),
-            CoordinatorError::ContextUpdateFailed { key, reason } => write!(f, "Context update for '{}' failed: {}", key, reason),
+            CoordinatorError::ToolDispatchFailed { failed_tools } => {
+                write!(f, "Tool dispatch failed for: {}", failed_tools.join(", "))
+            }
+            CoordinatorError::ContextUpdateFailed { key, reason } => {
+                write!(f, "Context update for '{}' failed: {}", key, reason)
+            }
         }
     }
 }

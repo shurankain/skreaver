@@ -1,9 +1,9 @@
 //! Example demonstrating the new structured error handling in Skreaver.
 
 use skreaver::{
-    error::{SkreverError, ToolError, MemoryError, SkreverResult},
-    tool::{Tool, ExecutionResult, ToolCall},
+    error::{MemoryError, SkreverError, SkreverResult, ToolError},
     tool::registry::{InMemoryToolRegistry, ToolRegistry},
+    tool::{ExecutionResult, Tool, ToolCall},
 };
 use std::sync::Arc;
 
@@ -33,7 +33,7 @@ impl Tool for ExampleTool {
 
 fn main() -> SkreverResult<()> {
     println!("🔧 Skreaver Error Handling Example");
-    
+
     // Create a tool registry
     let registry = InMemoryToolRegistry::new()
         .with_tool("example", Arc::new(ExampleTool { should_fail: false }))
@@ -45,14 +45,12 @@ fn main() -> SkreverResult<()> {
         name: "example".to_string(),
         input: "test input".to_string(),
     });
-    
+
     match result {
-        Some(exec_result) => {
-            match exec_result.into_result() {
-                Ok(output) => println!("Success: {}", output),
-                Err(error) => println!("Tool error: {}", error),
-            }
-        }
+        Some(exec_result) => match exec_result.into_result() {
+            Ok(output) => println!("Success: {}", output),
+            Err(error) => println!("Tool error: {}", error),
+        },
         None => println!("Tool not found"),
     }
 
@@ -62,7 +60,7 @@ fn main() -> SkreverResult<()> {
         name: "nonexistent".to_string(),
         input: "test".to_string(),
     });
-    
+
     match result {
         Ok(exec_result) => println!("Success: {}", exec_result.output),
         Err(ToolError::NotFound { name }) => {
@@ -77,7 +75,7 @@ fn main() -> SkreverResult<()> {
         name: "failing".to_string(),
         input: "test input".to_string(),
     });
-    
+
     if let Some(exec_result) = result {
         match exec_result.into_result() {
             Ok(output) => println!("Success: {}", output),
@@ -91,7 +89,7 @@ fn main() -> SkreverResult<()> {
         key: "test_key".to_string(),
         reason: "Disk full".to_string(),
     };
-    
+
     let skrever_error: SkreverError = memory_error.into();
     println!("Memory error: {}", skrever_error);
 
@@ -102,8 +100,8 @@ fn main() -> SkreverResult<()> {
         input: "invalid_number".to_string(),
         reason: "Not a valid number".to_string(),
     };
-    
+
     println!("Tool error: {}", tool_error);
-    
+
     Ok(())
 }

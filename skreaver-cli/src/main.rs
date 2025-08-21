@@ -17,7 +17,7 @@ fn main() {
         Ok(directive) => env_filter.add_directive(directive),
         Err(_) => env_filter, // fallback to default if parsing fails
     };
-    
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(env_filter)
         .json()
