@@ -19,17 +19,30 @@
 //! ## Usage Pattern
 //!
 //! ```rust
-//! use skreaver::{Coordinator, Agent};
+//! use skreaver::{Coordinator, Agent, Memory, MemoryUpdate};
 //! use skreaver::memory::InMemoryMemory;
 //! use skreaver::tool::registry::InMemoryToolRegistry;
-//!
-//! // Create agent, memory, and tool registry
-//! let agent = MyAgent::new();
-//! let registry = InMemoryToolRegistry::new();
 //! 
-//! // Coordinate execution
+//! // Example agent implementation
+//! struct SimpleAgent {
+//!     memory: Box<dyn Memory + Send>,
+//! }
+//! 
+//! impl Agent for SimpleAgent {
+//!     type Observation = String;
+//!     type Action = String;
+//!     
+//!     fn memory(&mut self) -> &mut dyn Memory { &mut *self.memory }
+//!     fn observe(&mut self, _input: String) {}
+//!     fn act(&mut self) -> String { "response".to_string() }
+//!     fn update_context(&mut self, update: MemoryUpdate) { self.memory().store(update); }
+//! }
+//!
+//! // Create agent and coordinate execution
+//! let agent = SimpleAgent { memory: Box::new(InMemoryMemory::new()) };
+//! let registry = InMemoryToolRegistry::new();
 //! let mut coordinator = Coordinator::new(agent, registry);
-//! let result = coordinator.step("user input");
+//! let result = coordinator.step("user input".to_string());
 //! ```
 
 /// Central coordinator for agent execution and tool dispatch.

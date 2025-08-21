@@ -12,11 +12,14 @@ struct Cli {
 
 fn main() {
     // Initialize JSON logging once.
+    let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+    let env_filter = match "info".parse() {
+        Ok(directive) => env_filter.add_directive(directive),
+        Err(_) => env_filter, // fallback to default if parsing fails
+    };
+    
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("info".parse().unwrap()),
-        )
+        .with_env_filter(env_filter)
         .json()
         .try_init();
 
@@ -35,6 +38,9 @@ fn main() {
             println!("Running reasoning agent...");
             run_reasoning_agent();
         }
-        _ => eprintln!("Unknown agent: {}", cli.name),
+        _ => {
+            tracing::error!(agent_name = %cli.name, "Unknown agent requested");
+            std::process::exit(1);
+        }
     }
 }

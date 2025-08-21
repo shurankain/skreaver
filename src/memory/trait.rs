@@ -79,9 +79,35 @@ pub trait Memory {
 ///
 /// ```rust
 /// use skreaver::memory::{Memory, MemoryUpdate, SnapshotableMemory};
-/// use skreaver::memory::InMemoryMemory;
+/// use std::collections::HashMap;
 ///
-/// let mut memory = InMemoryMemory::new();
+/// // Example implementation that supports snapshots
+/// struct ExampleMemory {
+///     store: HashMap<String, String>,
+/// }
+///
+/// impl Memory for ExampleMemory {
+///     fn load(&mut self, key: &str) -> Option<String> {
+///         self.store.get(key).cloned()
+///     }
+///     fn store(&mut self, update: MemoryUpdate) {
+///         self.store.insert(update.key, update.value);
+///     }
+/// }
+///
+/// impl SnapshotableMemory for ExampleMemory {
+///     fn snapshot(&mut self) -> Option<String> {
+///         serde_json::to_string(&self.store).ok()
+///     }
+///     fn restore(&mut self, snapshot: &str) -> Result<(), String> {
+///         match serde_json::from_str(snapshot) {
+///             Ok(data) => { self.store = data; Ok(()) }
+///             Err(e) => Err(e.to_string())
+///         }
+///     }
+/// }
+///
+/// let mut memory = ExampleMemory { store: HashMap::new() };
 /// memory.store(MemoryUpdate {
 ///     key: "data".to_string(),
 ///     value: "important".to_string(),
@@ -91,7 +117,7 @@ pub trait Memory {
 /// let snapshot = memory.snapshot().unwrap();
 ///
 /// // Restore to a new memory instance
-/// let mut new_memory = InMemoryMemory::new();
+/// let mut new_memory = ExampleMemory { store: HashMap::new() };
 /// new_memory.restore(&snapshot).unwrap();
 /// assert_eq!(new_memory.load("data"), Some("important".to_string()));
 /// ```

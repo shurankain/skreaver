@@ -21,7 +21,10 @@ pub fn run_echo_agent() {
 
     loop {
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+        if let Err(e) = std::io::stdin().read_line(&mut input) {
+            tracing::error!(error = %e, "Failed to read user input");
+            continue;
+        }
         let output = coordinator.step(input.trim().to_string());
         println!("Agent said: {output}");
     }
