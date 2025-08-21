@@ -113,13 +113,13 @@ pub fn run_reasoning_agent() {
     loop {
         print!("\n🤔 Problem: ");
         if let Err(e) = std::io::Write::flush(&mut std::io::stdout()) {
-            eprintln!("Error flushing stdout: {}", e);
+            tracing::error!(error = %e, "Failed to flush stdout");
             continue;
         }
 
         let mut input = String::new();
         if let Err(e) = std::io::stdin().read_line(&mut input) {
-            eprintln!("Error reading input: {}", e);
+            tracing::error!(error = %e, "Failed to read user input");
             continue;
         }
         let input = input.trim();

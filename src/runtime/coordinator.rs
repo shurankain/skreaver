@@ -97,10 +97,13 @@ where
         self.agent.observe(observation);
 
         for tool_call in self.agent.call_tools() {
-            if let Some(result) = self.registry.dispatch(tool_call) {
+            if let Some(result) = self.registry.dispatch(tool_call.clone()) {
                 self.agent.handle_result(result);
             } else {
-                eprintln!("Tool not found in registry");
+                tracing::warn!(
+                    tool_name = %tool_call.name,
+                    "Tool not found in registry"
+                );
             }
         }
 
