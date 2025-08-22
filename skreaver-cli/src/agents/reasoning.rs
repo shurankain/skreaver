@@ -36,13 +36,37 @@ impl ReasoningProfile {
     ///     .max_chain_line(1024)
     ///     .build();
     /// ```
+    #[allow(dead_code)]
     pub fn builder() -> ReasoningProfileBuilder {
         ReasoningProfileBuilder::default()
+    }
+
+    /// Create a high-performance profile for fast reasoning.
+    #[allow(dead_code)]
+    pub fn fast() -> Self {
+        Self::builder()
+            .max_loop_iters(8)
+            .max_prev_output(512)
+            .max_chain_line(256)
+            .max_chain_summary(1024)
+            .build()
+    }
+
+    /// Create a comprehensive profile for thorough reasoning.
+    #[allow(dead_code)]
+    pub fn comprehensive() -> Self {
+        Self::builder()
+            .max_loop_iters(32)
+            .max_prev_output(4096)
+            .max_chain_line(1024)
+            .max_chain_summary(8192)
+            .build()
     }
 }
 
 /// Builder for configuring ReasoningProfile instances.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ReasoningProfileBuilder {
     max_loop_iters: usize,
     max_prev_output: usize,
@@ -61,6 +85,7 @@ impl Default for ReasoningProfileBuilder {
     }
 }
 
+#[allow(dead_code)]
 impl ReasoningProfileBuilder {
     /// Set the maximum number of reasoning loop iterations.
     ///
@@ -154,13 +179,31 @@ impl RichResult {
     ///     .evidence(vec!["fact 1".to_string(), "fact 2".to_string()])
     ///     .build();
     /// ```
+    #[allow(dead_code)]
     pub fn builder() -> RichResultBuilder {
         RichResultBuilder::default()
+    }
+
+    /// Create a high-confidence result.
+    #[allow(dead_code)]
+    pub fn confident(summary: String) -> Self {
+        Self::builder().summary(summary).confidence(0.9).build()
+    }
+
+    /// Create a low-confidence result with explanation.
+    #[allow(dead_code)]
+    pub fn uncertain(summary: String, reason: String) -> Self {
+        Self::builder()
+            .summary(summary)
+            .confidence(0.3)
+            .add_evidence(reason)
+            .build()
     }
 }
 
 /// Builder for configuring RichResult instances.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct RichResultBuilder {
     summary: String,
     confidence: f32,
@@ -177,6 +220,7 @@ impl Default for RichResultBuilder {
     }
 }
 
+#[allow(dead_code)]
 impl RichResultBuilder {
     /// Set the summary text for the result.
     ///
@@ -405,32 +449,32 @@ impl Agent for ReasoningAgent {
         self.reasoning_chain.clear();
         self.reasoning_state = ReasoningState::Initial;
 
-        self.memory.store(MemoryUpdate {
-            key: "current_problem".into(),
-            value: input,
-        });
+        self.memory
+            .store(MemoryUpdate::new("current_problem", &input));
 
         let chain_json = serde_json::to_string(&self.reasoning_chain).unwrap_or_default();
-        self.memory.store(MemoryUpdate {
-            key: "reasoning_chain".into(),
-            value: chain_json,
-        });
+        self.memory
+            .store(MemoryUpdate::new("reasoning_chain", &chain_json));
     }
 
     fn act(&mut self) -> Self::Action {
         match self.reasoning_state {
             ReasoningState::Complete => {
                 if let Some(last_step) = self.reasoning_chain.last() {
-                    format!(
-                        "After {} reasoning steps, my conclusion is: {}",
-                        self.reasoning_chain.len(),
-                        last_step.output
-                    )
+                    // Use efficient string building instead of format!
+                    let steps_str = self.reasoning_chain.len().to_string();
+                    let mut result =
+                        String::with_capacity(last_step.output.len() + steps_str.len() + 48);
+                    result.push_str("After ");
+                    result.push_str(&steps_str);
+                    result.push_str(" reasoning steps, my conclusion is: ");
+                    result.push_str(&last_step.output);
+                    result
                 } else {
-                    "Unable to reach a conclusion.".to_string()
+                    String::from("Unable to reach a conclusion.")
                 }
             }
-            _ => "Reasoning in progress...".to_string(),
+            _ => String::from("Reasoning in progress..."),
         }
     }
 
@@ -438,66 +482,70 @@ impl Agent for ReasoningAgent {
         if let Some(problem) = &self.current_problem {
             match self.reasoning_state {
                 ReasoningState::Initial => {
-                    vec![ToolCall {
-                        name: "analyze".into(),
-                        input: problem.clone(),
-                    }]
+                    vec![ToolCall::new("analyze", problem)]
                 }
                 ReasoningState::Analyzing => {
                     if let Some(last_step) = self.reasoning_chain.last() {
-                        vec![ToolCall {
-                            name: "deduce".into(),
-                            input: format!(
-                                "Problem: '{}'\nPrevious analysis: '{}'",
-                                problem,
-                                self.clip_utf8(&last_step.output, self.profile.max_prev_output)
-                            ),
-                        }]
+                        // Pre-allocate capacity to avoid reallocations
+                        let clipped_output =
+                            self.clip_utf8(&last_step.output, self.profile.max_prev_output);
+                        let mut input =
+                            String::with_capacity(problem.len() + clipped_output.len() + 32);
+                        input.push_str("Problem: '");
+                        input.push_str(problem);
+                        input.push_str("'\nPrevious analysis: '");
+                        input.push_str(&clipped_output);
+                        input.push('\'');
+
+                        vec![ToolCall::new("deduce", &input)]
                     } else {
                         vec![]
                     }
                 }
                 ReasoningState::Deducing => {
                     if let Some(last_step) = self.reasoning_chain.last() {
-                        vec![ToolCall {
-                            name: "conclude".into(),
-                            input: format!(
-                                "Problem: '{}'\nPrevious deduction: '{}'",
-                                problem,
-                                self.clip_utf8(&last_step.output, self.profile.max_prev_output)
-                            ),
-                        }]
+                        // Pre-allocate capacity to avoid reallocations
+                        let clipped_output =
+                            self.clip_utf8(&last_step.output, self.profile.max_prev_output);
+                        let mut input =
+                            String::with_capacity(problem.len() + clipped_output.len() + 32);
+                        input.push_str("Problem: '");
+                        input.push_str(problem);
+                        input.push_str("'\nPrevious deduction: '");
+                        input.push_str(&clipped_output);
+                        input.push('\'');
+
+                        vec![ToolCall::new("conclude", &input)]
                     } else {
                         vec![]
                     }
                 }
                 ReasoningState::Concluding => {
-                    let chain_summary = self
-                        .reasoning_chain
-                        .iter()
-                        .rev()
-                        .take(5)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev() // keep chronological order
-                        .map(|step| {
-                            format!(
-                                "{}: {}",
-                                step.step_type,
-                                self.clip_utf8(&step.output, self.profile.max_chain_line)
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    // Build chain summary efficiently without intermediate format! calls
+                    let mut chain_summary = String::new();
+                    let recent_steps: Vec<_> = self.reasoning_chain.iter().rev().take(5).collect();
 
-                    vec![ToolCall {
-                        name: "reflect".into(),
-                        input: format!(
-                            "Problem: '{}'\nReasoning chain:\n{}",
-                            problem,
-                            self.clip_utf8(&chain_summary, self.profile.max_chain_summary)
-                        ),
-                    }]
+                    for (i, step) in recent_steps.iter().rev().enumerate() {
+                        if i > 0 {
+                            chain_summary.push('\n');
+                        }
+                        chain_summary.push_str(&step.step_type);
+                        chain_summary.push_str(": ");
+                        chain_summary
+                            .push_str(&self.clip_utf8(&step.output, self.profile.max_chain_line));
+                    }
+
+                    // Build final input efficiently
+                    let clipped_summary =
+                        self.clip_utf8(&chain_summary, self.profile.max_chain_summary);
+                    let mut input =
+                        String::with_capacity(problem.len() + clipped_summary.len() + 32);
+                    input.push_str("Problem: '");
+                    input.push_str(problem);
+                    input.push_str("'\nReasoning chain:\n");
+                    input.push_str(&clipped_summary);
+
+                    vec![ToolCall::new("reflect", &input)]
                 }
                 ReasoningState::Reflecting | ReasoningState::Complete => vec![],
             }
@@ -757,5 +805,113 @@ impl Tool for ReflectTool {
         };
 
         ExecutionResult::success(serde_json::to_string(&payload).unwrap_or(payload.summary))
+    }
+}
+
+#[cfg(test)]
+mod builder_tests {
+    use super::*;
+
+    #[test]
+    fn test_reasoning_profile_builder() {
+        let profile = ReasoningProfile::builder()
+            .max_loop_iters(32)
+            .max_prev_output(2048)
+            .max_chain_line(1024)
+            .max_chain_summary(4096)
+            .build();
+
+        assert_eq!(profile.max_loop_iters, 32);
+        assert_eq!(profile.max_prev_output, 2048);
+        assert_eq!(profile.max_chain_line, 1024);
+        assert_eq!(profile.max_chain_summary, 4096);
+    }
+
+    #[test]
+    fn test_reasoning_profile_builder_defaults() {
+        let profile = ReasoningProfile::builder().build();
+
+        assert_eq!(profile.max_loop_iters, 16);
+        assert_eq!(profile.max_prev_output, 1024);
+        assert_eq!(profile.max_chain_line, 512);
+        assert_eq!(profile.max_chain_summary, 2048);
+    }
+
+    #[test]
+    fn test_rich_result_builder() {
+        let result = RichResult::builder()
+            .summary("Analysis complete".to_string())
+            .confidence(0.85)
+            .evidence(vec!["fact 1".to_string(), "fact 2".to_string()])
+            .build();
+
+        assert_eq!(result.summary, "Analysis complete");
+        assert_eq!(result.confidence, 0.85);
+        assert_eq!(result.evidence, vec!["fact 1", "fact 2"]);
+    }
+
+    #[test]
+    fn test_rich_result_builder_with_add_evidence() {
+        let result = RichResult::builder()
+            .summary("Test summary".to_string())
+            .confidence(0.9)
+            .add_evidence("evidence 1".to_string())
+            .add_evidence("evidence 2".to_string())
+            .build();
+
+        assert_eq!(result.summary, "Test summary");
+        assert_eq!(result.confidence, 0.9);
+        assert_eq!(result.evidence, vec!["evidence 1", "evidence 2"]);
+    }
+
+    #[test]
+    fn test_rich_result_builder_confidence_clamping() {
+        let result_high = RichResult::builder()
+            .summary("Test".to_string())
+            .confidence(1.5) // Should be clamped to 1.0
+            .build();
+
+        let result_low = RichResult::builder()
+            .summary("Test".to_string())
+            .confidence(-0.5) // Should be clamped to 0.0
+            .build();
+
+        assert_eq!(result_high.confidence, 1.0);
+        assert_eq!(result_low.confidence, 0.0);
+    }
+
+    #[test]
+    fn test_rich_result_builder_defaults() {
+        let result = RichResult::builder().build();
+
+        assert_eq!(result.summary, "");
+        assert_eq!(result.confidence, 0.0);
+        assert!(result.evidence.is_empty());
+    }
+
+    #[test]
+    fn test_reasoning_profile_presets() {
+        let fast = ReasoningProfile::fast();
+        assert_eq!(fast.max_loop_iters, 8);
+        assert_eq!(fast.max_prev_output, 512);
+
+        let comprehensive = ReasoningProfile::comprehensive();
+        assert_eq!(comprehensive.max_loop_iters, 32);
+        assert_eq!(comprehensive.max_prev_output, 4096);
+    }
+
+    #[test]
+    fn test_rich_result_presets() {
+        let confident = RichResult::confident("High confidence result".to_string());
+        assert_eq!(confident.summary, "High confidence result");
+        assert_eq!(confident.confidence, 0.9);
+
+        let uncertain = RichResult::uncertain(
+            "Low confidence".to_string(),
+            "Insufficient data".to_string(),
+        );
+        assert_eq!(uncertain.summary, "Low confidence");
+        assert_eq!(uncertain.confidence, 0.3);
+        assert_eq!(uncertain.evidence, vec!["Insufficient data"]);
     }
 }

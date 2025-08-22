@@ -18,6 +18,44 @@ pub struct MemoryUpdate {
     pub value: String,
 }
 
+impl MemoryUpdate {
+    /// Create a new MemoryUpdate from string references.
+    ///
+    /// This is more efficient than using struct literals when you have &str values,
+    /// as it avoids intermediate String allocations at the call site.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The key identifier
+    /// * `value` - The value to store
+    ///
+    /// # Returns
+    ///
+    /// A new `MemoryUpdate` instance
+    pub fn new(key: &str, value: &str) -> Self {
+        Self {
+            key: key.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    /// Create a new MemoryUpdate from owned strings.
+    ///
+    /// Use this when you already have owned String values to avoid unnecessary cloning.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The owned key string
+    /// * `value` - The owned value string
+    ///
+    /// # Returns
+    ///
+    /// A new `MemoryUpdate` instance
+    pub fn from_owned(key: String, value: String) -> Self {
+        Self { key, value }
+    }
+}
+
 /// Basic trait for agent memory systems.
 ///
 /// Memory provides persistent storage for agent state, context, and learned

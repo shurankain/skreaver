@@ -110,6 +110,23 @@ impl InMemoryToolRegistry {
         self.tools.insert(name.to_string(), tool);
         self
     }
+
+    /// Add a tool to the registry with an owned string name.
+    ///
+    /// Use this when you already have an owned String to avoid cloning.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The owned name string to register the tool under
+    /// * `tool` - The tool implementation wrapped in `Arc` for sharing
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining
+    pub fn with_tool_owned(mut self, name: String, tool: Arc<dyn super::Tool>) -> Self {
+        self.tools.insert(name, tool);
+        self
+    }
 }
 
 impl super::registry::ToolRegistry for InMemoryToolRegistry {

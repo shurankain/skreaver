@@ -17,6 +17,42 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
+    /// Create a new ToolCall from string references.
+    ///
+    /// This is more efficient than using struct literals when you have &str values,
+    /// as it centralizes the String allocation.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The tool name
+    /// * `input` - The input data
+    ///
+    /// # Returns
+    ///
+    /// A new `ToolCall` instance
+    pub fn new(name: &str, input: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            input: input.to_string(),
+        }
+    }
+
+    /// Create a new ToolCall from owned strings.
+    ///
+    /// Use this when you already have owned String values to avoid cloning.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The owned tool name string
+    /// * `input` - The owned input string
+    ///
+    /// # Returns
+    ///
+    /// A new `ToolCall` instance
+    pub fn from_owned(name: String, input: String) -> Self {
+        Self { name, input }
+    }
+
     /// Create a new builder for configuring ToolCall instances.
     ///
     /// # Example
@@ -35,19 +71,10 @@ impl ToolCall {
 }
 
 /// Builder for configuring ToolCall instances.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ToolCallBuilder {
     name: String,
     input: String,
-}
-
-impl Default for ToolCallBuilder {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            input: String::new(),
-        }
-    }
 }
 
 impl ToolCallBuilder {
@@ -247,5 +274,42 @@ mod tests {
     fn tool_reports_name() {
         let tool = EchoTool;
         assert_eq!(tool.name(), "echo");
+    }
+
+    #[test]
+    fn test_tool_call_builder() {
+        let call = ToolCall::builder()
+            .name("calculator")
+            .input("2 + 2")
+            .build();
+
+        assert_eq!(call.name, "calculator");
+        assert_eq!(call.input, "2 + 2");
+    }
+
+    #[test]
+    fn test_tool_call_builder_defaults() {
+        let call = ToolCall::builder().build();
+
+        assert_eq!(call.name, "");
+        assert_eq!(call.input, "");
+    }
+
+    #[test]
+    fn test_tool_call_new() {
+        let call = ToolCall::new("test_tool", "test input");
+
+        assert_eq!(call.name, "test_tool");
+        assert_eq!(call.input, "test input");
+    }
+
+    #[test]
+    fn test_tool_call_from_owned() {
+        let name = String::from("owned_tool");
+        let input = String::from("owned input");
+        let call = ToolCall::from_owned(name, input);
+
+        assert_eq!(call.name, "owned_tool");
+        assert_eq!(call.input, "owned input");
     }
 }
