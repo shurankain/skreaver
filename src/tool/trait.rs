@@ -16,6 +16,78 @@ pub struct ToolCall {
     pub input: String,
 }
 
+impl ToolCall {
+    /// Create a new builder for configuring ToolCall instances.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use skreaver::tool::ToolCall;
+    ///
+    /// let call = ToolCall::builder()
+    ///     .name("calculator")
+    ///     .input("2 + 2")
+    ///     .build();
+    /// ```
+    pub fn builder() -> ToolCallBuilder {
+        ToolCallBuilder::default()
+    }
+}
+
+/// Builder for configuring ToolCall instances.
+#[derive(Debug)]
+pub struct ToolCallBuilder {
+    name: String,
+    input: String,
+}
+
+impl Default for ToolCallBuilder {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            input: String::new(),
+        }
+    }
+}
+
+impl ToolCallBuilder {
+    /// Set the name of the tool to invoke.
+    ///
+    /// The name must match a tool registered in the tool registry.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The tool name
+    pub fn name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+
+    /// Set the input data for the tool.
+    ///
+    /// The input format depends on the specific tool implementation.
+    ///
+    /// # Parameters
+    ///
+    /// * `input` - The input data
+    pub fn input(mut self, input: &str) -> Self {
+        self.input = input.to_string();
+        self
+    }
+
+    /// Build the configured ToolCall.
+    ///
+    /// # Returns
+    ///
+    /// A new `ToolCall` with the specified configuration
+    pub fn build(self) -> ToolCall {
+        ToolCall {
+            name: self.name,
+            input: self.input,
+        }
+    }
+}
+
 /// The result of executing a tool.
 ///
 /// `ExecutionResult` contains both the output data from the tool

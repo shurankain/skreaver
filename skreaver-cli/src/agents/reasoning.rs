@@ -22,6 +22,109 @@ impl Default for ReasoningProfile {
     }
 }
 
+impl ReasoningProfile {
+    /// Create a new builder for configuring reasoning behavior.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use skreaver_cli::agents::reasoning::ReasoningProfile;
+    ///
+    /// let profile = ReasoningProfile::builder()
+    ///     .max_loop_iters(32)
+    ///     .max_prev_output(2048)
+    ///     .max_chain_line(1024)
+    ///     .build();
+    /// ```
+    pub fn builder() -> ReasoningProfileBuilder {
+        ReasoningProfileBuilder::default()
+    }
+}
+
+/// Builder for configuring ReasoningProfile instances.
+#[derive(Debug)]
+pub struct ReasoningProfileBuilder {
+    max_loop_iters: usize,
+    max_prev_output: usize,
+    max_chain_line: usize,
+    max_chain_summary: usize,
+}
+
+impl Default for ReasoningProfileBuilder {
+    fn default() -> Self {
+        Self {
+            max_loop_iters: 16,
+            max_prev_output: 1024,
+            max_chain_line: 512,
+            max_chain_summary: 2048,
+        }
+    }
+}
+
+impl ReasoningProfileBuilder {
+    /// Set the maximum number of reasoning loop iterations.
+    ///
+    /// This prevents infinite loops in complex reasoning scenarios.
+    ///
+    /// # Parameters
+    ///
+    /// * `iters` - Maximum loop iterations (default: 16)
+    pub fn max_loop_iters(mut self, iters: usize) -> Self {
+        self.max_loop_iters = iters;
+        self
+    }
+
+    /// Set the maximum length of previous tool output to include.
+    ///
+    /// Controls how much context from previous tools is passed forward.
+    ///
+    /// # Parameters
+    ///
+    /// * `chars` - Maximum character count (default: 1024)
+    pub fn max_prev_output(mut self, chars: usize) -> Self {
+        self.max_prev_output = chars;
+        self
+    }
+
+    /// Set the maximum length for individual chain step summaries.
+    ///
+    /// Keeps reasoning chains concise while preserving key information.
+    ///
+    /// # Parameters
+    ///
+    /// * `chars` - Maximum character count per step (default: 512)
+    pub fn max_chain_line(mut self, chars: usize) -> Self {
+        self.max_chain_line = chars;
+        self
+    }
+
+    /// Set the maximum length for the complete reasoning chain summary.
+    ///
+    /// Controls the total context size when reflecting on reasoning.
+    ///
+    /// # Parameters
+    ///
+    /// * `chars` - Maximum total summary length (default: 2048)
+    pub fn max_chain_summary(mut self, chars: usize) -> Self {
+        self.max_chain_summary = chars;
+        self
+    }
+
+    /// Build the configured ReasoningProfile.
+    ///
+    /// # Returns
+    ///
+    /// A new `ReasoningProfile` with the specified configuration
+    pub fn build(self) -> ReasoningProfile {
+        ReasoningProfile {
+            max_loop_iters: self.max_loop_iters,
+            max_prev_output: self.max_prev_output,
+            max_chain_line: self.max_chain_line,
+            max_chain_summary: self.max_chain_summary,
+        }
+    }
+}
+
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
 use skreaver::memory::{FileMemory, Memory, MemoryUpdate};
@@ -35,6 +138,108 @@ pub struct RichResult {
     pub summary: String,
     pub confidence: f32, // 0.0..1.0
     pub evidence: Vec<String>,
+}
+
+impl RichResult {
+    /// Create a new builder for configuring RichResult instances.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use skreaver_cli::agents::reasoning::RichResult;
+    ///
+    /// let result = RichResult::builder()
+    ///     .summary("Analysis complete".to_string())
+    ///     .confidence(0.85)
+    ///     .evidence(vec!["fact 1".to_string(), "fact 2".to_string()])
+    ///     .build();
+    /// ```
+    pub fn builder() -> RichResultBuilder {
+        RichResultBuilder::default()
+    }
+}
+
+/// Builder for configuring RichResult instances.
+#[derive(Debug)]
+pub struct RichResultBuilder {
+    summary: String,
+    confidence: f32,
+    evidence: Vec<String>,
+}
+
+impl Default for RichResultBuilder {
+    fn default() -> Self {
+        Self {
+            summary: String::new(),
+            confidence: 0.0,
+            evidence: Vec::new(),
+        }
+    }
+}
+
+impl RichResultBuilder {
+    /// Set the summary text for the result.
+    ///
+    /// This should be a concise description of the tool's findings.
+    ///
+    /// # Parameters
+    ///
+    /// * `summary` - The summary description
+    pub fn summary(mut self, summary: String) -> Self {
+        self.summary = summary;
+        self
+    }
+
+    /// Set the confidence level for the result.
+    ///
+    /// Confidence should be between 0.0 and 1.0, where 1.0 represents
+    /// complete certainty and 0.0 represents complete uncertainty.
+    ///
+    /// # Parameters
+    ///
+    /// * `confidence` - Confidence level (0.0..1.0)
+    pub fn confidence(mut self, confidence: f32) -> Self {
+        self.confidence = confidence.clamp(0.0, 1.0);
+        self
+    }
+
+    /// Set the evidence supporting this result.
+    ///
+    /// Evidence provides supporting information or facts that back up
+    /// the result's conclusions.
+    ///
+    /// # Parameters
+    ///
+    /// * `evidence` - Vector of evidence strings
+    pub fn evidence(mut self, evidence: Vec<String>) -> Self {
+        self.evidence = evidence;
+        self
+    }
+
+    /// Add a single piece of evidence to the result.
+    ///
+    /// This is a convenience method for adding evidence one item at a time.
+    ///
+    /// # Parameters
+    ///
+    /// * `evidence` - Single evidence string to add
+    pub fn add_evidence(mut self, evidence: String) -> Self {
+        self.evidence.push(evidence);
+        self
+    }
+
+    /// Build the configured RichResult.
+    ///
+    /// # Returns
+    ///
+    /// A new `RichResult` with the specified configuration
+    pub fn build(self) -> RichResult {
+        RichResult {
+            summary: self.summary,
+            confidence: self.confidence,
+            evidence: self.evidence,
+        }
+    }
 }
 
 // Agent result types
