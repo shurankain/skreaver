@@ -29,10 +29,7 @@
 //!     fn name(&self) -> &str { "echo" }
 //!     
 //!     fn call(&self, input: String) -> ExecutionResult {
-//!         ExecutionResult {
-//!             output: format!("Echo: {}", input),
-//!             success: true,
-//!         }
+//!         ExecutionResult::Success(format!("Echo: {}", input))
 //!     }
 //! }
 //! ```
@@ -42,4 +39,4 @@ pub mod registry;
 /// Core tool trait definitions and data structures.
 pub mod r#trait;
 pub use registry::ToolRegistry;
-pub use r#trait::{ExecutionResult, Tool, ToolCall};
+pub use r#trait::{ExecutionResult, InvalidToolName, Tool, ToolCall, ToolCallBuildError, ToolName};

@@ -482,7 +482,7 @@ impl Agent for ReasoningAgent {
         if let Some(problem) = &self.current_problem {
             match self.reasoning_state {
                 ReasoningState::Initial => {
-                    vec![ToolCall::new("analyze", problem)]
+                    vec![ToolCall::new("analyze", problem).expect("Valid tool name")]
                 }
                 ReasoningState::Analyzing => {
                     if let Some(last_step) = self.reasoning_chain.last() {
@@ -497,7 +497,7 @@ impl Agent for ReasoningAgent {
                         input.push_str(&clipped_output);
                         input.push('\'');
 
-                        vec![ToolCall::new("deduce", &input)]
+                        vec![ToolCall::new("deduce", &input).expect("Valid tool name")]
                     } else {
                         vec![]
                     }
@@ -515,7 +515,7 @@ impl Agent for ReasoningAgent {
                         input.push_str(&clipped_output);
                         input.push('\'');
 
-                        vec![ToolCall::new("conclude", &input)]
+                        vec![ToolCall::new("conclude", &input).expect("Valid tool name")]
                     } else {
                         vec![]
                     }
@@ -545,7 +545,7 @@ impl Agent for ReasoningAgent {
                     input.push_str("'\nReasoning chain:\n");
                     input.push_str(&clipped_summary);
 
-                    vec![ToolCall::new("reflect", &input)]
+                    vec![ToolCall::new("reflect", &input).expect("Valid tool name")]
                 }
                 ReasoningState::Reflecting | ReasoningState::Complete => vec![],
             }
@@ -555,7 +555,7 @@ impl Agent for ReasoningAgent {
     }
 
     fn handle_result(&mut self, result: ExecutionResult) {
-        if !result.success {
+        if !result.is_success() {
             return;
         }
 
@@ -568,12 +568,12 @@ impl Agent for ReasoningAgent {
         };
 
         // Parse structured output or fallback to plain text
-        let parsed: Option<RichResult> = serde_json::from_str(&result.output).ok();
+        let parsed: Option<RichResult> = serde_json::from_str(result.output()).ok();
         let (out_text, conf, evidence) = match parsed {
             Some(rr) => (rr.summary, rr.confidence, rr.evidence),
             None => (
-                result.output.clone(),
-                self.extract_confidence(&result.output),
+                result.output().to_string(),
+                self.extract_confidence(result.output()),
                 vec![],
             ),
         };

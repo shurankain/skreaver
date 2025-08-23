@@ -3,7 +3,7 @@
 use skreaver::{
     error::{MemoryError, SkreverError, SkreverResult, ToolError},
     tool::registry::{InMemoryToolRegistry, ToolRegistry},
-    tool::{ExecutionResult, Tool, ToolCall},
+    tool::{ExecutionResult, Tool, ToolCall, ToolName},
 };
 use std::sync::Arc;
 
@@ -42,7 +42,7 @@ fn main() -> SkreverResult<()> {
     // Example 1: Successful tool call
     println!("\n✅ Example 1: Successful tool call");
     let result = registry.dispatch(ToolCall {
-        name: "example".to_string(),
+        name: ToolName::new("example").expect("Valid tool name"),
         input: "test input".to_string(),
     });
 
@@ -57,12 +57,12 @@ fn main() -> SkreverResult<()> {
     // Example 2: Tool not found (using new structured error handling)
     println!("\n❌ Example 2: Tool not found");
     let result = registry.try_dispatch(ToolCall {
-        name: "nonexistent".to_string(),
+        name: ToolName::new("nonexistent").expect("Valid tool name"),
         input: "test".to_string(),
     });
 
     match result {
-        Ok(exec_result) => println!("Success: {}", exec_result.output),
+        Ok(exec_result) => println!("Success: {}", exec_result.output()),
         Err(ToolError::NotFound { name }) => {
             println!("Tool '{}' not found in registry", name);
         }
@@ -72,7 +72,7 @@ fn main() -> SkreverResult<()> {
     // Example 3: Tool execution failure
     println!("\n❌ Example 3: Tool execution failure");
     let result = registry.dispatch(ToolCall {
-        name: "failing".to_string(),
+        name: ToolName::new("failing").expect("Valid tool name"),
         input: "test input".to_string(),
     });
 

@@ -57,7 +57,7 @@ impl Agent for EchoAgent {
     fn call_tools(&self) -> Vec<ToolCall> {
         if let Some(input) = &self.last_input {
             vec![ToolCall {
-                name: "uppercase".into(),
+                name: skreaver::tool::ToolName::new("uppercase").expect("Valid tool name"),
                 input: input.clone(),
             }]
         } else {
@@ -66,8 +66,8 @@ impl Agent for EchoAgent {
     }
 
     fn handle_result(&mut self, result: ExecutionResult) {
-        if result.success {
-            self.last_input = Some(result.output.clone());
+        if result.is_success() {
+            self.last_input = Some(result.output().to_string());
         }
     }
 

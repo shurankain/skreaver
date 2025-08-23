@@ -67,11 +67,11 @@ impl Agent for MultiToolAgent {
             .map(|input| {
                 vec![
                     ToolCall {
-                        name: "uppercase".into(),
+                        name: skreaver::tool::ToolName::new("uppercase").expect("Valid tool name"),
                         input: input.clone(),
                     },
                     ToolCall {
-                        name: "reverse".into(),
+                        name: skreaver::tool::ToolName::new("reverse").expect("Valid tool name"),
                         input: input.clone(),
                     },
                 ]
@@ -80,8 +80,8 @@ impl Agent for MultiToolAgent {
     }
 
     fn handle_result(&mut self, result: ExecutionResult) {
-        if result.success {
-            self.tool_results.push(result.output);
+        if result.is_success() {
+            self.tool_results.push(result.output().to_string());
         }
     }
 
