@@ -20,15 +20,9 @@ mod tests {
                     confidence: 0.95,
                     evidence: vec!["test evidence".into()],
                 };
-                ExecutionResult {
-                    output: serde_json::to_string(&payload).unwrap(),
-                    success: true,
-                }
+                ExecutionResult::Success(serde_json::to_string(&payload).unwrap())
             } else {
-                ExecutionResult {
-                    output: format!("Plain text output for: {}", input.trim()),
-                    success: true,
-                }
+                ExecutionResult::Success(format!("Plain text output for: {}", input.trim()))
             }
         }
     }
@@ -39,7 +33,7 @@ mod tests {
         let result = tool.call("test input".into());
 
         // Should be valid JSON
-        let parsed: RichResult = serde_json::from_str(&result.output).unwrap();
+        let parsed: RichResult = serde_json::from_str(result.output()).unwrap();
         assert_eq!(parsed.confidence, 0.95);
         assert_eq!(parsed.evidence, vec!["test evidence"]);
         assert!(parsed.summary.contains("Test summary for: test input"));
@@ -51,11 +45,11 @@ mod tests {
         let result = tool.call("test input".into());
 
         // Should fail to parse as JSON
-        let parsed: Result<RichResult, _> = serde_json::from_str(&result.output);
+        let parsed: Result<RichResult, _> = serde_json::from_str(result.output());
         assert!(parsed.is_err());
 
         // Should contain plain text
-        assert!(result.output.contains("Plain text output"));
+        assert!(result.output().contains("Plain text output"));
     }
 
     #[test]
@@ -121,7 +115,7 @@ mod tests {
         assert!(!coordinator.is_complete());
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "analyze");
+        assert_eq!(tools[0].name.as_str(), "analyze");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);
@@ -130,7 +124,7 @@ mod tests {
         // Step 2: Analyzing -> Deducing
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "deduce");
+        assert_eq!(tools[0].name.as_str(), "deduce");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);
@@ -139,7 +133,7 @@ mod tests {
         // Step 3: Deducing -> Concluding
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "conclude");
+        assert_eq!(tools[0].name.as_str(), "conclude");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);
@@ -148,7 +142,7 @@ mod tests {
         // Step 4: Concluding -> Complete
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name, "reflect");
+        assert_eq!(tools[0].name.as_str(), "reflect");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);

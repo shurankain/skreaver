@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{Memory, MemoryUpdate};
+use super::{Memory, MemoryKey, MemoryUpdate};
 
 /// Fast, transient memory implementation using HashMap.
 ///
@@ -11,18 +11,16 @@ use super::{Memory, MemoryUpdate};
 /// # Example
 ///
 /// ```rust
-/// use skreaver::memory::{Memory, MemoryUpdate, InMemoryMemory};
+/// use skreaver::memory::{Memory, MemoryUpdate, MemoryKey, InMemoryMemory};
 ///
 /// let mut memory = InMemoryMemory::new();
-/// memory.store(MemoryUpdate {
-///     key: "session_id".to_string(),
-///     value: "abc123".to_string(),
-/// });
+/// let key = MemoryKey::new("session_id").unwrap();
+/// memory.store(MemoryUpdate::from_validated(key.clone(), "abc123".to_string())).unwrap();
 ///
-/// assert_eq!(memory.load("session_id"), Some("abc123".to_string()));
+/// assert_eq!(memory.load(&key).unwrap(), Some("abc123".to_string()));
 /// ```
 pub struct InMemoryMemory {
-    store: HashMap<String, String>,
+    store: HashMap<MemoryKey, String>,
 }
 
 impl Default for InMemoryMemory {
@@ -45,11 +43,12 @@ impl InMemoryMemory {
 }
 
 impl Memory for InMemoryMemory {
-    fn load(&mut self, key: &str) -> Option<String> {
-        self.store.get(key).cloned()
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        Ok(self.store.get(key).cloned())
     }
 
-    fn store(&mut self, update: MemoryUpdate) {
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
         self.store.insert(update.key, update.value);
+        Ok(())
     }
 }

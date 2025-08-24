@@ -1,4 +1,4 @@
-use super::{Memory, MemoryUpdate};
+use super::{Memory, MemoryKey, MemoryUpdate};
 
 /// Wraps a memory backend and prefixes all keys with a namespace
 pub struct NamespacedMemory<M: Memory> {
@@ -24,8 +24,12 @@ impl<M: Memory> NamespacedMemory<M> {
     }
 
     /// Wrap a key with the namespace prefix.
-    fn wrap_key(&self, key: &str) -> String {
-        format!("{}:{}", self.prefix, key)
+    fn wrap_key(&self, key: &MemoryKey) -> Result<MemoryKey, crate::error::MemoryError> {
+        let wrapped_key_str = format!("{}:{}", self.prefix, key.as_str());
+        MemoryKey::new(&wrapped_key_str).map_err(|e| crate::error::MemoryError::StoreFailed {
+            key: wrapped_key_str,
+            reason: format!("Invalid namespaced key: {}", e),
+        })
     }
 
     /// Get a mutable reference to the underlying memory implementation.
@@ -38,14 +42,16 @@ impl<M: Memory> NamespacedMemory<M> {
 }
 
 impl<M: Memory> Memory for NamespacedMemory<M> {
-    fn load(&mut self, key: &str) -> Option<String> {
-        self.inner.load(&self.wrap_key(key))
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        let wrapped_key = self.wrap_key(key)?;
+        self.inner.load(&wrapped_key)
     }
 
-    fn store(&mut self, update: MemoryUpdate) {
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        let wrapped_key = self.wrap_key(&update.key)?;
         self.inner.store(MemoryUpdate {
-            key: self.wrap_key(&update.key),
+            key: wrapped_key,
             value: update.value,
-        });
+        })
     }
 }

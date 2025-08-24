@@ -40,10 +40,9 @@ impl Agent for MultiToolAgent {
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
-        self.memory.store(MemoryUpdate {
-            key: "input".into(),
-            value: input,
-        });
+        if let Ok(update) = MemoryUpdate::new("input", &input) {
+            let _ = self.memory.store(update);
+        }
         self.tool_results.clear();
     }
 
@@ -86,7 +85,7 @@ impl Agent for MultiToolAgent {
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        self.memory.store(update);
+        let _ = self.memory.store(update);
     }
 
     fn memory(&mut self) -> &mut dyn Memory {

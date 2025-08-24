@@ -1,4 +1,4 @@
-use super::{Memory, MemoryUpdate};
+use super::{Memory, MemoryKey, MemoryUpdate};
 use crate::memory::SnapshotableMemory;
 use redis::{Commands, Connection, RedisResult};
 use std::collections::HashMap;
@@ -18,19 +18,38 @@ impl RedisMemory {
 }
 
 impl Memory for RedisMemory {
-    fn load(&mut self, key: &str) -> Option<String> {
-        self.conn.get::<_, Option<String>>(key).ok().flatten()
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        self.conn
+            .get::<_, Option<String>>(key.as_str())
+            .map_err(|e| crate::error::MemoryError::LoadFailed {
+                key: key.as_str().to_string(),
+                reason: e.to_string(),
+            })
     }
 
-    fn store(&mut self, update: MemoryUpdate) {
-        let _ = self.conn.set::<_, _, ()>(update.key, update.value);
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        self.conn
+            .set::<_, _, ()>(update.key.as_str(), update.value)
+            .map_err(|e| crate::error::MemoryError::StoreFailed {
+                key: update.key.as_str().to_string(),
+                reason: e.to_string(),
+            })
     }
 }
 
 impl RedisMemory {
     /// Store a key-value pair with TTL in seconds.
-    pub fn store_with_ttl(&mut self, update: MemoryUpdate, ttl_secs: u64) {
-        let _: redis::RedisResult<()> = self.conn.set_ex(&update.key, &update.value, ttl_secs);
+    pub fn store_with_ttl(
+        &mut self,
+        update: MemoryUpdate,
+        ttl_secs: u64,
+    ) -> Result<(), crate::error::MemoryError> {
+        self.conn
+            .set_ex(update.key.as_str(), &update.value, ttl_secs)
+            .map_err(|e| crate::error::MemoryError::StoreFailed {
+                key: update.key.as_str().to_string(),
+                reason: e.to_string(),
+            })
     }
 }
 
@@ -74,11 +93,13 @@ mod tests {
         clear_test_keys(&mut mem);
 
         let key = format!("test:{}:foo", Uuid::new_v4());
+        let memory_key = MemoryKey::new(&key).unwrap();
         mem.store(MemoryUpdate {
-            key: key.clone(),
+            key: memory_key.clone(),
             value: "bar".into(),
-        });
-        let value = mem.load(&key);
+        })
+        .unwrap();
+        let value = mem.load(&memory_key).unwrap();
         assert_eq!(value, Some("bar".into()));
     }
 
@@ -88,17 +109,19 @@ mod tests {
         clear_test_keys(&mut mem);
 
         let key = format!("test:{}:foo", Uuid::new_v4());
+        let memory_key = MemoryKey::new(&key).unwrap();
         mem.store_with_ttl(
             MemoryUpdate {
-                key: key.clone(),
+                key: memory_key.clone(),
                 value: "short-lived".into(),
             },
             2,
-        );
+        )
+        .unwrap();
 
         println!("Stored. Wait 3s...");
         std::thread::sleep(std::time::Duration::from_secs(3));
-        println!("Loaded: {:?}", mem.load(&key));
+        println!("Loaded: {:?}", mem.load(&memory_key));
     }
 
     #[test]
@@ -121,17 +144,22 @@ mod tests {
         let mut mem = NamespacedMemory::new(prefix, redis);
 
         // Store a memory entry using logical key (without prefix)
+        let target_key = MemoryKey::new("target").unwrap();
         mem.store(MemoryUpdate {
-            key: "target".into(),
+            key: target_key.clone(),
             value: "Eliminate the client".into(),
-        });
+        })
+        .unwrap();
 
         // Should be retrievable using just "target"
-        assert_eq!(mem.load("target"), Some("Eliminate the client".into()));
+        assert_eq!(
+            mem.load(&target_key).unwrap(),
+            Some("Eliminate the client".into())
+        );
 
         // Confirm that the actual Redis key is prefixed
-        let full_key = "agent:47:target";
-        let raw_value = mem.inner().load(full_key);
+        let full_key = MemoryKey::new("agent:47:target").unwrap();
+        let raw_value = mem.inner().load(&full_key).unwrap();
         assert_eq!(raw_value, Some("Eliminate the client".into()));
     }
 
@@ -152,10 +180,12 @@ mod tests {
         let mut mem = NamespacedMemory::new(prefix, redis);
 
         // Store agent's current objective
+        let goal_key = MemoryKey::new("goal").unwrap();
         mem.store(MemoryUpdate {
-            key: "goal".into(),
+            key: goal_key,
             value: "Eat cake".into(),
-        });
+        })
+        .unwrap();
 
         // Take a snapshot of all keys in Redis (not just this agent)
         let snapshot = mem.inner().snapshot().unwrap();
@@ -173,8 +203,8 @@ mod tests {
         redis_restored.restore(&snapshot).unwrap();
 
         // Confirm the restored value exists
-        let full_key = "agent:47:goal";
-        let value = redis_restored.load(full_key);
+        let full_key = MemoryKey::new("agent:47:goal").unwrap();
+        let value = redis_restored.load(&full_key).unwrap();
         assert_eq!(value, Some("Eat cake".into()));
     }
 

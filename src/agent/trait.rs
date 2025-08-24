@@ -132,22 +132,25 @@ pub trait Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::{Memory, MemoryUpdate};
+    use crate::memory::{Memory, MemoryKey, MemoryUpdate};
 
     struct DummyMemory {
         store: Vec<(String, String)>,
     }
 
     impl Memory for DummyMemory {
-        fn load(&mut self, key: &str) -> Option<String> {
-            self.store
+        fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+            Ok(self
+                .store
                 .iter()
-                .find(|(k, _)| k == key)
-                .map(|(_, v)| v.clone())
+                .find(|(k, _)| k == key.as_str())
+                .map(|(_, v)| v.clone()))
         }
 
-        fn store(&mut self, update: MemoryUpdate) {
-            self.store.push((update.key, update.value));
+        fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+            self.store
+                .push((update.key.as_str().to_string(), update.value));
+            Ok(())
         }
     }
 
@@ -176,7 +179,7 @@ mod tests {
         }
 
         fn update_context(&mut self, update: MemoryUpdate) {
-            self.memory().store(update);
+            let _ = self.memory().store(update);
         }
     }
 
@@ -187,11 +190,9 @@ mod tests {
             last_observation: None,
         };
 
-        agent.update_context(MemoryUpdate {
-            key: "k".into(),
-            value: "v".into(),
-        });
+        let key = MemoryKey::new("k").unwrap();
+        agent.update_context(MemoryUpdate::from_validated(key.clone(), "v".to_string()));
 
-        assert_eq!(agent.memory().load("k"), Some("v".into()));
+        assert_eq!(agent.memory().load(&key).unwrap(), Some("v".into()));
     }
 }

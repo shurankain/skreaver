@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use super::{Memory, MemoryUpdate};
+use super::{Memory, MemoryKey, MemoryUpdate};
 
 /// A simple persistent key-value memory that syncs to a JSON file.
 pub struct FileMemory {
@@ -36,12 +36,14 @@ impl FileMemory {
 }
 
 impl Memory for FileMemory {
-    fn load(&mut self, key: &str) -> Option<String> {
-        self.cache.get(key).cloned()
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        Ok(self.cache.get(key.as_str()).cloned())
     }
 
-    fn store(&mut self, update: MemoryUpdate) {
-        self.cache.insert(update.key, update.value);
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        self.cache
+            .insert(update.key.as_str().to_string(), update.value);
         self.persist();
+        Ok(())
     }
 }

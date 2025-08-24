@@ -51,7 +51,7 @@ impl MemoryKey {
     ///
     /// - Must not be empty or only whitespace
     /// - Must not exceed 128 characters
-    /// - Must contain only alphanumeric characters, underscores, hyphens, and dots
+    /// - Must contain only alphanumeric characters, underscores, hyphens, dots, and colons
     ///
     /// # Example
     ///
@@ -74,7 +74,7 @@ impl MemoryKey {
 
         if !trimmed
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.' || c == ':')
         {
             return Err(InvalidMemoryKey::InvalidChars(trimmed.to_string()));
         }
@@ -381,12 +381,14 @@ mod tests {
     }
 
     impl Memory for DummyMemory {
-        fn load(&mut self, key: &str) -> Option<String> {
-            self.store.get(key).cloned()
+        fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+            Ok(self.store.get(key.as_str()).cloned())
         }
 
-        fn store(&mut self, update: MemoryUpdate) {
-            self.store.insert(update.key, update.value);
+        fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+            self.store
+                .insert(update.key.as_str().to_string(), update.value);
+            Ok(())
         }
     }
 
@@ -413,11 +415,10 @@ mod tests {
         let mut mem = DummyMemory {
             store: Default::default(),
         };
-        mem.store(MemoryUpdate {
-            key: "foo".into(),
-            value: "bar".into(),
-        });
-        assert_eq!(mem.load("foo"), Some("bar".into()));
+        let key = MemoryKey::new("foo").unwrap();
+        mem.store(MemoryUpdate::from_validated(key.clone(), "bar".to_string()))
+            .unwrap();
+        assert_eq!(mem.load(&key).unwrap(), Some("bar".into()));
     }
 
     #[test]
@@ -432,6 +433,7 @@ mod tests {
         };
         new_mem.restore(&snap).unwrap();
 
-        assert_eq!(new_mem.load("a"), Some("1".into()));
+        let key = MemoryKey::new("a").unwrap();
+        assert_eq!(new_mem.load(&key).unwrap(), Some("1".into()));
     }
 }

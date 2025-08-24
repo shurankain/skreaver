@@ -450,11 +450,13 @@ impl Agent for ReasoningAgent {
         self.reasoning_state = ReasoningState::Initial;
 
         self.memory
-            .store(MemoryUpdate::new("current_problem", &input));
+            .store(MemoryUpdate::new("current_problem", &input).expect("Valid memory key"))
+            .ok();
 
         let chain_json = serde_json::to_string(&self.reasoning_chain).unwrap_or_default();
         self.memory
-            .store(MemoryUpdate::new("reasoning_chain", &chain_json));
+            .store(MemoryUpdate::new("reasoning_chain", &chain_json).expect("Valid memory key"))
+            .ok();
     }
 
     fn act(&mut self) -> Self::Action {
@@ -601,22 +603,23 @@ impl Agent for ReasoningAgent {
         self.reasoning_state = next_state;
 
         // Save reasoning state
-        self.memory.store(MemoryUpdate {
-            key: "reasoning_state".into(),
+        let _ = self.memory.store(MemoryUpdate {
+            key: skreaver::memory::MemoryKey::new("reasoning_state").expect("Valid memory key"),
             value: format!("{:?}", self.reasoning_state),
         });
 
         // Save chain length for atomic operations
-        self.memory.store(MemoryUpdate {
-            key: "reasoning_chain_len".into(),
+        let _ = self.memory.store(MemoryUpdate {
+            key: skreaver::memory::MemoryKey::new("reasoning_chain_len").expect("Valid memory key"),
             value: self.reasoning_chain.len().to_string(),
         });
 
         // Save last step atomically
         if let Some(last_step) = self.reasoning_chain.last() {
             let step_json = serde_json::to_string(last_step).unwrap_or_default();
-            self.memory.store(MemoryUpdate {
-                key: "last_reasoning_step".into(),
+            let _ = self.memory.store(MemoryUpdate {
+                key: skreaver::memory::MemoryKey::new("last_reasoning_step")
+                    .expect("Valid memory key"),
                 value: step_json,
             });
         }
@@ -624,15 +627,15 @@ impl Agent for ReasoningAgent {
         // Periodically save full chain (every 4 steps or at completion)
         if self.reasoning_chain.len() % 4 == 0 || self.reasoning_state == ReasoningState::Complete {
             let chain_json = serde_json::to_string(&self.reasoning_chain).unwrap_or_default();
-            self.memory.store(MemoryUpdate {
-                key: "reasoning_chain".into(),
+            let _ = self.memory.store(MemoryUpdate {
+                key: skreaver::memory::MemoryKey::new("reasoning_chain").expect("Valid memory key"),
                 value: chain_json,
             });
         }
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        self.memory.store(update);
+        let _ = self.memory.store(update);
     }
 
     fn memory(&mut self) -> &mut dyn Memory {
