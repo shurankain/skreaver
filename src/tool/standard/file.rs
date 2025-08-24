@@ -115,12 +115,19 @@ impl Tool for FileWriteTool {
         };
 
         // Create parent directories if requested
-        if let (true, Some(parent)) = (config.create_dirs, Path::new(&config.path).parent()) {
-            if let Err(e) = fs::create_dir_all(parent) {
-                return ExecutionResult::failure(format!(
-                    "Failed to create parent directories for '{}': {}",
-                    config.path, e
-                ));
+        if let Some(parent) = config
+            .create_dirs
+            .then(|| Path::new(&config.path).parent())
+            .flatten()
+        {
+            match fs::create_dir_all(parent) {
+                Ok(()) => {}
+                Err(e) => {
+                    return ExecutionResult::failure(format!(
+                        "Failed to create parent directories for '{}': {}",
+                        config.path, e
+                    ));
+                }
             }
         }
 
