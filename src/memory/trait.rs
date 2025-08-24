@@ -289,18 +289,8 @@ pub trait Memory {
 /// # Example
 ///
 /// ```rust
-/// use skreaver::memory::{Memory, MemoryUpdate, SnapshotableMemory};
+/// use skreaver::memory::{Memory, MemoryUpdate, SnapshotableMemory, MemoryKey};
 /// use std::collections::HashMap;
-///
-/// // Simple error type for this example
-/// #[derive(Debug)]
-/// struct SimpleError(String);
-/// impl std::fmt::Display for SimpleError {
-///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-///         write!(f, "{}", self.0)
-///     }
-/// }
-/// impl std::error::Error for SimpleError {}
 ///
 /// // Example implementation that supports snapshots
 /// struct ExampleMemory {
@@ -308,11 +298,12 @@ pub trait Memory {
 /// }
 ///
 /// impl Memory for ExampleMemory {
-///     fn load(&mut self, key: &str) -> Option<String> {
-///         self.store.get(key).cloned()
+///     fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, skreaver::error::MemoryError> {
+///         Ok(self.store.get(key.as_str()).cloned())
 ///     }
-///     fn store(&mut self, update: MemoryUpdate) {
-///         self.store.insert(update.key, update.value);
+///     fn store(&mut self, update: MemoryUpdate) -> Result<(), skreaver::error::MemoryError> {
+///         self.store.insert(update.key.as_str().to_string(), update.value);
+///         Ok(())
 ///     }
 /// }
 ///
@@ -331,10 +322,11 @@ pub trait Memory {
 /// }
 ///
 /// let mut memory = ExampleMemory { store: HashMap::new() };
+/// let data_key = MemoryKey::new("data").unwrap();
 /// memory.store(MemoryUpdate {
-///     key: "data".to_string(),
+///     key: data_key.clone(),
 ///     value: "important".to_string(),
-/// });
+/// }).unwrap();
 ///
 /// // Create a snapshot
 /// let snapshot = memory.snapshot().unwrap();
@@ -342,7 +334,7 @@ pub trait Memory {
 /// // Restore to a new memory instance  
 /// let mut new_memory = ExampleMemory { store: HashMap::new() };
 /// new_memory.restore(&snapshot).unwrap();
-/// assert_eq!(new_memory.load("data"), Some("important".to_string()));
+/// assert_eq!(new_memory.load(&data_key).unwrap(), Some("important".to_string()));
 /// ```
 pub trait SnapshotableMemory: Memory {
     /// Create a snapshot of the current memory state.

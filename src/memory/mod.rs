@@ -19,13 +19,13 @@
 //! ## Usage
 //!
 //! ```rust
-//! use skreaver::memory::{Memory, MemoryUpdate, InMemoryMemory};
+//! use skreaver::memory::{Memory, MemoryUpdate, InMemoryMemory, MemoryKey};
 //!
 //! let mut memory = InMemoryMemory::new();
 //! memory.store(MemoryUpdate {
-//!     key: "context".into(),
+//!     key: MemoryKey::new("context").unwrap(),
 //!     value: "conversation state".into(),
-//! });
+//! }).unwrap();
 //! ```
 
 mod file_memory;

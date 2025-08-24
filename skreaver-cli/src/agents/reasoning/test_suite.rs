@@ -1,8 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use crate::agents::reasoning::*;
+    use crate::agents::reasoning::coordinator::ReasoningCoordinatorExt;
+    use crate::agents::reasoning::rich_result::RichResult;
+    use crate::agents::reasoning::states::{AgentFinal, ReasoningState, ReasoningStep};
+    use crate::agents::reasoning::tools::{AnalyzeTool, ConcludeTool, DeduceTool, ReflectTool};
+    use crate::agents::reasoning::wrapper::ReasoningAgent;
     use skreaver::memory::InMemoryMemory;
-    use skreaver::tool::{ExecutionResult, Tool};
+    use skreaver::runtime::Coordinator;
+    use skreaver::tool::Tool;
+    use skreaver::tool::registry::InMemoryToolRegistry;
+    use std::sync::Arc;
 
     struct TestTool {
         json_output: bool,
@@ -10,19 +17,22 @@ mod tests {
 
     impl Tool for TestTool {
         fn name(&self) -> &str {
-            "test_tool"
+            "test"
         }
 
-        fn call(&self, input: String) -> ExecutionResult {
+        fn call(&self, input: String) -> skreaver::tool::ExecutionResult {
             if self.json_output {
                 let payload = RichResult {
                     summary: format!("Test summary for: {}", input.trim()),
                     confidence: 0.95,
                     evidence: vec!["test evidence".into()],
                 };
-                ExecutionResult::Success(serde_json::to_string(&payload).unwrap())
+                skreaver::tool::ExecutionResult::success(serde_json::to_string(&payload).unwrap())
             } else {
-                ExecutionResult::Success(format!("Plain text output for: {}", input.trim()))
+                skreaver::tool::ExecutionResult::success(format!(
+                    "Plain text output for: {}",
+                    input.trim()
+                ))
             }
         }
     }
@@ -54,20 +64,24 @@ mod tests {
 
     #[test]
     fn test_agent_final_result() {
+        let memory = Box::new(InMemoryMemory::new());
         let agent = ReasoningAgent::new_for_test(
-            Box::new(InMemoryMemory::new()),
+            memory,
             Some("test problem".into()),
-            vec![
-                ReasoningStep::new("analyze", "test", "analysis", 0.8, vec![]),
-                ReasoningStep::new("deduce", "test", "deduction", 0.9, vec![]),
-            ],
+            vec![ReasoningStep::new(
+                "reflect",
+                "test",
+                "final answer",
+                0.9,
+                vec![],
+            )],
             ReasoningState::Complete,
         );
 
         match agent.final_result() {
             AgentFinal::Complete { steps, answer } => {
-                assert_eq!(steps, 2);
-                assert_eq!(answer, "deduction");
+                assert_eq!(steps, 1);
+                assert_eq!(answer, "final answer");
             }
             _ => panic!("Should be complete"),
         }
@@ -75,26 +89,19 @@ mod tests {
 
     #[test]
     fn test_agent_incomplete_result() {
+        let memory = Box::new(InMemoryMemory::new());
         let agent = ReasoningAgent::new_for_test(
-            Box::new(InMemoryMemory::new()),
+            memory,
             Some("test problem".into()),
             vec![],
-            ReasoningState::Analyzing,
+            ReasoningState::Initial,
         );
 
-        match agent.final_result() {
-            AgentFinal::InProgress => {} // Expected
-            _ => panic!("Should be in progress"),
-        }
+        assert_eq!(agent.final_result(), AgentFinal::InProgress);
     }
 
     #[test]
     fn test_fsm_transitions_order() {
-        use crate::agents::reasoning::ReasoningCoordinatorExt;
-        use skreaver::runtime::Coordinator;
-        use skreaver::tool::registry::InMemoryToolRegistry;
-        use std::sync::Arc;
-
         let agent = ReasoningAgent::new_for_test(
             Box::new(InMemoryMemory::new()),
             None,
@@ -103,16 +110,15 @@ mod tests {
         );
 
         let registry = InMemoryToolRegistry::new()
-            .with_tool("analyze", Arc::new(TestTool { json_output: true }))
-            .with_tool("deduce", Arc::new(TestTool { json_output: true }))
-            .with_tool("conclude", Arc::new(TestTool { json_output: true }))
-            .with_tool("reflect", Arc::new(TestTool { json_output: true }));
+            .with_tool("analyze", Arc::new(AnalyzeTool))
+            .with_tool("deduce", Arc::new(DeduceTool))
+            .with_tool("conclude", Arc::new(ConcludeTool))
+            .with_tool("reflect", Arc::new(ReflectTool));
 
         let mut coordinator = Coordinator::new(agent, registry);
-        coordinator.observe("test problem".to_string());
 
-        // Step 1: Initial -> Analyzing
-        assert!(!coordinator.is_complete());
+        // Start: Initial -> Analyzing
+        coordinator.observe("test problem".to_string());
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name.as_str(), "analyze");
@@ -158,5 +164,61 @@ mod tests {
             AgentFinal::Complete { steps, .. } => assert_eq!(steps, 4),
             _ => panic!("Should be complete with 4 steps"),
         }
+    }
+}
+
+#[cfg(test)]
+mod builder_tests {
+    use crate::agents::reasoning::config::ReasoningProfile;
+    use crate::agents::reasoning::rich_result::RichResult;
+
+    #[test]
+    fn test_reasoning_profile_default() {
+        let profile = ReasoningProfile::default();
+
+        assert_eq!(profile.max_loop_iters, 16);
+        assert_eq!(profile.max_prev_output, 1024);
+        assert_eq!(profile.max_chain_line, 512);
+        assert_eq!(profile.max_chain_summary, 2048);
+    }
+
+    #[test]
+    fn test_reasoning_profile_presets() {
+        let fast = ReasoningProfile::fast();
+        assert_eq!(fast.max_loop_iters, 8);
+        assert_eq!(fast.max_prev_output, 512);
+
+        let comprehensive = ReasoningProfile::comprehensive();
+        assert_eq!(comprehensive.max_loop_iters, 32);
+        assert_eq!(comprehensive.max_prev_output, 4096);
+    }
+
+    #[test]
+    fn test_rich_result_creation() {
+        let result = RichResult {
+            summary: "Test summary".to_string(),
+            confidence: 0.85,
+            evidence: vec!["Evidence 1".to_string(), "Evidence 2".to_string()],
+        };
+
+        assert_eq!(result.summary, "Test summary");
+        assert_eq!(result.confidence, 0.85);
+        assert_eq!(result.evidence.len(), 2);
+        assert_eq!(result.evidence[0], "Evidence 1");
+        assert_eq!(result.evidence[1], "Evidence 2");
+    }
+
+    #[test]
+    fn test_rich_result_presets() {
+        let high =
+            RichResult::high_confidence("High conf".to_string(), vec!["Evidence".to_string()]);
+        assert_eq!(high.confidence, 0.9);
+
+        let medium =
+            RichResult::medium_confidence("Med conf".to_string(), vec!["Evidence".to_string()]);
+        assert_eq!(medium.confidence, 0.7);
+
+        let low = RichResult::low_confidence("Low conf".to_string(), vec!["Evidence".to_string()]);
+        assert_eq!(low.confidence, 0.4);
     }
 }
