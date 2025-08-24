@@ -39,4 +39,4 @@ pub use file_memory::FileMemory;
 pub use in_memory::InMemoryMemory;
 pub use namespaced::NamespacedMemory;
 pub use redis_memory::RedisMemory;
-pub use r#trait::{Memory, MemoryUpdate, SnapshotableMemory};
+pub use r#trait::{InvalidMemoryKey, Memory, MemoryKey, MemoryUpdate, SnapshotableMemory};

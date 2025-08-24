@@ -1,15 +1,170 @@
+/// Validated memory key that prevents typos and ensures consistent naming.
+///
+/// `MemoryKey` is a newtype wrapper around `String` that provides compile-time
+/// validation and prevents common errors like typos in memory keys. It enforces
+/// naming conventions and length limits to ensure memory keys are valid.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MemoryKey(String);
+
+/// Errors that can occur when creating a `MemoryKey`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvalidMemoryKey {
+    /// Memory key is empty or contains only whitespace.
+    Empty,
+    /// Memory key exceeds the maximum allowed length.
+    TooLong(usize),
+    /// Memory key contains invalid characters.
+    InvalidChars(String),
+}
+
+impl std::fmt::Display for InvalidMemoryKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InvalidMemoryKey::Empty => write!(f, "Memory key cannot be empty"),
+            InvalidMemoryKey::TooLong(len) => {
+                write!(f, "Memory key too long: {} characters (max 128)", len)
+            }
+            InvalidMemoryKey::InvalidChars(key) => {
+                write!(f, "Memory key contains invalid characters: '{}'", key)
+            }
+        }
+    }
+}
+
+impl std::error::Error for InvalidMemoryKey {}
+
+impl MemoryKey {
+    /// Maximum allowed length for memory keys.
+    pub const MAX_LENGTH: usize = 128;
+
+    /// Create a new validated memory key.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The memory key string to validate
+    ///
+    /// # Returns
+    ///
+    /// `Ok(MemoryKey)` if valid, `Err(InvalidMemoryKey)` if validation fails
+    ///
+    /// # Validation Rules
+    ///
+    /// - Must not be empty or only whitespace
+    /// - Must not exceed 128 characters
+    /// - Must contain only alphanumeric characters, underscores, hyphens, and dots
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use skreaver::memory::MemoryKey;
+    ///
+    /// let key = MemoryKey::new("user_context").unwrap();
+    /// assert_eq!(key.as_str(), "user_context");
+    /// ```
+    pub fn new(key: &str) -> Result<Self, InvalidMemoryKey> {
+        let trimmed = key.trim();
+
+        if trimmed.is_empty() {
+            return Err(InvalidMemoryKey::Empty);
+        }
+
+        if trimmed.len() > Self::MAX_LENGTH {
+            return Err(InvalidMemoryKey::TooLong(trimmed.len()));
+        }
+
+        if !trimmed
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+        {
+            return Err(InvalidMemoryKey::InvalidChars(trimmed.to_string()));
+        }
+
+        Ok(MemoryKey(trimmed.to_string()))
+    }
+
+    /// Get the memory key as a string slice.
+    ///
+    /// # Returns
+    ///
+    /// The validated memory key as a `&str`
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Get the length of the memory key in bytes.
+    ///
+    /// # Returns
+    ///
+    /// The length of the memory key
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if the memory key is empty.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the memory key is empty (this should never happen for validated keys)
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Convert into the underlying string.
+    ///
+    /// # Returns
+    ///
+    /// The validated memory key as an owned `String`
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Display for MemoryKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for MemoryKey {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for MemoryKey {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for MemoryKey {
+    type Error = InvalidMemoryKey;
+
+    fn try_from(key: &str) -> Result<Self, Self::Error> {
+        MemoryKey::new(key)
+    }
+}
+
+impl TryFrom<String> for MemoryKey {
+    type Error = InvalidMemoryKey;
+
+    fn try_from(key: String) -> Result<Self, Self::Error> {
+        MemoryKey::new(&key)
+    }
+}
+
 /// A key-value update for storing data in agent memory.
 ///
 /// `MemoryUpdate` represents a single piece of information to be
-/// persisted in the agent's memory system. Both key and value are
-/// string-based for maximum flexibility across different storage backends.
+/// persisted in the agent's memory system. The key is validated for consistency
+/// and the value supports flexible string-based storage across different backends.
 #[derive(Debug, Clone)]
 pub struct MemoryUpdate {
-    /// The key identifier for the data.
+    /// The validated key identifier for the data.
     ///
-    /// Keys should be unique within an agent's memory space and follow
-    /// a consistent naming convention (e.g., "context", "last_action").
-    pub key: String,
+    /// Keys are validated to ensure consistency and prevent typos.
+    /// They should be unique within an agent's memory space.
+    pub key: MemoryKey,
 
     /// The value data to store.
     ///
@@ -19,40 +174,56 @@ pub struct MemoryUpdate {
 }
 
 impl MemoryUpdate {
-    /// Create a new MemoryUpdate from string references.
+    /// Create a new MemoryUpdate from string references with validation.
     ///
-    /// This is more efficient than using struct literals when you have &str values,
-    /// as it avoids intermediate String allocations at the call site.
+    /// This validates the key and creates a new MemoryUpdate instance.
     ///
     /// # Parameters
     ///
-    /// * `key` - The key identifier
+    /// * `key` - The key identifier (will be validated)
+    /// * `value` - The value to store
+    ///
+    /// # Returns
+    ///
+    /// `Ok(MemoryUpdate)` if the key is valid, `Err(InvalidMemoryKey)` otherwise
+    pub fn new(key: &str, value: &str) -> Result<Self, InvalidMemoryKey> {
+        Ok(Self {
+            key: MemoryKey::new(key)?,
+            value: value.to_string(),
+        })
+    }
+
+    /// Create a new MemoryUpdate from a validated MemoryKey and value string.
+    ///
+    /// Use this when you already have a validated MemoryKey to avoid re-validation.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The validated memory key
     /// * `value` - The value to store
     ///
     /// # Returns
     ///
     /// A new `MemoryUpdate` instance
-    pub fn new(key: &str, value: &str) -> Self {
-        Self {
-            key: key.to_string(),
-            value: value.to_string(),
-        }
+    pub fn from_validated(key: MemoryKey, value: String) -> Self {
+        Self { key, value }
     }
 
-    /// Create a new MemoryUpdate from owned strings.
-    ///
-    /// Use this when you already have owned String values to avoid unnecessary cloning.
+    /// Create a new MemoryUpdate from owned strings with validation.
     ///
     /// # Parameters
     ///
-    /// * `key` - The owned key string
+    /// * `key` - The key string (will be validated)
     /// * `value` - The owned value string
     ///
     /// # Returns
     ///
-    /// A new `MemoryUpdate` instance
-    pub fn from_owned(key: String, value: String) -> Self {
-        Self { key, value }
+    /// `Ok(MemoryUpdate)` if the key is valid, `Err(InvalidMemoryKey)` otherwise
+    pub fn from_owned(key: String, value: String) -> Result<Self, InvalidMemoryKey> {
+        Ok(Self {
+            key: MemoryKey::new(&key)?,
+            value,
+        })
     }
 }
 
@@ -65,35 +236,33 @@ impl MemoryUpdate {
 /// # Example
 ///
 /// ```rust
-/// use skreaver::memory::{Memory, MemoryUpdate};
+/// use skreaver::memory::{Memory, MemoryUpdate, MemoryKey};
 /// use skreaver::memory::InMemoryMemory;
 ///
 /// let mut memory = InMemoryMemory::new();
 ///
 /// // Store some context
-/// memory.store(MemoryUpdate {
-///     key: "user_preference".to_string(),
-///     value: "concise responses".to_string(),
-/// });
+/// let key = MemoryKey::new("user_preference").unwrap();
+/// memory.store(MemoryUpdate::from_validated(key.clone(), "concise responses".to_string())).unwrap();
 ///
 /// // Retrieve it later
-/// let preference = memory.load("user_preference");
+/// let preference = memory.load(&key).unwrap();
 /// assert_eq!(preference, Some("concise responses".to_string()));
 /// ```
 pub trait Memory {
     /// Load a value from memory by its key.
     ///
     /// Returns the stored value if the key exists, or `None` if the key
-    /// is not found in the memory system.
+    /// is not found in the memory system. Returns an error if the operation fails.
     ///
     /// # Parameters
     ///
-    /// * `key` - The key identifier to look up
+    /// * `key` - The validated key identifier to look up
     ///
     /// # Returns
     ///
-    /// `Some(value)` if the key exists, `None` otherwise
-    fn load(&mut self, key: &str) -> Option<String>;
+    /// `Ok(Some(value))` if the key exists, `Ok(None)` if not found, `Err(MemoryError)` on failure
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError>;
 
     /// Store a key-value pair in memory.
     ///
@@ -103,8 +272,12 @@ pub trait Memory {
     ///
     /// # Parameters
     ///
-    /// * `update` - The memory update containing key and value data
-    fn store(&mut self, update: MemoryUpdate);
+    /// * `update` - The memory update containing validated key and value data
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if successful, `Err(MemoryError)` if the operation fails
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError>;
 }
 
 /// Optional extension for memory types that support snapshot/restore operations.
