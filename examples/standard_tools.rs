@@ -3,21 +3,21 @@
 //! This example demonstrates the usage of Skreaver's standard tool library
 //! including HTTP clients, file operations, JSON processing, and text manipulation.
 
-use std::sync::Arc;
 use skreaver::{
+    MemoryUpdate,
     agent::Agent,
     memory::InMemoryMemory,
     runtime::Coordinator,
     tool::{
+        ExecutionResult, ToolCall,
         registry::InMemoryToolRegistry,
         standard::{
-            HttpGetTool, FileReadTool, FileWriteTool, JsonParseTool, 
-            TextUppercaseTool, TextAnalyzeTool
+            FileReadTool, FileWriteTool, HttpGetTool, JsonParseTool, TextAnalyzeTool,
+            TextUppercaseTool,
         },
-        ExecutionResult, ToolCall
     },
-    MemoryUpdate
 };
+use std::sync::Arc;
 
 /// Example agent that uses standard tools
 struct StandardToolsAgent {
@@ -37,7 +37,10 @@ impl Agent for StandardToolsAgent {
     }
 
     fn act(&mut self) -> Self::Action {
-        format!("Processing: {}", self.last_input.as_deref().unwrap_or("No input"))
+        format!(
+            "Processing: {}",
+            self.last_input.as_deref().unwrap_or("No input")
+        )
     }
 
     fn call_tools(&self) -> Vec<ToolCall> {
@@ -68,13 +71,15 @@ impl Agent for StandardToolsAgent {
                             input: serde_json::json!({
                                 "path": "/tmp/skreaver_test.txt",
                                 "content": "Hello from Skreaver standard tools!"
-                            }).to_string(),
+                            })
+                            .to_string(),
                         },
                         ToolCall {
                             name: skreaver::tool::ToolName::new("file_read").unwrap(),
                             input: serde_json::json!({
                                 "path": "/tmp/skreaver_test.txt"
-                            }).to_string(),
+                            })
+                            .to_string(),
                         },
                     ]
                 }
