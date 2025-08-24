@@ -9,6 +9,7 @@
 //! - **[echo]**: Simple echo agent for testing basic agent functionality
 //! - **[multi_tool]**: Agent showcasing multiple tool usage patterns
 //! - **[reasoning]**: Advanced reasoning agent with chain-of-thought capabilities
+//! - **[standard_tools]**: Interactive agent demonstrating standard tool library
 //!
 //! ## Usage
 //!
@@ -25,7 +26,9 @@
 pub mod echo;
 pub mod multi_tool;
 pub mod reasoning;
+pub mod standard_tools;
 
 pub use echo::run_echo_agent;
 pub use multi_tool::run_multi_agent;
 pub use reasoning::run_reasoning_agent;
+pub use standard_tools::run_standard_tools_agent;

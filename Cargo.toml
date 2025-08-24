@@ -17,6 +17,9 @@ redis = { version = "0.32.4", features = ["tokio-comp", "json"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
+# Standard tools dependencies
+reqwest = { version = "0.12", features = ["json"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
 
 [workspace]
 members = [".", "skreaver-cli"]

@@ -1,0 +1,3 @@
+{
+  "input": "{\"name\": \"Skreaver\", \"version\": \"0.1.0\", \"tools\": [\"http\", \"file\", \"json\", \"text\"]}"
+}
