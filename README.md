@@ -13,6 +13,8 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - Multi-tool execution with result aggregation
 - Built-in tool registry system
 - File-backed memory support via `FileMemory`
+- **HTTP runtime with RESTful API endpoints**
+- **Standard tool library (HTTP, File, JSON, Text processing)**
 - Designed for performance and modularity
 
 ---
@@ -61,14 +63,16 @@ Core components implemented:
 * `ToolRegistry` with dispatch and test coverage
 * Support for multiple tool calls per step
 * `FileMemory` (persistent key-value storage)
-* Fully working examples (`echo`, `multi_tool`)
+* **Axum-based HTTP runtime with RESTful endpoints**
+* **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
+* Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`)
 * Self-hosted CI pipeline
 
 Next steps:
 
-* Pluggable DB-backed memory modules
-* `skreaver-cli` (agent scaffolding & testing)
-* Axum-based HTTP runtime
+* Pluggable DB-backed memory modules (PostgreSQL, SQLite)
+* Agent test harness and mock tools
+* Authentication and rate limiting
 * Playground & live examples
 * Developer docs (powered by skreaver-docs-starter)
 
@@ -94,11 +98,47 @@ cargo run -p skreaver-cli -- --name multi
 
 ---
 
+## 🌐 HTTP Runtime
+
+Skreaver now includes a production-ready HTTP server for remote agent interaction:
+
+```bash
+cargo run --example http_server
+```
+
+**Available endpoints:**
+- `GET /health` - Health check
+- `GET /agents` - List all agents  
+- `GET /agents/{id}/status` - Get agent status
+- `POST /agents/{id}/observe` - Send observation to agent
+- `DELETE /agents/{id}` - Remove agent
+
+**Example requests:**
+```bash
+# List agents
+curl http://localhost:3000/agents
+
+# Send observation
+curl -X POST http://localhost:3000/agents/demo-agent-1/observe \
+     -H 'Content-Type: application/json' \
+     -d '{"input": "uppercase:hello world"}'
+```
+
+The HTTP runtime supports all standard tools and provides full agent lifecycle management.
+
+---
+
 ▶️ Try it now:
 
 ```bash
+# Local examples
 cargo run --example echo
 cargo run --example multi_tool
+cargo run --example standard_tools
+
+# HTTP server (RESTful agent runtime)
+cargo run --example http_server
+# Then test with: curl http://localhost:3000/health
 ```
 
 ---
