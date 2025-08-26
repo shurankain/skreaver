@@ -47,4 +47,8 @@
 
 /// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
+/// HTTP runtime for serving agents over REST API.
+pub mod http;
+
 pub use coordinator::Coordinator;
+pub use http::HttpAgentRuntime;

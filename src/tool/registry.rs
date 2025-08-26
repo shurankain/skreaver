@@ -73,6 +73,7 @@ pub trait ToolRegistry {
 ///     input: "hello".to_string(),
 /// });
 /// ```
+#[derive(Clone)]
 pub struct InMemoryToolRegistry {
     tools: HashMap<super::ToolName, Arc<dyn super::Tool>>,
 }

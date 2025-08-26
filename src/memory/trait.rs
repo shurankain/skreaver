@@ -249,7 +249,7 @@ impl MemoryUpdate {
 /// let preference = memory.load(&key).unwrap();
 /// assert_eq!(preference, Some("concise responses".to_string()));
 /// ```
-pub trait Memory {
+pub trait Memory: Send + Sync {
     /// Load a value from memory by its key.
     ///
     /// Returns the stored value if the key exists, or `None` if the key

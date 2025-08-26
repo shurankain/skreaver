@@ -435,7 +435,7 @@ impl ExecutionResult {
 ///     }
 /// }
 /// ```
-pub trait Tool {
+pub trait Tool: Send + Sync {
     /// Returns the unique name identifier for this tool.
     ///
     /// The name is used by the tool registry to route tool calls
