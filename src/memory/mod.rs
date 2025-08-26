@@ -25,7 +25,7 @@
 //! use skreaver::memory::{MemoryReader, MemoryWriter, MemoryUpdate, InMemoryMemory, MemoryKey};
 //!
 //! let mut memory = InMemoryMemory::new();
-//! 
+//!
 //! // Write operations require mutable access
 //! memory.store(MemoryUpdate {
 //!     key: MemoryKey::new("context").unwrap(),
@@ -49,6 +49,6 @@ pub use in_memory::InMemoryMemory;
 pub use namespaced::NamespacedMemory;
 pub use redis_memory::RedisMemory;
 pub use r#trait::{
-    InvalidMemoryKey, Memory, MemoryReader, MemoryWriter, TransactionalMemory,
-    MemoryKey, MemoryUpdate, SnapshotableMemory, MemoryCompat,
+    InvalidMemoryKey, Memory, MemoryCompat, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter,
+    SnapshotableMemory, TransactionalMemory,
 };
