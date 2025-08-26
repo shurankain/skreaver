@@ -21,3 +21,14 @@
 /// Core agent trait definition and associated types.
 pub mod r#trait;
 pub use r#trait::Agent;
+
+/// Stateful agent trait using typestate pattern for compile-time safety.
+pub mod stateful;
+pub use stateful::{CompleteState, InitialState, ProcessingState, ToolExecutionState};
+pub use stateful::{StatefulAgent, StatefulAgentAdapter, StatefulAgentTransitions};
+
+/// Simple concrete implementation of stateful agent pattern.
+pub mod simple_stateful;
+pub use simple_stateful::{
+    SimpleComplete, SimpleInitial, SimpleProcessing, SimpleStatefulAgent, SimpleToolExecution,
+};
