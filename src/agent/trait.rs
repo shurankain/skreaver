@@ -1,4 +1,4 @@
-use crate::memory::{Memory, MemoryUpdate};
+use crate::memory::{Memory, MemoryReader, MemoryUpdate};
 use crate::tool::{ExecutionResult, ToolCall};
 
 /// Core trait defining the behavior of an autonomous agent.
@@ -71,6 +71,23 @@ pub trait Agent {
     /// Memory provides persistent storage for agent state, context,
     /// and learned information across interactions.
     fn memory(&mut self) -> &mut dyn Memory;
+
+    /// Returns an immutable reference to the agent's memory for read-only operations.
+    ///
+    /// This method enables concurrent read access to memory without requiring
+    /// exclusive mutable access. Agents can use this for context retrieval
+    /// and state queries that don't modify memory contents.
+    ///
+    /// # Default Implementation
+    ///
+    /// The default implementation delegates to the mutable memory method,
+    /// but implementations are encouraged to provide more efficient
+    /// read-only access where possible.
+    fn memory_reader(&self) -> Option<&dyn MemoryReader> {
+        // Default implementation returns None since we can't provide
+        // immutable access from a mutable-only memory reference
+        None
+    }
 
     /// Process an observation from the environment.
     ///

@@ -280,6 +280,233 @@ pub trait Memory: Send + Sync {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError>;
 }
 
+/// Read-only memory operations trait.
+///
+/// This trait provides immutable access to memory for read operations.
+/// It allows multiple concurrent readers and enables performance optimizations
+/// like caching and connection pooling.
+///
+/// # Benefits
+///
+/// - **Performance**: No exclusive access required for reads
+/// - **Concurrency**: Multiple readers can access memory simultaneously
+/// - **Safety**: Prevents accidental modifications during read operations
+/// - **Optimization**: Enables read-specific optimizations like caching
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver::memory::{MemoryReader, MemoryKey};
+/// use skreaver::memory::InMemoryMemory;
+///
+/// let memory = InMemoryMemory::new();
+/// let key = MemoryKey::new("user_preference").unwrap();
+///
+/// // Read operations don't require mutable access
+/// let value = memory.load(&key).unwrap();
+/// ```
+pub trait MemoryReader: Send + Sync {
+    /// Load a value from memory by its key (immutable access).
+    ///
+    /// Returns the stored value if the key exists, or `None` if the key
+    /// is not found in the memory system. This operation does not require
+    /// mutable access and can be called concurrently.
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - The validated key identifier to look up
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Some(value))` if the key exists, `Ok(None)` if not found, `Err(MemoryError)` on failure
+    fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError>;
+
+    /// Load multiple values from memory by their keys (batch operation).
+    ///
+    /// Returns a vector of optional values in the same order as the input keys.
+    /// This is more efficient than multiple individual `load` calls for backends
+    /// that support batch operations.
+    ///
+    /// # Parameters
+    ///
+    /// * `keys` - The validated key identifiers to look up
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Vec<Option<value>>)` with results in key order, `Err(MemoryError)` on failure
+    fn load_many(
+        &self,
+        keys: &[MemoryKey],
+    ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+        // Default implementation using individual loads
+        keys.iter().map(|key| self.load(key)).collect()
+    }
+}
+
+/// Write-only memory operations trait.
+///
+/// This trait provides mutable access to memory for write operations.
+/// It clearly separates write operations from read operations and enables
+/// optimizations like batching and transactions.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver::memory::{MemoryWriter, MemoryUpdate};
+/// use skreaver::memory::InMemoryMemory;
+///
+/// let mut memory = InMemoryMemory::new();
+///
+/// // Write operations require mutable access
+/// let update = MemoryUpdate::new("user_id", "123").unwrap();
+/// memory.store(update).unwrap();
+/// ```
+pub trait MemoryWriter: Send + Sync {
+    /// Store a key-value pair in memory.
+    ///
+    /// If the key already exists, its value will be updated with the new data.
+    /// The specific persistence behavior (immediate vs. batched writes) depends
+    /// on the memory implementation.
+    ///
+    /// # Parameters
+    ///
+    /// * `update` - The memory update containing validated key and value data
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if successful, `Err(MemoryError)` if the operation fails
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError>;
+
+    /// Store multiple key-value pairs in memory (batch operation).
+    ///
+    /// This is more efficient than multiple individual `store` calls for backends
+    /// that support batch operations. The operation should be atomic where possible.
+    ///
+    /// # Parameters
+    ///
+    /// * `updates` - The memory updates to store
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if all updates succeed, `Err(MemoryError)` if any operation fails
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+        // Default implementation using individual stores
+        for update in updates {
+            self.store(update)?;
+        }
+        Ok(())
+    }
+}
+
+/// Transactional memory operations trait.
+///
+/// This trait extends read and write capabilities with atomic transaction support.
+/// Transactions ensure that either all operations succeed or none are applied.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver::memory::{TransactionalMemory, MemoryUpdate};
+/// use skreaver::memory::InMemoryMemory;
+///
+/// let mut memory = InMemoryMemory::new();
+///
+/// // All operations in the transaction succeed or none are applied
+/// memory.transaction(|tx| {
+///     tx.store(MemoryUpdate::new("key1", "value1")?)?;
+///     tx.store(MemoryUpdate::new("key2", "value2")?)?;
+///     Ok(())
+/// }).unwrap();
+/// ```
+pub trait TransactionalMemory: MemoryReader + MemoryWriter {
+    /// Execute operations within a transaction.
+    ///
+    /// The transaction ensures that either all operations succeed or none
+    /// are applied to the memory. This is useful for maintaining consistency
+    /// when multiple related updates must be applied together.
+    ///
+    /// # Parameters
+    ///
+    /// * `f` - The transaction function that performs memory operations
+    ///
+    /// # Returns
+    ///
+    /// `Ok(result)` if the transaction succeeds, `Err(TransactionError)` if it fails
+    fn transaction<F, R>(&mut self, f: F) -> Result<R, crate::error::TransactionError>
+    where
+        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>;
+}
+
+/// Adapter to provide backwards compatibility with the legacy Memory trait.
+///
+/// This allows any type that implements MemoryReader + MemoryWriter to also
+/// implement the legacy Memory trait, providing a smooth migration path.
+pub struct MemoryCompat<T> {
+    inner: T,
+}
+
+impl<T> MemoryCompat<T>
+where
+    T: MemoryReader + MemoryWriter,
+{
+    /// Create a new compatibility adapter
+    pub fn new(inner: T) -> Self {
+        Self { inner }
+    }
+
+    /// Get a reference to the inner memory implementation
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    /// Get a mutable reference to the inner memory implementation
+    pub fn inner_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
+}
+
+impl<T> MemoryReader for MemoryCompat<T>
+where
+    T: MemoryReader,
+{
+    fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        self.inner.load(key)
+    }
+
+    fn load_many(
+        &self,
+        keys: &[MemoryKey],
+    ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+        self.inner.load_many(keys)
+    }
+}
+
+impl<T> MemoryWriter for MemoryCompat<T>
+where
+    T: MemoryWriter,
+{
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        self.inner.store(update)
+    }
+
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+        self.inner.store_many(updates)
+    }
+}
+
+impl<T> Memory for MemoryCompat<T>
+where
+    T: MemoryReader + MemoryWriter,
+{
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        MemoryReader::load(&self.inner, key)
+    }
+
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        MemoryWriter::store(&mut self.inner, update)
+    }
+}
+
 /// Optional extension for memory types that support snapshot/restore operations.
 ///
 /// This trait provides backup and restore capabilities for memory systems

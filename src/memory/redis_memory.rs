@@ -1,39 +1,178 @@
-use super::{Memory, MemoryKey, MemoryUpdate};
+use super::{Memory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, TransactionalMemory};
 use crate::memory::SnapshotableMemory;
-use redis::{Commands, Connection, RedisResult};
+use redis::{Client, Commands, Connection, RedisResult};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
-/// Redis-based memory backend.
+/// Redis-based memory backend with connection sharing for concurrent access.
+#[derive(Clone)]
 pub struct RedisMemory {
-    conn: Connection,
+    client: Arc<Client>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl RedisMemory {
     /// Creates a new RedisMemory with the given connection string (e.g., "redis://127.0.0.1/")
     pub fn new(redis_url: &str) -> RedisResult<Self> {
-        let client = redis::Client::open(redis_url)?;
-        let conn = client.get_connection()?;
-        Ok(Self { conn })
+        let client = Arc::new(redis::Client::open(redis_url)?);
+        let conn = Arc::new(Mutex::new(client.get_connection()?));
+        Ok(Self { client, conn })
+    }
+
+    /// Get a new connection from the client (for batch operations or transactions)
+    fn get_connection(&self) -> RedisResult<Connection> {
+        self.client.get_connection()
     }
 }
 
-impl Memory for RedisMemory {
-    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        self.conn
-            .get::<_, Option<String>>(key.as_str())
+// Implement new trait hierarchy
+impl MemoryReader for RedisMemory {
+    fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        let mut conn = self
+            .conn
+            .lock()
             .map_err(|e| crate::error::MemoryError::LoadFailed {
                 key: key.as_str().to_string(),
+                reason: format!("Lock poisoned: {}", e),
+            })?;
+
+        conn.get::<_, Option<String>>(key.as_str()).map_err(|e| {
+            crate::error::MemoryError::LoadFailed {
+                key: key.as_str().to_string(),
+                reason: e.to_string(),
+            }
+        })
+    }
+
+    fn load_many(
+        &self,
+        keys: &[MemoryKey],
+    ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| crate::error::MemoryError::LoadFailed {
+                key: "batch".to_string(),
+                reason: format!("Lock poisoned: {}", e),
+            })?;
+
+        let key_strs: Vec<&str> = keys.iter().map(|k| k.as_str()).collect();
+        let values: Vec<Option<String>> =
+            conn.get(key_strs)
+                .map_err(|e| crate::error::MemoryError::LoadFailed {
+                    key: "batch".to_string(),
+                    reason: e.to_string(),
+                })?;
+
+        Ok(values)
+    }
+}
+
+impl MemoryWriter for RedisMemory {
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| crate::error::MemoryError::StoreFailed {
+                key: update.key.as_str().to_string(),
+                reason: format!("Lock poisoned: {}", e),
+            })?;
+
+        conn.set::<_, _, ()>(update.key.as_str(), update.value)
+            .map_err(|e| crate::error::MemoryError::StoreFailed {
+                key: update.key.as_str().to_string(),
                 reason: e.to_string(),
             })
     }
 
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| crate::error::MemoryError::StoreFailed {
+                key: "batch".to_string(),
+                reason: format!("Lock poisoned: {}", e),
+            })?;
+
+        // Use Redis pipeline for efficient batch writes
+        let mut pipe = redis::pipe();
+        for update in updates {
+            pipe.set(update.key.as_str(), update.value);
+        }
+
+        pipe.exec(&mut *conn).unwrap();
+        Ok(())
+    }
+}
+
+impl TransactionalMemory for RedisMemory {
+    fn transaction<F, R>(&mut self, f: F) -> Result<R, crate::error::TransactionError>
+    where
+        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>,
+    {
+        // Redis transactions are implemented using MULTI/EXEC
+        // For this implementation, we'll use a simpler approach with a new connection
+        let mut tx_conn = self.get_connection().map_err(|e| {
+            crate::error::TransactionError::TransactionFailed {
+                reason: format!("Failed to get transaction connection: {}", e),
+            }
+        })?;
+
+        // Create a transaction memory wrapper
+        let tx_memory = RedisTransactionMemory { conn: &mut tx_conn };
+        let tx_writer: &mut dyn MemoryWriter = &mut RedisTransactionWriter { memory: tx_memory };
+
+        // Execute the transaction function
+        f(tx_writer)
+    }
+}
+
+// Helper struct for Redis transactions
+struct RedisTransactionMemory<'a> {
+    conn: &'a mut Connection,
+}
+
+struct RedisTransactionWriter<'a> {
+    memory: RedisTransactionMemory<'a>,
+}
+
+impl<'a> MemoryWriter for RedisTransactionWriter<'a> {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        self.conn
+        self.memory
+            .conn
             .set::<_, _, ()>(update.key.as_str(), update.value)
             .map_err(|e| crate::error::MemoryError::StoreFailed {
                 key: update.key.as_str().to_string(),
                 reason: e.to_string(),
             })
+    }
+
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+        let mut pipe = redis::pipe();
+        for update in updates {
+            pipe.set(update.key.as_str(), update.value);
+        }
+        pipe.exec(self.memory.conn).unwrap();
+        Ok(())
+    }
+}
+
+// Backwards compatibility - keep existing Memory trait implementation
+impl Memory for RedisMemory {
+    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+        MemoryReader::load(self, key)
+    }
+
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+        MemoryWriter::store(self, update)
     }
 }
 
@@ -44,8 +183,15 @@ impl RedisMemory {
         update: MemoryUpdate,
         ttl_secs: u64,
     ) -> Result<(), crate::error::MemoryError> {
-        self.conn
-            .set_ex(update.key.as_str(), &update.value, ttl_secs)
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| crate::error::MemoryError::StoreFailed {
+                key: update.key.as_str().to_string(),
+                reason: format!("Lock poisoned: {}", e),
+            })?;
+
+        conn.set_ex(update.key.as_str(), &update.value, ttl_secs)
             .map_err(|e| crate::error::MemoryError::StoreFailed {
                 key: update.key.as_str().to_string(),
                 reason: e.to_string(),
@@ -55,11 +201,12 @@ impl RedisMemory {
 
 impl SnapshotableMemory for RedisMemory {
     fn snapshot(&mut self) -> Option<String> {
-        let keys: Vec<String> = self.conn.keys("*").ok()?;
+        let mut conn = self.conn.lock().ok()?;
+        let keys: Vec<String> = conn.keys("*").ok()?;
         let mut map = HashMap::new();
 
         for key in keys {
-            if let Ok(Some(value)) = self.conn.get::<_, Option<String>>(&key) {
+            if let Ok(Some(value)) = conn.get::<_, Option<String>>(&key) {
                 map.insert(key, value);
             }
         }
@@ -74,8 +221,15 @@ impl SnapshotableMemory for RedisMemory {
             }
         })?;
 
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| crate::error::MemoryError::RestoreFailed {
+                reason: format!("Lock poisoned: {}", e),
+            })?;
+
         for (key, value) in data {
-            let _ = self.conn.set::<_, _, ()>(key, value);
+            let _ = conn.set::<_, _, ()>(key, value);
         }
 
         Ok(())
@@ -94,10 +248,13 @@ mod tests {
 
         let key = format!("test:{}:foo", Uuid::new_v4());
         let memory_key = MemoryKey::new(&key).unwrap();
-        mem.store(MemoryUpdate {
-            key: memory_key.clone(),
-            value: "bar".into(),
-        })
+        Memory::store(
+            &mut mem,
+            MemoryUpdate {
+                key: memory_key.clone(),
+                value: "bar".into(),
+            },
+        )
         .unwrap();
         let value = mem.load(&memory_key).unwrap();
         assert_eq!(value, Some("bar".into()));
@@ -129,15 +286,18 @@ mod tests {
         use crate::memory::NamespacedMemory;
 
         // Create a Redis backend
-        let mut redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
+        let redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
 
         // Define a namespace for Agent 47 (Hitman)
         let prefix = "agent:47";
 
         // Clean up any leftover keys from previous test runs
-        let keys: Vec<String> = redis.conn.keys(format!("{}:*", prefix)).unwrap();
-        for k in keys {
-            let _: () = redis.conn.del(&k).unwrap();
+        {
+            let mut conn = redis.conn.lock().unwrap();
+            let keys: Vec<String> = conn.keys(format!("{}:*", prefix)).unwrap();
+            for k in keys {
+                let _: () = conn.del(&k).unwrap();
+            }
         }
 
         // Wrap Redis with NamespacedMemory for agent:47
@@ -145,10 +305,13 @@ mod tests {
 
         // Store a memory entry using logical key (without prefix)
         let target_key = MemoryKey::new("target").unwrap();
-        mem.store(MemoryUpdate {
-            key: target_key.clone(),
-            value: "Eliminate the client".into(),
-        })
+        Memory::store(
+            &mut mem,
+            MemoryUpdate {
+                key: target_key.clone(),
+                value: "Eliminate the client".into(),
+            },
+        )
         .unwrap();
 
         // Should be retrievable using just "target"
@@ -168,23 +331,29 @@ mod tests {
         use crate::memory::{NamespacedMemory, SnapshotableMemory};
 
         // Step 1: Write data to a namespaced Redis memory for Agent 47
-        let mut redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
+        let redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
         let prefix = "agent:47";
 
         // Clean up before test
-        let keys: Vec<String> = redis.conn.keys(format!("{}:*", prefix)).unwrap();
-        for k in keys {
-            let _: () = redis.conn.del(&k).unwrap();
+        {
+            let mut conn = redis.conn.lock().unwrap();
+            let keys: Vec<String> = conn.keys(format!("{}:*", prefix)).unwrap();
+            for k in keys {
+                let _: () = conn.del(&k).unwrap();
+            }
         }
 
         let mut mem = NamespacedMemory::new(prefix, redis);
 
         // Store agent's current objective
         let goal_key = MemoryKey::new("goal").unwrap();
-        mem.store(MemoryUpdate {
-            key: goal_key,
-            value: "Eat cake".into(),
-        })
+        Memory::store(
+            &mut mem,
+            MemoryUpdate {
+                key: goal_key,
+                value: "Eat cake".into(),
+            },
+        )
         .unwrap();
 
         // Take a snapshot of all keys in Redis (not just this agent)
@@ -195,9 +364,12 @@ mod tests {
         let mut redis_restored = RedisMemory::new("redis://127.0.0.1/").unwrap();
 
         // Clear before restore just in case
-        let keys: Vec<String> = redis_restored.conn.keys(format!("{}:*", prefix)).unwrap();
-        for k in keys {
-            let _: () = redis_restored.conn.del(&k).unwrap();
+        {
+            let mut conn = redis_restored.conn.lock().unwrap();
+            let keys: Vec<String> = conn.keys(format!("{}:*", prefix)).unwrap();
+            for k in keys {
+                let _: () = conn.del(&k).unwrap();
+            }
         }
 
         redis_restored.restore(&snapshot).unwrap();
@@ -209,9 +381,10 @@ mod tests {
     }
 
     fn clear_test_keys(mem: &mut RedisMemory) {
-        let keys: Vec<String> = mem.conn.keys("test:*").unwrap();
+        let mut conn = mem.conn.lock().unwrap();
+        let keys: Vec<String> = conn.keys("test:*").unwrap();
         for k in keys {
-            let _: () = mem.conn.del(&k).unwrap();
+            let _: () = conn.del(&k).unwrap();
         }
     }
 }

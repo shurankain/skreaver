@@ -71,6 +71,25 @@ pub enum MemoryError {
     SerializationError { reason: String },
 }
 
+/// Errors that can occur during transactional memory operations.
+#[derive(Debug, Clone)]
+pub enum TransactionError {
+    /// Transaction failed and was rolled back.
+    TransactionFailed { reason: String },
+
+    /// Transaction was aborted by user code.
+    TransactionAborted { reason: String },
+
+    /// Underlying memory operation failed within transaction.
+    MemoryError(MemoryError),
+
+    /// Transaction deadlock detected.
+    Deadlock { timeout_ms: u64 },
+
+    /// Transaction conflicts with concurrent operations.
+    ConflictDetected { conflicting_keys: Vec<String> },
+}
+
 /// Errors that can occur during agent operations.
 #[derive(Debug, Clone)]
 pub enum AgentError {
@@ -163,6 +182,32 @@ impl fmt::Display for MemoryError {
     }
 }
 
+impl fmt::Display for TransactionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransactionError::TransactionFailed { reason } => {
+                write!(f, "Transaction failed: {}", reason)
+            }
+            TransactionError::TransactionAborted { reason } => {
+                write!(f, "Transaction aborted: {}", reason)
+            }
+            TransactionError::MemoryError(err) => {
+                write!(f, "Memory error in transaction: {}", err)
+            }
+            TransactionError::Deadlock { timeout_ms } => {
+                write!(f, "Transaction deadlock detected after {}ms", timeout_ms)
+            }
+            TransactionError::ConflictDetected { conflicting_keys } => {
+                write!(
+                    f,
+                    "Transaction conflict on keys: {}",
+                    conflicting_keys.join(", ")
+                )
+            }
+        }
+    }
+}
+
 impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -200,6 +245,7 @@ impl fmt::Display for CoordinatorError {
 impl std::error::Error for SkreverError {}
 impl std::error::Error for ToolError {}
 impl std::error::Error for MemoryError {}
+impl std::error::Error for TransactionError {}
 impl std::error::Error for AgentError {}
 impl std::error::Error for CoordinatorError {}
 
@@ -228,6 +274,21 @@ impl From<CoordinatorError> for SkreverError {
     }
 }
 
+impl From<MemoryError> for TransactionError {
+    fn from(err: MemoryError) -> Self {
+        TransactionError::MemoryError(err)
+    }
+}
+
+impl From<crate::memory::InvalidMemoryKey> for TransactionError {
+    fn from(err: crate::memory::InvalidMemoryKey) -> Self {
+        TransactionError::MemoryError(MemoryError::StoreFailed {
+            key: "invalid_key".to_string(),
+            reason: err.to_string(),
+        })
+    }
+}
+
 /// Result type alias for Skreaver operations.
 pub type SkreverResult<T> = Result<T, SkreverError>;
 
@@ -242,3 +303,6 @@ pub type AgentResult<T> = Result<T, AgentError>;
 
 /// Result type alias for coordinator operations.
 pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
+
+/// Result type alias for transaction operations.
+pub type TransactionResult<T> = Result<T, TransactionError>;

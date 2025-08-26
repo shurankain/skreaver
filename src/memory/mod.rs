@@ -13,19 +13,28 @@
 //!
 //! ## Core Traits
 //!
-//! - **[Memory]**: Basic load/store operations for key-value data
+//! - **[Memory]**: Basic load/store operations for key-value data (legacy, use MemoryReader/Writer)
+//! - **[MemoryReader]**: Read-only memory operations with concurrent access support
+//! - **[MemoryWriter]**: Write-only memory operations with batch support
+//! - **[TransactionalMemory]**: Atomic transaction support for consistent updates
 //! - **[SnapshotableMemory]**: Extended trait for backup and restore capabilities
 //!
 //! ## Usage
 //!
 //! ```rust
-//! use skreaver::memory::{Memory, MemoryUpdate, InMemoryMemory, MemoryKey};
+//! use skreaver::memory::{MemoryReader, MemoryWriter, MemoryUpdate, InMemoryMemory, MemoryKey};
 //!
 //! let mut memory = InMemoryMemory::new();
+//! 
+//! // Write operations require mutable access
 //! memory.store(MemoryUpdate {
 //!     key: MemoryKey::new("context").unwrap(),
 //!     value: "conversation state".into(),
 //! }).unwrap();
+//!
+//! // Read operations can use immutable access
+//! let key = MemoryKey::new("context").unwrap();
+//! let value = memory.load(&key).unwrap();
 //! ```
 
 mod file_memory;
@@ -39,4 +48,7 @@ pub use file_memory::FileMemory;
 pub use in_memory::InMemoryMemory;
 pub use namespaced::NamespacedMemory;
 pub use redis_memory::RedisMemory;
-pub use r#trait::{InvalidMemoryKey, Memory, MemoryKey, MemoryUpdate, SnapshotableMemory};
+pub use r#trait::{
+    InvalidMemoryKey, Memory, MemoryReader, MemoryWriter, TransactionalMemory,
+    MemoryKey, MemoryUpdate, SnapshotableMemory, MemoryCompat,
+};
