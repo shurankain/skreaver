@@ -34,13 +34,13 @@
 //! }
 //! ```
 
+/// Core tool trait definitions and data structures.
+pub mod core;
 /// Tool registry implementations for managing collections of tools.
 pub mod registry;
 /// Standard tool library providing common functionality.
 pub mod standard;
-/// Core tool trait definitions and data structures.
-pub mod r#trait;
 
+pub use core::{ExecutionResult, InvalidToolName, Tool, ToolCall, ToolCallBuildError, ToolName};
 pub use registry::ToolRegistry;
 pub use standard::*;
-pub use r#trait::{ExecutionResult, InvalidToolName, Tool, ToolCall, ToolCallBuildError, ToolName};

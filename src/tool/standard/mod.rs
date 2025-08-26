@@ -4,12 +4,11 @@
 //! can use for common operations. These tools follow best practices and provide
 //! reliable, well-tested functionality for typical agent workflows.
 //!
-//! ## Tool Categories
+//! ## Tool Domains
 //!
-//! - **HTTP Tools**: REST API interactions with authentication support
-//! - **File Operations**: File system read/write/directory operations
-//! - **JSON/XML Processing**: Data transformation and validation
-//! - **Text Processing**: String manipulation and analysis
+//! - **I/O Tools**: File system operations and directory management
+//! - **Network Tools**: HTTP/REST API interactions with authentication support
+//! - **Data Tools**: JSON/XML/text processing and transformation
 //!
 //! ## Usage
 //!
@@ -23,18 +22,16 @@
 //!     .with_tool("file_read", Arc::new(FileReadTool::new()));
 //! ```
 
-/// JSON and XML data processing tools
+/// Data processing and transformation tools
 pub mod data;
-/// File system operation tools
-pub mod file;
-/// HTTP client tools for REST API interactions
-pub mod http;
-/// Text processing and manipulation tools
-pub mod text;
+/// File system I/O operations
+pub mod io;
+/// Network communication tools
+pub mod network;
 
 pub use data::{JsonParseTool, JsonTransformTool, XmlParseTool};
-pub use file::{DirectoryCreateTool, DirectoryListTool, FileReadTool, FileWriteTool};
-pub use http::{HttpDeleteTool, HttpGetTool, HttpPostTool, HttpPutTool};
-pub use text::{
+pub use data::{
     TextAnalyzeTool, TextReverseTool, TextSearchTool, TextSplitTool, TextUppercaseTool,
 };
+pub use io::{DirectoryCreateTool, DirectoryListTool, FileReadTool, FileWriteTool};
+pub use network::{HttpDeleteTool, HttpGetTool, HttpPostTool, HttpPutTool};

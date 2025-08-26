@@ -37,18 +37,18 @@
 //! let value = memory.load(&key).unwrap();
 //! ```
 
+/// Core memory trait definitions and data structures.
+mod core;
 mod file_memory;
 mod in_memory;
 mod namespaced;
 mod redis_memory;
-/// Core memory trait definitions and data structures.
-mod r#trait;
 
+pub use core::{
+    InvalidMemoryKey, Memory, MemoryCompat, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter,
+    SnapshotableMemory, TransactionalMemory,
+};
 pub use file_memory::FileMemory;
 pub use in_memory::InMemoryMemory;
 pub use namespaced::NamespacedMemory;
 pub use redis_memory::RedisMemory;
-pub use r#trait::{
-    InvalidMemoryKey, Memory, MemoryCompat, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter,
-    SnapshotableMemory, TransactionalMemory,
-};

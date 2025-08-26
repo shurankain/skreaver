@@ -19,8 +19,8 @@
 //! 4. **Update** - Store results in memory for future use
 
 /// Core agent trait definition and associated types.
-pub mod r#trait;
-pub use r#trait::Agent;
+pub mod core;
+pub use core::Agent;
 
 /// Stateful agent trait using typestate pattern for compile-time safety.
 pub mod stateful;
