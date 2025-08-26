@@ -55,6 +55,7 @@ pub mod agent;
 pub mod error;
 pub mod memory;
 pub mod runtime;
+pub mod testing;
 pub mod tool;
 
 pub use agent::Agent;
