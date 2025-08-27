@@ -45,10 +45,25 @@
 //! let result = coordinator.step("user input".to_string());
 //! ```
 
+/// Type-safe agent status management.
+pub mod agent_status;
+/// Authentication middleware for HTTP runtime.
+pub mod auth;
 /// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
+/// Unified error handling system.
+pub mod errors;
 /// HTTP runtime for serving agents over REST API.
 pub mod http;
+/// Rate limiting middleware for HTTP runtime.
+pub mod rate_limit;
+/// Security management and input validation.
+pub mod security;
+/// Streaming responses for long-running operations.
+pub mod streaming;
 
+pub use agent_status::{AgentStatus, AgentStatusManager};
 pub use coordinator::Coordinator;
-pub use http::HttpAgentRuntime;
+pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
+pub use http::{HttpAgentRuntime, HttpRuntimeConfig};
+pub use security::{ApiKeyData, SecretKey, SecurityConfig};
