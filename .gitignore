@@ -6,4 +6,4 @@ Cargo.lock
 .vscode/
 *.log
 *.tmp
-skreaver-extension-roadmap.md
+DEVELOPMENT_PLAN.md
