@@ -193,7 +193,6 @@ impl AgentStatus {
     }
 }
 
-
 impl fmt::Display for AgentStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.simple_name())
