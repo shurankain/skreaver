@@ -148,10 +148,8 @@ impl ApiKeyData {
             return false;
         }
 
-        if let Some(expires_at) = self.expires_at {
-            if chrono::Utc::now() > expires_at {
-                return false;
-            }
+        if self.expires_at.is_some_and(|t| chrono::Utc::now() > t) {
+            return false;
         }
 
         true
