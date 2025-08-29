@@ -45,8 +45,8 @@ mod namespaced;
 mod redis_memory;
 
 pub use core::{
-    InvalidMemoryKey, Memory, MemoryCompat, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter,
-    SnapshotableMemory, TransactionalMemory,
+    InvalidMemoryKey, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory,
+    TransactionalMemory,
 };
 pub use file_memory::FileMemory;
 pub use in_memory::InMemoryMemory;

@@ -19,27 +19,30 @@
 //! ## Usage Pattern
 //!
 //! ```rust
-//! use skreaver::{Coordinator, Agent, Memory, MemoryUpdate};
-//! use skreaver::memory::InMemoryMemory;
-//! use skreaver::tool::registry::InMemoryToolRegistry;
+//! use skreaver::{Coordinator, Agent, MemoryUpdate};
+//! use skreaver::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
+//! use skreaver::tool::{registry::InMemoryToolRegistry, ExecutionResult, ToolCall};
 //!
 //! // Example agent implementation
 //! struct SimpleAgent {
-//!     memory: Box<dyn Memory + Send>,
+//!     memory: InMemoryMemory,
 //! }
 //!
 //! impl Agent for SimpleAgent {
 //!     type Observation = String;
 //!     type Action = String;
 //!     
-//!     fn memory(&mut self) -> &mut dyn Memory { &mut *self.memory }
+//!     fn memory_reader(&self) -> &dyn MemoryReader { &self.memory }
+//!     fn memory_writer(&mut self) -> &mut dyn MemoryWriter { &mut self.memory }
 //!     fn observe(&mut self, _input: String) {}
 //!     fn act(&mut self) -> String { "response".to_string() }
-//!     fn update_context(&mut self, update: MemoryUpdate) { self.memory().store(update); }
+//!     fn call_tools(&self) -> Vec<ToolCall> { Vec::new() }
+//!     fn handle_result(&mut self, _result: ExecutionResult) {}
+//!     fn update_context(&mut self, update: MemoryUpdate) { let _ = self.memory_writer().store(update); }
 //! }
 //!
 //! // Create agent and coordinate execution
-//! let agent = SimpleAgent { memory: Box::new(InMemoryMemory::new()) };
+//! let agent = SimpleAgent { memory: InMemoryMemory::new() };
 //! let registry = InMemoryToolRegistry::new();
 //! let mut coordinator = Coordinator::new(agent, registry);
 //! let result = coordinator.step("user input".to_string());

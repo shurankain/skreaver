@@ -2,30 +2,76 @@ use super::config::ReasoningProfile;
 use super::states::*;
 use super::typestate::TypedReasoningAgent;
 use skreaver::agent::Agent;
-use skreaver::memory::{Memory, MemoryUpdate};
+use skreaver::memory::{FileMemory, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter};
 use skreaver::tool::{ExecutionResult, ToolCall};
 
+// Type aliases for convenience
+#[allow(dead_code)]
+pub type InMemoryReasoningAgent = ReasoningAgentWrapper<InMemoryMemory>;
+#[allow(dead_code)]
+pub type FileReasoningAgent = ReasoningAgentWrapper<FileMemory>;
+
 /// Agent trait wrapper for backward compatibility
-pub struct ReasoningAgentWrapper {
-    agent: ReasoningAgentEnum,
+pub struct ReasoningAgentWrapper<M>
+where
+    M: MemoryReader + MemoryWriter + Default,
+{
+    agent: ReasoningAgentEnum<M>,
 }
 
-enum ReasoningAgentEnum {
-    Initial(TypedReasoningAgent<Initial>),
-    Analyzing(TypedReasoningAgent<Analyzing>),
-    Deducing(TypedReasoningAgent<Deducing>),
-    Concluding(TypedReasoningAgent<Concluding>),
-    Reflecting(TypedReasoningAgent<Reflecting>),
-    Complete(TypedReasoningAgent<Complete>),
+enum ReasoningAgentEnum<M>
+where
+    M: MemoryReader + MemoryWriter + Default,
+{
+    Initial(TypedReasoningAgent<M, Initial>),
+    Analyzing(TypedReasoningAgent<M, Analyzing>),
+    Deducing(TypedReasoningAgent<M, Deducing>),
+    Concluding(TypedReasoningAgent<M, Concluding>),
+    Reflecting(TypedReasoningAgent<M, Reflecting>),
+    Complete(TypedReasoningAgent<M, Complete>),
 }
 
-impl ReasoningAgentWrapper {
-    pub fn new(memory: Box<dyn Memory + Send>, profile: ReasoningProfile) -> Self {
+impl<M> Default for ReasoningAgentEnum<M>
+where
+    M: MemoryReader + MemoryWriter + Default,
+{
+    fn default() -> Self {
+        Self::Initial(TypedReasoningAgent::new(
+            M::default(),
+            ReasoningProfile::default(),
+        ))
+    }
+}
+
+impl<M> ReasoningAgentWrapper<M>
+where
+    M: MemoryReader + MemoryWriter + Default,
+{
+    pub fn new(memory: M, profile: ReasoningProfile) -> Self {
         Self {
             agent: ReasoningAgentEnum::Initial(TypedReasoningAgent::new(memory, profile)),
         }
     }
+}
 
+// Specialized implementations for common memory types
+impl ReasoningAgentWrapper<FileMemory> {
+    pub fn new_with_file(path: impl Into<std::path::PathBuf>, profile: ReasoningProfile) -> Self {
+        Self::new(FileMemory::new(path), profile)
+    }
+}
+
+impl ReasoningAgentWrapper<InMemoryMemory> {
+    #[allow(dead_code)]
+    pub fn new_in_memory(profile: ReasoningProfile) -> Self {
+        Self::new(InMemoryMemory::new(), profile)
+    }
+}
+
+impl<M> ReasoningAgentWrapper<M>
+where
+    M: MemoryReader + MemoryWriter + Default,
+{
     pub fn is_complete(&self) -> bool {
         matches!(self.agent, ReasoningAgentEnum::Complete(_))
     }
@@ -50,7 +96,7 @@ impl ReasoningAgentWrapper {
 
     #[cfg(test)]
     pub fn new_for_test(
-        memory: Box<dyn Memory + Send>,
+        memory: M,
         current_problem: Option<String>,
         reasoning_chain: Vec<ReasoningStep>,
         reasoning_state: ReasoningState,
@@ -105,37 +151,25 @@ impl ReasoningAgentWrapper {
     }
 }
 
-impl Agent for ReasoningAgentWrapper {
+impl<M> Agent for ReasoningAgentWrapper<M>
+where
+    M: MemoryReader + MemoryWriter + Default,
+{
     type Observation = String;
     type Action = String;
 
     fn observe(&mut self, input: Self::Observation) {
-        match std::mem::replace(
-            &mut self.agent,
-            ReasoningAgentEnum::Initial(TypedReasoningAgent::new(
-                Box::new(skreaver::memory::InMemoryMemory::new()),
-                ReasoningProfile::default(),
-            )),
-        ) {
+        let agent_enum = std::mem::take(&mut self.agent);
+        match agent_enum {
             ReasoningAgentEnum::Initial(agent) => {
                 self.agent = ReasoningAgentEnum::Analyzing(agent.observe(input));
             }
             _ => {
-                // Reset to initial state with the same memory and profile
-                // This is a simplified implementation - in practice you might want to preserve memory
-                self.agent = ReasoningAgentEnum::Initial(TypedReasoningAgent::new(
-                    Box::new(skreaver::memory::InMemoryMemory::new()),
-                    ReasoningProfile::default(),
-                ));
-                if let ReasoningAgentEnum::Initial(agent) = std::mem::replace(
-                    &mut self.agent,
-                    ReasoningAgentEnum::Initial(TypedReasoningAgent::new(
-                        Box::new(skreaver::memory::InMemoryMemory::new()),
-                        ReasoningProfile::default(),
-                    )),
-                ) {
-                    self.agent = ReasoningAgentEnum::Analyzing(agent.observe(input));
-                }
+                // Reset to initial state - create new agent with default memory and profile
+                // Note: This loses the existing memory, which may not be desired
+                // In a real implementation, you might want to preserve or reset memory differently
+                let new_agent = TypedReasoningAgent::new(M::default(), ReasoningProfile::default());
+                self.agent = ReasoningAgentEnum::Analyzing(new_agent.observe(input));
             }
         }
     }
@@ -176,13 +210,8 @@ impl Agent for ReasoningAgentWrapper {
             return;
         }
 
-        let new_agent = match std::mem::replace(
-            &mut self.agent,
-            ReasoningAgentEnum::Initial(TypedReasoningAgent::new(
-                Box::new(skreaver::memory::InMemoryMemory::new()),
-                ReasoningProfile::default(),
-            )),
-        ) {
+        let agent_enum = std::mem::take(&mut self.agent);
+        let new_agent = match agent_enum {
             ReasoningAgentEnum::Analyzing(agent) => match agent.analyze(result) {
                 Ok(deducing_agent) => ReasoningAgentEnum::Deducing(deducing_agent),
                 Err(analyzing_agent) => ReasoningAgentEnum::Analyzing(analyzing_agent),
@@ -228,17 +257,28 @@ impl Agent for ReasoningAgentWrapper {
         }
     }
 
-    fn memory(&mut self) -> &mut dyn Memory {
+    fn memory_reader(&self) -> &dyn MemoryReader {
+        match &self.agent {
+            ReasoningAgentEnum::Initial(agent) => &agent.memory,
+            ReasoningAgentEnum::Analyzing(agent) => &agent.memory,
+            ReasoningAgentEnum::Deducing(agent) => &agent.memory,
+            ReasoningAgentEnum::Concluding(agent) => &agent.memory,
+            ReasoningAgentEnum::Reflecting(agent) => &agent.memory,
+            ReasoningAgentEnum::Complete(agent) => &agent.memory,
+        }
+    }
+
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
         match &mut self.agent {
-            ReasoningAgentEnum::Initial(agent) => &mut *agent.memory,
-            ReasoningAgentEnum::Analyzing(agent) => &mut *agent.memory,
-            ReasoningAgentEnum::Deducing(agent) => &mut *agent.memory,
-            ReasoningAgentEnum::Concluding(agent) => &mut *agent.memory,
-            ReasoningAgentEnum::Reflecting(agent) => &mut *agent.memory,
-            ReasoningAgentEnum::Complete(agent) => &mut *agent.memory,
+            ReasoningAgentEnum::Initial(agent) => &mut agent.memory,
+            ReasoningAgentEnum::Analyzing(agent) => &mut agent.memory,
+            ReasoningAgentEnum::Deducing(agent) => &mut agent.memory,
+            ReasoningAgentEnum::Concluding(agent) => &mut agent.memory,
+            ReasoningAgentEnum::Reflecting(agent) => &mut agent.memory,
+            ReasoningAgentEnum::Complete(agent) => &mut agent.memory,
         }
     }
 }
 
-// Type alias for backward compatibility
-pub type ReasoningAgent = ReasoningAgentWrapper;
+// Type alias for backward compatibility - using FileMemory for persistence
+pub type ReasoningAgent = ReasoningAgentWrapper<FileMemory>;

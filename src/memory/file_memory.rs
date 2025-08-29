@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use super::{Memory, MemoryKey, MemoryUpdate};
+use super::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
+use skreaver_core::error::MemoryError;
 
 /// A simple persistent key-value memory that syncs to a JSON file.
 pub struct FileMemory {
@@ -35,15 +36,39 @@ impl FileMemory {
     }
 }
 
-impl Memory for FileMemory {
-    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+impl MemoryReader for FileMemory {
+    fn load(&self, key: &MemoryKey) -> Result<Option<String>, MemoryError> {
         Ok(self.cache.get(key.as_str()).cloned())
     }
 
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+    fn load_many(&self, keys: &[MemoryKey]) -> Result<Vec<Option<String>>, MemoryError> {
+        Ok(keys
+            .iter()
+            .map(|key| self.cache.get(key.as_str()).cloned())
+            .collect())
+    }
+}
+
+impl MemoryWriter for FileMemory {
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
         self.cache
             .insert(update.key.as_str().to_string(), update.value);
         self.persist();
         Ok(())
+    }
+
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), MemoryError> {
+        for update in updates {
+            self.cache
+                .insert(update.key.as_str().to_string(), update.value);
+        }
+        self.persist();
+        Ok(())
+    }
+}
+
+impl Default for FileMemory {
+    fn default() -> Self {
+        Self::new(std::env::temp_dir().join("skreaver_temp_memory.json"))
     }
 }

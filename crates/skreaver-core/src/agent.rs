@@ -1,4 +1,4 @@
-use crate::memory::{Memory, MemoryReader, MemoryUpdate};
+use crate::memory::{MemoryReader, MemoryUpdate, MemoryWriter};
 use crate::tool::{ExecutionResult, ToolCall};
 
 /// Core trait defining the behavior of an autonomous agent.
@@ -18,12 +18,12 @@ use crate::tool::{ExecutionResult, ToolCall};
 /// # Example
 ///
 /// ```rust
-/// use skreaver_core::{Agent, Memory, MemoryUpdate};
+/// use skreaver_core::{Agent, MemoryReader, MemoryWriter, MemoryUpdate};
 /// use skreaver_core::InMemoryMemory;
 /// use skreaver_core::tool::{ExecutionResult, ToolCall};
 ///
 /// struct EchoAgent {
-///     memory: Box<dyn Memory + Send>,
+///     memory: InMemoryMemory,
 ///     last_input: Option<String>,
 /// }
 ///
@@ -31,8 +31,12 @@ use crate::tool::{ExecutionResult, ToolCall};
 ///     type Observation = String;
 ///     type Action = String;
 ///
-///     fn memory(&mut self) -> &mut dyn Memory {
-///         &mut *self.memory
+///     fn memory_reader(&self) -> &dyn MemoryReader {
+///         &self.memory
+///     }
+///
+///     fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+///         &mut self.memory
 ///     }
 ///
 ///     fn observe(&mut self, input: String) {
@@ -49,7 +53,7 @@ use crate::tool::{ExecutionResult, ToolCall};
 ///     }
 ///
 ///     fn update_context(&mut self, update: MemoryUpdate) {
-///         self.memory().store(update);
+///         let _ = self.memory_writer().store(update);
 ///     }
 /// }
 /// ```
@@ -66,28 +70,19 @@ pub trait Agent {
     /// after processing observations and potentially using tools.
     type Action;
 
-    /// Returns a mutable reference to the agent's memory system.
-    ///
-    /// Memory provides persistent storage for agent state, context,
-    /// and learned information across interactions.
-    fn memory(&mut self) -> &mut dyn Memory;
-
     /// Returns an immutable reference to the agent's memory for read-only operations.
     ///
     /// This method enables concurrent read access to memory without requiring
     /// exclusive mutable access. Agents can use this for context retrieval
     /// and state queries that don't modify memory contents.
+    fn memory_reader(&self) -> &dyn MemoryReader;
+
+    /// Returns a mutable reference to the agent's memory for write operations.
     ///
-    /// # Default Implementation
-    ///
-    /// The default implementation delegates to the mutable memory method,
-    /// but implementations are encouraged to provide more efficient
-    /// read-only access where possible.
-    fn memory_reader(&self) -> Option<&dyn MemoryReader> {
-        // Default implementation returns None since we can't provide
-        // immutable access from a mutable-only memory reference
-        None
-    }
+    /// Memory provides persistent storage for agent state, context,
+    /// and learned information across interactions. This method should be used
+    /// sparingly and only when memory needs to be modified.
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter;
 
     /// Process an observation from the environment.
     ///
@@ -149,14 +144,14 @@ pub trait Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::{Memory, MemoryKey, MemoryUpdate};
+    use crate::memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
 
     struct DummyMemory {
         store: Vec<(String, String)>,
     }
 
-    impl Memory for DummyMemory {
-        fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+    impl MemoryReader for DummyMemory {
+        fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
             Ok(self
                 .store
                 .iter()
@@ -164,15 +159,43 @@ mod tests {
                 .map(|(_, v)| v.clone()))
         }
 
+        fn load_many(
+            &self,
+            keys: &[MemoryKey],
+        ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+            Ok(keys
+                .iter()
+                .map(|key| {
+                    self.store
+                        .iter()
+                        .find(|(k, _)| k == key.as_str())
+                        .map(|(_, v)| v.clone())
+                })
+                .collect())
+        }
+    }
+
+    impl MemoryWriter for DummyMemory {
         fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
             self.store
                 .push((update.key.as_str().to_string(), update.value));
             Ok(())
         }
+
+        fn store_many(
+            &mut self,
+            updates: Vec<MemoryUpdate>,
+        ) -> Result<(), crate::error::MemoryError> {
+            for update in updates {
+                self.store
+                    .push((update.key.as_str().to_string(), update.value));
+            }
+            Ok(())
+        }
     }
 
     struct DummyAgent {
-        mem: Box<dyn Memory>,
+        mem: DummyMemory,
         last_observation: Option<String>,
     }
 
@@ -180,8 +203,12 @@ mod tests {
         type Observation = String;
         type Action = String;
 
-        fn memory(&mut self) -> &mut dyn Memory {
-            &mut *self.mem
+        fn memory_reader(&self) -> &dyn MemoryReader {
+            &self.mem
+        }
+
+        fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+            &mut self.mem
         }
 
         fn observe(&mut self, input: Self::Observation) {
@@ -196,20 +223,20 @@ mod tests {
         }
 
         fn update_context(&mut self, update: MemoryUpdate) {
-            let _ = self.memory().store(update);
+            let _ = self.memory_writer().store(update);
         }
     }
 
     #[test]
     fn agent_can_store_memory_through_boxed_trait() {
         let mut agent = DummyAgent {
-            mem: Box::new(DummyMemory { store: vec![] }),
+            mem: DummyMemory { store: vec![] },
             last_observation: None,
         };
 
         let key = MemoryKey::new("k").unwrap();
         agent.update_context(MemoryUpdate::from_validated(key.clone(), "v".to_string()));
 
-        assert_eq!(agent.memory().load(&key).unwrap(), Some("v".into()));
+        assert_eq!(agent.memory_reader().load(&key).unwrap(), Some("v".into()));
     }
 }

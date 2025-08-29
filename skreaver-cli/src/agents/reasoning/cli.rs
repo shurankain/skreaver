@@ -2,20 +2,14 @@ use crate::agents::reasoning::config::ReasoningProfile;
 use crate::agents::reasoning::coordinator::ReasoningCoordinatorExt;
 use crate::agents::reasoning::tools::{AnalyzeTool, ConcludeTool, DeduceTool, ReflectTool};
 use crate::agents::reasoning::wrapper::ReasoningAgentWrapper;
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use skreaver::memory::FileMemory;
 use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 
 pub fn run_reasoning_agent() {
-    let memory_path = PathBuf::from("reasoning_memory.json");
-
-    let agent = ReasoningAgentWrapper::new(
-        Box::new(FileMemory::new(memory_path)),
-        ReasoningProfile::default(),
-    );
+    let agent =
+        ReasoningAgentWrapper::new_with_file("reasoning_memory.json", ReasoningProfile::default());
 
     let registry = InMemoryToolRegistry::new()
         .with_tool("analyze", Arc::new(AnalyzeTool))

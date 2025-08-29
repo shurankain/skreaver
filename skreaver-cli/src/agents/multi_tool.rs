@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use skreaver::ToolCall;
 use skreaver::agent::Agent;
-use skreaver::memory::{FileMemory, Memory, MemoryUpdate};
+use skreaver::memory::{FileMemory, MemoryReader, MemoryUpdate, MemoryWriter};
 use skreaver::runtime::Coordinator;
 use skreaver::tool::registry::InMemoryToolRegistry;
 use skreaver::tool::{ExecutionResult, Tool};
@@ -12,7 +12,7 @@ pub fn run_multi_agent() {
     let memory_path = PathBuf::from("multi_memory.json");
 
     let agent = MultiToolAgent {
-        memory: Box::new(FileMemory::new(memory_path)),
+        memory: FileMemory::new(memory_path),
         last_input: None,
         tool_results: vec![],
     };
@@ -29,7 +29,7 @@ pub fn run_multi_agent() {
 }
 
 struct MultiToolAgent {
-    memory: Box<dyn Memory>,
+    memory: FileMemory,
     last_input: Option<String>,
     tool_results: Vec<String>,
 }
@@ -41,7 +41,7 @@ impl Agent for MultiToolAgent {
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
         if let Ok(update) = MemoryUpdate::new("input", &input) {
-            let _ = self.memory.store(update);
+            let _ = self.memory_writer().store(update);
         }
         self.tool_results.clear();
     }
@@ -85,11 +85,15 @@ impl Agent for MultiToolAgent {
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        let _ = self.memory.store(update);
+        let _ = self.memory_writer().store(update);
     }
 
-    fn memory(&mut self) -> &mut dyn Memory {
-        &mut *self.memory
+    fn memory_reader(&self) -> &dyn MemoryReader {
+        &self.memory
+    }
+
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+        &mut self.memory
     }
 }
 

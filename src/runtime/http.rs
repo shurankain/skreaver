@@ -672,7 +672,7 @@ mod tests {
     use super::*;
     use crate::{
         agent::Agent,
-        memory::{InMemoryMemory, Memory, MemoryUpdate},
+        memory::{InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter},
         runtime::auth::create_jwt_token,
         tool::registry::InMemoryToolRegistry,
         tool::{ExecutionResult, ToolCall},
@@ -686,12 +686,12 @@ mod tests {
 
     /// Simple test agent that echoes input
     struct TestAgent {
-        memory: Box<dyn Memory>,
+        memory: InMemoryMemory,
         last_input: Option<String>,
     }
 
     impl TestAgent {
-        fn new(memory: Box<dyn Memory>) -> Self {
+        fn new(memory: InMemoryMemory) -> Self {
             Self {
                 memory,
                 last_input: None,
@@ -706,7 +706,7 @@ mod tests {
         fn observe(&mut self, input: Self::Observation) {
             self.last_input = Some(input.clone());
             if let Ok(update) = MemoryUpdate::new("input", &input) {
-                let _ = self.memory.store(update);
+                let _ = self.memory_writer().store(update);
             }
         }
 
@@ -726,11 +726,15 @@ mod tests {
         }
 
         fn update_context(&mut self, update: MemoryUpdate) {
-            let _ = self.memory.store(update);
+            let _ = self.memory_writer().store(update);
         }
 
-        fn memory(&mut self) -> &mut dyn Memory {
-            &mut *self.memory
+        fn memory_reader(&self) -> &dyn MemoryReader {
+            &self.memory
+        }
+
+        fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+            &mut self.memory
         }
     }
 
@@ -742,7 +746,7 @@ mod tests {
 
     /// Helper to create a test agent and add it to runtime
     async fn setup_test_agent(runtime: &HttpAgentRuntime<InMemoryToolRegistry>, agent_id: &str) {
-        let agent = TestAgent::new(Box::new(InMemoryMemory::new()));
+        let agent = TestAgent::new(InMemoryMemory::new());
         runtime
             .add_agent(agent_id.to_string(), agent)
             .await

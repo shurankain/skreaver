@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use crate::memory::{
-    Memory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, TransactionalMemory,
-};
+use crate::memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, TransactionalMemory};
 
 /// Fast, transient memory implementation using HashMap with concurrent access.
 ///
@@ -17,14 +15,14 @@ use crate::memory::{
 /// # Example
 ///
 /// ```rust
-/// use skreaver_core::{InMemoryMemory, Memory, MemoryUpdate};
+/// use skreaver_core::{InMemoryMemory, MemoryReader, MemoryWriter, MemoryUpdate};
 /// use skreaver_core::memory::MemoryKey;
 ///
 /// let mut memory = InMemoryMemory::new();
 /// let key = MemoryKey::new("session_id").unwrap();
-/// memory.store(MemoryUpdate::from_validated(key.clone(), "abc123".to_string())).unwrap();
+/// MemoryWriter::store(&mut memory, MemoryUpdate::from_validated(key.clone(), "abc123".to_string())).unwrap();
 ///
-/// assert_eq!(memory.load(&key).unwrap(), Some("abc123".to_string()));
+/// assert_eq!(MemoryReader::load(&memory, &key).unwrap(), Some("abc123".to_string()));
 /// ```
 #[derive(Clone)]
 pub struct InMemoryMemory {
@@ -150,16 +148,5 @@ impl TransactionalMemory for InMemoryMemory {
                 Err(err)
             }
         }
-    }
-}
-
-// Backwards compatibility - keep existing Memory trait implementation
-impl Memory for InMemoryMemory {
-    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        MemoryReader::load(self, key)
-    }
-
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        MemoryWriter::store(self, update)
     }
 }

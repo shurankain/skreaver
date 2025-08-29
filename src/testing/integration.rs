@@ -353,7 +353,7 @@ pub mod test_utils {
 
     /// Simple test agent for integration testing
     pub struct TestAgent {
-        pub memory: Box<dyn crate::memory::Memory>,
+        pub memory: crate::memory::InMemoryMemory,
         pub last_input: Option<String>,
         pub responses: Vec<String>,
     }
@@ -367,7 +367,7 @@ pub mod test_utils {
     impl TestAgent {
         pub fn new() -> Self {
             Self {
-                memory: Box::new(InMemoryMemory::new()),
+                memory: InMemoryMemory::new(),
                 last_input: None,
                 responses: vec!["Test response 1".to_string(), "Test response 2".to_string()],
             }
@@ -375,7 +375,7 @@ pub mod test_utils {
 
         pub fn with_responses(responses: Vec<String>) -> Self {
             Self {
-                memory: Box::new(InMemoryMemory::new()),
+                memory: InMemoryMemory::new(),
                 last_input: None,
                 responses,
             }
@@ -409,11 +409,15 @@ pub mod test_utils {
         fn handle_result(&mut self, _result: ExecutionResult) {}
 
         fn update_context(&mut self, update: MemoryUpdate) {
-            let _ = self.memory.store(update);
+            let _ = self.memory_writer().store(update);
         }
 
-        fn memory(&mut self) -> &mut dyn crate::memory::Memory {
-            &mut *self.memory
+        fn memory_reader(&self) -> &dyn crate::memory::MemoryReader {
+            &self.memory
+        }
+
+        fn memory_writer(&mut self) -> &mut dyn crate::memory::MemoryWriter {
+            &mut self.memory
         }
     }
 }

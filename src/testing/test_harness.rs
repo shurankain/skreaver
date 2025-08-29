@@ -3,13 +3,7 @@
 //! This module provides controlled testing environments for agents with
 //! scenarios, assertions, and comprehensive result tracking.
 
-use crate::{
-    agent::Agent,
-    memory::{InMemoryMemory, Memory},
-    runtime::Coordinator,
-    testing::MockToolRegistry,
-    tool::ToolRegistry,
-};
+use crate::{agent::Agent, runtime::Coordinator, testing::MockToolRegistry, tool::ToolRegistry};
 use std::fmt;
 use std::time::{Duration, Instant};
 
@@ -275,16 +269,12 @@ where
 /// Builder for creating test harnesses with common configurations
 pub struct TestHarnessBuilder {
     registry: Option<MockToolRegistry>,
-    memory: Option<Box<dyn Memory>>,
 }
 
 impl TestHarnessBuilder {
     /// Create a new test harness builder
     pub fn new() -> Self {
-        Self {
-            registry: None,
-            memory: None,
-        }
+        Self { registry: None }
     }
 
     /// Use a specific tool registry
@@ -300,18 +290,6 @@ impl TestHarnessBuilder {
             .with_success_tool("test_tool")
             .with_failure_tool("fail_tool");
         self.registry = Some(registry);
-        self
-    }
-
-    /// Use a specific memory implementation
-    pub fn with_memory(mut self, memory: Box<dyn Memory>) -> Self {
-        self.memory = Some(memory);
-        self
-    }
-
-    /// Use in-memory storage
-    pub fn with_in_memory_storage(mut self) -> Self {
-        self.memory = Some(Box::new(InMemoryMemory::new()));
         self
     }
 
@@ -424,10 +402,11 @@ mod tests {
     use super::*;
     use crate::MemoryUpdate;
     use crate::agent::Agent;
+    use crate::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
     use crate::tool::{ExecutionResult, ToolCall};
 
     struct TestAgent {
-        memory: Box<dyn Memory>,
+        memory: InMemoryMemory,
         last_input: Option<String>,
     }
 
@@ -453,18 +432,22 @@ mod tests {
         fn handle_result(&mut self, _result: ExecutionResult) {}
 
         fn update_context(&mut self, update: MemoryUpdate) {
-            let _ = self.memory.store(update);
+            let _ = self.memory_writer().store(update);
         }
 
-        fn memory(&mut self) -> &mut dyn Memory {
-            &mut *self.memory
+        fn memory_reader(&self) -> &dyn MemoryReader {
+            &self.memory
+        }
+
+        fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+            &mut self.memory
         }
     }
 
     #[test]
     fn test_harness_runs_simple_scenario() {
         let agent = TestAgent {
-            memory: Box::new(InMemoryMemory::new()),
+            memory: InMemoryMemory::new(),
             last_input: None,
         };
 

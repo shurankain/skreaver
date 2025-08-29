@@ -1,6 +1,8 @@
-use super::{Memory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, TransactionalMemory};
-use crate::memory::SnapshotableMemory;
+use super::{
+    MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
+};
 use redis::{Client, Commands, Connection, RedisResult};
+use skreaver_core::error::{MemoryError, TransactionError};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -27,80 +29,63 @@ impl RedisMemory {
 
 // Implement new trait hierarchy
 impl MemoryReader for RedisMemory {
-    fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        let mut conn = self
-            .conn
-            .lock()
-            .map_err(|e| crate::error::MemoryError::LoadFailed {
-                key: key.as_str().to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
+    fn load(&self, key: &MemoryKey) -> Result<Option<String>, MemoryError> {
+        let mut conn = self.conn.lock().map_err(|e| MemoryError::LoadFailed {
+            key: key.as_str().to_string(),
+            reason: format!("Lock poisoned: {}", e),
+        })?;
 
-        conn.get::<_, Option<String>>(key.as_str()).map_err(|e| {
-            crate::error::MemoryError::LoadFailed {
+        conn.get::<_, Option<String>>(key.as_str())
+            .map_err(|e| MemoryError::LoadFailed {
                 key: key.as_str().to_string(),
                 reason: e.to_string(),
-            }
-        })
+            })
     }
 
-    fn load_many(
-        &self,
-        keys: &[MemoryKey],
-    ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+    fn load_many(&self, keys: &[MemoryKey]) -> Result<Vec<Option<String>>, MemoryError> {
         if keys.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut conn = self
-            .conn
-            .lock()
-            .map_err(|e| crate::error::MemoryError::LoadFailed {
-                key: "batch".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
+        let mut conn = self.conn.lock().map_err(|e| MemoryError::LoadFailed {
+            key: "batch".to_string(),
+            reason: format!("Lock poisoned: {}", e),
+        })?;
 
         let key_strs: Vec<&str> = keys.iter().map(|k| k.as_str()).collect();
         let values: Vec<Option<String>> =
-            conn.get(key_strs)
-                .map_err(|e| crate::error::MemoryError::LoadFailed {
-                    key: "batch".to_string(),
-                    reason: e.to_string(),
-                })?;
+            conn.get(key_strs).map_err(|e| MemoryError::LoadFailed {
+                key: "batch".to_string(),
+                reason: e.to_string(),
+            })?;
 
         Ok(values)
     }
 }
 
 impl MemoryWriter for RedisMemory {
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        let mut conn = self
-            .conn
-            .lock()
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: update.key.as_str().to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
+        let mut conn = self.conn.lock().map_err(|e| MemoryError::StoreFailed {
+            key: update.key.as_str().to_string(),
+            reason: format!("Lock poisoned: {}", e),
+        })?;
 
         conn.set::<_, _, ()>(update.key.as_str(), update.value)
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
+            .map_err(|e| MemoryError::StoreFailed {
                 key: update.key.as_str().to_string(),
                 reason: e.to_string(),
             })
     }
 
-    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), MemoryError> {
         if updates.is_empty() {
             return Ok(());
         }
 
-        let mut conn = self
-            .conn
-            .lock()
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: "batch".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
+        let mut conn = self.conn.lock().map_err(|e| MemoryError::StoreFailed {
+            key: "batch".to_string(),
+            reason: format!("Lock poisoned: {}", e),
+        })?;
 
         // Use Redis pipeline for efficient batch writes
         let mut pipe = redis::pipe();
@@ -114,17 +99,17 @@ impl MemoryWriter for RedisMemory {
 }
 
 impl TransactionalMemory for RedisMemory {
-    fn transaction<F, R>(&mut self, f: F) -> Result<R, crate::error::TransactionError>
+    fn transaction<F, R>(&mut self, f: F) -> Result<R, TransactionError>
     where
-        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>,
+        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, TransactionError>,
     {
         // Redis transactions are implemented using MULTI/EXEC
         // For this implementation, we'll use a simpler approach with a new connection
-        let mut tx_conn = self.get_connection().map_err(|e| {
-            crate::error::TransactionError::TransactionFailed {
-                reason: format!("Failed to get transaction connection: {}", e),
-            }
-        })?;
+        let mut tx_conn =
+            self.get_connection()
+                .map_err(|e| TransactionError::TransactionFailed {
+                    reason: format!("Failed to get transaction connection: {}", e),
+                })?;
 
         // Create a transaction memory wrapper
         let tx_memory = RedisTransactionMemory { conn: &mut tx_conn };
@@ -145,17 +130,17 @@ struct RedisTransactionWriter<'a> {
 }
 
 impl<'a> MemoryWriter for RedisTransactionWriter<'a> {
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
+    fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
         self.memory
             .conn
             .set::<_, _, ()>(update.key.as_str(), update.value)
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
+            .map_err(|e| MemoryError::StoreFailed {
                 key: update.key.as_str().to_string(),
                 reason: e.to_string(),
             })
     }
 
-    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), MemoryError> {
         let mut pipe = redis::pipe();
         for update in updates {
             pipe.set(update.key.as_str(), update.value);
@@ -165,34 +150,20 @@ impl<'a> MemoryWriter for RedisTransactionWriter<'a> {
     }
 }
 
-// Backwards compatibility - keep existing Memory trait implementation
-impl Memory for RedisMemory {
-    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        MemoryReader::load(self, key)
-    }
-
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        MemoryWriter::store(self, update)
-    }
-}
-
 impl RedisMemory {
     /// Store a key-value pair with TTL in seconds.
     pub fn store_with_ttl(
         &mut self,
         update: MemoryUpdate,
         ttl_secs: u64,
-    ) -> Result<(), crate::error::MemoryError> {
-        let mut conn = self
-            .conn
-            .lock()
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: update.key.as_str().to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
+    ) -> Result<(), MemoryError> {
+        let mut conn = self.conn.lock().map_err(|e| MemoryError::StoreFailed {
+            key: update.key.as_str().to_string(),
+            reason: format!("Lock poisoned: {}", e),
+        })?;
 
         conn.set_ex(update.key.as_str(), &update.value, ttl_secs)
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
+            .map_err(|e| MemoryError::StoreFailed {
                 key: update.key.as_str().to_string(),
                 reason: e.to_string(),
             })
@@ -214,19 +185,15 @@ impl SnapshotableMemory for RedisMemory {
         serde_json::to_string_pretty(&map).ok()
     }
 
-    fn restore(&mut self, snapshot: &str) -> Result<(), crate::error::MemoryError> {
-        let data: HashMap<String, String> = serde_json::from_str(snapshot).map_err(|e| {
-            crate::error::MemoryError::RestoreFailed {
+    fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
+        let data: HashMap<String, String> =
+            serde_json::from_str(snapshot).map_err(|e| MemoryError::RestoreFailed {
                 reason: format!("JSON parsing failed: {}", e),
-            }
-        })?;
-
-        let mut conn = self
-            .conn
-            .lock()
-            .map_err(|e| crate::error::MemoryError::RestoreFailed {
-                reason: format!("Lock poisoned: {}", e),
             })?;
+
+        let mut conn = self.conn.lock().map_err(|e| MemoryError::RestoreFailed {
+            reason: format!("Lock poisoned: {}", e),
+        })?;
 
         for (key, value) in data {
             let _ = conn.set::<_, _, ()>(key, value);
@@ -248,7 +215,7 @@ mod tests {
 
         let key = format!("test:{}:foo", Uuid::new_v4());
         let memory_key = MemoryKey::new(&key).unwrap();
-        Memory::store(
+        MemoryWriter::store(
             &mut mem,
             MemoryUpdate {
                 key: memory_key.clone(),
@@ -305,7 +272,7 @@ mod tests {
 
         // Store a memory entry using logical key (without prefix)
         let target_key = MemoryKey::new("target").unwrap();
-        Memory::store(
+        MemoryWriter::store(
             &mut mem,
             MemoryUpdate {
                 key: target_key.clone(),
@@ -347,7 +314,7 @@ mod tests {
 
         // Store agent's current objective
         let goal_key = MemoryKey::new("goal").unwrap();
-        Memory::store(
+        MemoryWriter::store(
             &mut mem,
             MemoryUpdate {
                 key: goal_key,

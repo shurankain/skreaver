@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::memory::MemoryUpdate;
-use crate::tool::ToolRegistry;
+use crate::tool::{ExecutionResult, ToolCall, ToolRegistry};
 use std::fmt::Display;
 
 /// Central runtime coordinator for agent execution.
@@ -17,26 +17,28 @@ use std::fmt::Display;
 /// # Example
 ///
 /// ```rust
-/// use skreaver::{Coordinator, Agent, Memory, MemoryUpdate};
-/// use skreaver::memory::InMemoryMemory;
-/// use skreaver::tool::registry::InMemoryToolRegistry;
-/// use skreaver::tool::{ExecutionResult, ToolCall};
+/// use skreaver::{Coordinator, Agent, MemoryUpdate};
+/// use skreaver::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
+/// use skreaver::tool::{registry::InMemoryToolRegistry, ExecutionResult, ToolCall};
 ///
 /// struct SimpleAgent {
-///     memory: Box<dyn Memory + Send>,
+///     memory: InMemoryMemory,
 /// }
 ///
 /// impl Agent for SimpleAgent {
 ///     type Observation = String;
 ///     type Action = String;
 ///
-///     fn memory(&mut self) -> &mut dyn Memory { &mut *self.memory }
+///     fn memory_reader(&self) -> &dyn MemoryReader { &self.memory }
+///     fn memory_writer(&mut self) -> &mut dyn MemoryWriter { &mut self.memory }
 ///     fn observe(&mut self, input: String) { /* implementation */ }
 ///     fn act(&mut self) -> String { "response".to_string() }
-///     fn update_context(&mut self, update: MemoryUpdate) { self.memory().store(update); }
+///     fn call_tools(&self) -> Vec<ToolCall> { Vec::new() }
+///     fn handle_result(&mut self, _result: ExecutionResult) {}
+///     fn update_context(&mut self, update: MemoryUpdate) { let _ = self.memory_writer().store(update); }
 /// }
 ///
-/// let agent = SimpleAgent { memory: Box::new(InMemoryMemory::new()) };
+/// let agent = SimpleAgent { memory: InMemoryMemory::new() };
 /// let registry = InMemoryToolRegistry::new();
 /// let mut coordinator = Coordinator::new(agent, registry);
 /// ```
@@ -91,7 +93,7 @@ where
     pub fn step(&mut self, observation: A::Observation) -> A::Action {
         // Use static key and optimized constructor to minimize allocations
         if let Ok(update) = MemoryUpdate::new("input", &observation.to_string()) {
-            let _ = self.agent.memory().store(update);
+            let _ = self.agent.memory_writer().store(update);
         }
 
         self.agent.observe(observation);
@@ -116,7 +118,7 @@ where
                 error_msg.push_str("' not found in registry");
 
                 self.agent
-                    .handle_result(crate::tool::ExecutionResult::failure(error_msg));
+                    .handle_result(ExecutionResult::failure(error_msg));
             }
         }
 
@@ -132,7 +134,7 @@ where
     ///
     /// * `update` - The memory update containing new context data
     pub fn update_context(&mut self, update: MemoryUpdate) {
-        let _ = self.agent.memory().store(update.clone());
+        let _ = self.agent.memory_writer().store(update.clone());
         self.agent.update_context(update);
     }
 
@@ -156,7 +158,7 @@ where
     /// # Returns
     ///
     /// Vector of tool calls requested by the agent
-    pub fn get_tool_calls(&self) -> Vec<crate::tool::ToolCall> {
+    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
         self.agent.call_tools()
     }
 
@@ -172,10 +174,7 @@ where
     /// # Returns
     ///
     /// `Some(ExecutionResult)` if the tool exists, `None` if not found
-    pub fn dispatch_tool(
-        &self,
-        tool_call: crate::tool::ToolCall,
-    ) -> Option<crate::tool::ExecutionResult> {
+    pub fn dispatch_tool(&self, tool_call: ToolCall) -> Option<ExecutionResult> {
         self.registry.dispatch(tool_call)
     }
 
@@ -187,7 +186,7 @@ where
     /// # Parameters
     ///
     /// * `result` - The execution result from a tool
-    pub fn handle_tool_result(&mut self, result: crate::tool::ExecutionResult) {
+    pub fn handle_tool_result(&mut self, result: ExecutionResult) {
         self.agent.handle_result(result);
     }
 

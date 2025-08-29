@@ -6,7 +6,7 @@
 
 use skreaver::{
     Agent, MemoryUpdate,
-    memory::InMemoryMemory,
+    memory::{InMemoryMemory, MemoryReader, MemoryWriter},
     runtime::{
         HttpAgentRuntime, HttpRuntimeConfig, auth::create_jwt_token, rate_limit::RateLimitConfig,
     },
@@ -21,7 +21,7 @@ use tokio::net::TcpListener;
 
 /// Advanced demo agent that handles complex processing scenarios
 struct AdvancedDemoAgent {
-    memory: Box<dyn skreaver::memory::Memory>,
+    memory: InMemoryMemory,
     last_input: Option<String>,
     processing_history: Vec<String>,
 }
@@ -29,7 +29,7 @@ struct AdvancedDemoAgent {
 impl AdvancedDemoAgent {
     fn new() -> Self {
         Self {
-            memory: Box::new(InMemoryMemory::new()),
+            memory: InMemoryMemory::new(),
             last_input: None,
             processing_history: Vec::new(),
         }
@@ -157,8 +157,12 @@ impl Agent for AdvancedDemoAgent {
         let _ = self.memory.store(update);
     }
 
-    fn memory(&mut self) -> &mut dyn skreaver::memory::Memory {
-        &mut *self.memory
+    fn memory_reader(&self) -> &dyn MemoryReader {
+        &self.memory
+    }
+
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+        &mut self.memory
     }
 }
 

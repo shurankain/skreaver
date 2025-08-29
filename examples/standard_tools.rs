@@ -6,7 +6,7 @@
 use skreaver::{
     MemoryUpdate,
     agent::Agent,
-    memory::InMemoryMemory,
+    memory::{InMemoryMemory, MemoryReader, MemoryWriter},
     runtime::Coordinator,
     tool::{
         ExecutionResult, ToolCall,
@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 /// Example agent that uses standard tools
 struct StandardToolsAgent {
-    memory: Box<dyn skreaver::memory::Memory>,
+    memory: InMemoryMemory,
     last_input: Option<String>,
 }
 
@@ -102,8 +102,12 @@ impl Agent for StandardToolsAgent {
         let _ = self.memory.store(update);
     }
 
-    fn memory(&mut self) -> &mut dyn skreaver::memory::Memory {
-        &mut *self.memory
+    fn memory_reader(&self) -> &dyn MemoryReader {
+        &self.memory
+    }
+
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+        &mut self.memory
     }
 }
 
@@ -112,7 +116,7 @@ fn main() {
     println!("===================================");
 
     let agent = StandardToolsAgent {
-        memory: Box::new(InMemoryMemory::new()),
+        memory: InMemoryMemory::new(),
         last_input: None,
     };
 

@@ -1,19 +1,25 @@
 use super::config::ReasoningProfile;
 use super::rich_result::RichResult;
 use super::states::*;
-use skreaver::memory::{Memory, MemoryUpdate};
+use skreaver::memory::{MemoryReader, MemoryUpdate, MemoryWriter};
 use skreaver::tool::{ExecutionResult, ToolCall};
 
 /// Typestate pattern for compile-time state safety
-pub struct TypedReasoningAgent<S = Initial> {
-    pub memory: Box<dyn Memory + Send>,
+pub struct TypedReasoningAgent<M, S = Initial>
+where
+    M: MemoryReader + MemoryWriter,
+{
+    pub memory: M,
     pub profile: ReasoningProfile,
     pub state: S,
 }
 
 // Implementation for Initial state
-impl TypedReasoningAgent<Initial> {
-    pub fn new(memory: Box<dyn Memory + Send>, profile: ReasoningProfile) -> Self {
+impl<M> TypedReasoningAgent<M, Initial>
+where
+    M: MemoryReader + MemoryWriter,
+{
+    pub fn new(memory: M, profile: ReasoningProfile) -> Self {
         Self {
             memory,
             profile,
@@ -21,7 +27,7 @@ impl TypedReasoningAgent<Initial> {
         }
     }
 
-    pub fn observe(mut self, problem: String) -> TypedReasoningAgent<Analyzing> {
+    pub fn observe(mut self, problem: String) -> TypedReasoningAgent<M, Analyzing> {
         self.memory
             .store(MemoryUpdate::new("current_problem", &problem).expect("Valid memory key"))
             .ok();
@@ -44,11 +50,14 @@ impl TypedReasoningAgent<Initial> {
 }
 
 // Implementation for Analyzing state
-impl TypedReasoningAgent<Analyzing> {
+impl<M> TypedReasoningAgent<M, Analyzing>
+where
+    M: MemoryReader + MemoryWriter,
+{
     pub fn analyze(
         mut self,
         result: ExecutionResult,
-    ) -> Result<TypedReasoningAgent<Deducing>, Self> {
+    ) -> Result<TypedReasoningAgent<M, Deducing>, Self> {
         if !result.is_success() {
             return Err(self);
         }
@@ -78,11 +87,14 @@ impl TypedReasoningAgent<Analyzing> {
 }
 
 // Implementation for Deducing state
-impl TypedReasoningAgent<Deducing> {
+impl<M> TypedReasoningAgent<M, Deducing>
+where
+    M: MemoryReader + MemoryWriter,
+{
     pub fn deduce(
         mut self,
         result: ExecutionResult,
-    ) -> Result<TypedReasoningAgent<Concluding>, Self> {
+    ) -> Result<TypedReasoningAgent<M, Concluding>, Self> {
         if !result.is_success() {
             return Err(self);
         }
@@ -125,11 +137,14 @@ impl TypedReasoningAgent<Deducing> {
 }
 
 // Implementation for Concluding state
-impl TypedReasoningAgent<Concluding> {
+impl<M> TypedReasoningAgent<M, Concluding>
+where
+    M: MemoryReader + MemoryWriter,
+{
     pub fn conclude(
         mut self,
         result: ExecutionResult,
-    ) -> Result<TypedReasoningAgent<Reflecting>, Self> {
+    ) -> Result<TypedReasoningAgent<M, Reflecting>, Self> {
         if !result.is_success() {
             return Err(self);
         }
@@ -172,11 +187,14 @@ impl TypedReasoningAgent<Concluding> {
 }
 
 // Implementation for Reflecting state
-impl TypedReasoningAgent<Reflecting> {
+impl<M> TypedReasoningAgent<M, Reflecting>
+where
+    M: MemoryReader + MemoryWriter,
+{
     pub fn reflect(
         mut self,
         result: ExecutionResult,
-    ) -> Result<TypedReasoningAgent<Complete>, Self> {
+    ) -> Result<TypedReasoningAgent<M, Complete>, Self> {
         if !result.is_success() {
             return Err(self);
         }
@@ -226,7 +244,10 @@ impl TypedReasoningAgent<Reflecting> {
 }
 
 // Implementation for Complete state
-impl TypedReasoningAgent<Complete> {
+impl<M> TypedReasoningAgent<M, Complete>
+where
+    M: MemoryReader + MemoryWriter,
+{
     pub fn final_result(&self) -> AgentFinal {
         let answer = self
             .state
@@ -246,7 +267,10 @@ impl TypedReasoningAgent<Complete> {
 }
 
 // Shared implementations across all states
-impl<S> TypedReasoningAgent<S> {
+impl<M, S> TypedReasoningAgent<M, S>
+where
+    M: MemoryReader + MemoryWriter,
+{
     fn parse_result(&self, result: &ExecutionResult) -> (String, f32, Vec<String>) {
         let parsed: Option<RichResult> = serde_json::from_str(result.output()).ok();
         match parsed {

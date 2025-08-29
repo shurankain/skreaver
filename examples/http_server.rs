@@ -5,7 +5,7 @@
 //! RESTful API interactions.
 
 use skreaver::{
-    Agent, MemoryUpdate,
+    Agent, MemoryReader, MemoryUpdate, MemoryWriter,
     memory::InMemoryMemory,
     runtime::HttpAgentRuntime,
     tool::{
@@ -20,7 +20,7 @@ use tower_http::cors::CorsLayer;
 
 /// Example agent that processes various types of requests
 struct HttpDemoAgent {
-    memory: Box<dyn skreaver::memory::Memory>,
+    memory: InMemoryMemory,
     last_input: Option<String>,
 }
 
@@ -32,7 +32,7 @@ impl Agent for HttpDemoAgent {
         println!("🔍 Agent received: {}", input);
         self.last_input = Some(input.clone());
         if let Ok(update) = MemoryUpdate::new("last_input", &input) {
-            let _ = self.memory.store(update);
+            let _ = self.memory_writer().store(update);
         }
     }
 
@@ -94,16 +94,20 @@ impl Agent for HttpDemoAgent {
         println!("{}", message);
 
         if let Ok(update) = MemoryUpdate::new("last_tool_result", &message) {
-            let _ = self.memory.store(update);
+            let _ = self.memory_writer().store(update);
         }
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        let _ = self.memory.store(update);
+        let _ = self.memory_writer().store(update);
     }
 
-    fn memory(&mut self) -> &mut dyn skreaver::memory::Memory {
-        &mut *self.memory
+    fn memory_reader(&self) -> &dyn MemoryReader {
+        &self.memory
+    }
+
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+        &mut self.memory
     }
 }
 
@@ -124,12 +128,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create and add demo agents
     let demo_agent_1 = HttpDemoAgent {
-        memory: Box::new(InMemoryMemory::new()),
+        memory: InMemoryMemory::new(),
         last_input: None,
     };
 
     let demo_agent_2 = HttpDemoAgent {
-        memory: Box::new(InMemoryMemory::new()),
+        memory: InMemoryMemory::new(),
         last_input: None,
     };
 

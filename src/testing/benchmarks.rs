@@ -77,7 +77,7 @@ impl BenchmarkRunner {
     pub fn benchmark_memory(
         &mut self,
         name: impl Into<String>,
-        memory: &mut dyn crate::memory::Memory,
+        memory: &mut dyn crate::memory::MemoryWriter,
         iterations: usize,
     ) -> &BenchmarkResult {
         let mut durations = Vec::with_capacity(iterations);
@@ -351,7 +351,7 @@ impl PerformanceTest {
         };
 
         struct BenchAgent {
-            memory: Box<dyn crate::memory::Memory>,
+            memory: InMemoryMemory,
         }
 
         impl Agent for BenchAgent {
@@ -367,15 +367,18 @@ impl PerformanceTest {
             }
             fn handle_result(&mut self, _result: ExecutionResult) {}
             fn update_context(&mut self, update: MemoryUpdate) {
-                let _ = self.memory.store(update);
+                let _ = self.memory_writer().store(update);
             }
-            fn memory(&mut self) -> &mut dyn crate::memory::Memory {
-                &mut *self.memory
+            fn memory_reader(&self) -> &dyn crate::memory::MemoryReader {
+                &self.memory
+            }
+            fn memory_writer(&mut self) -> &mut dyn crate::memory::MemoryWriter {
+                &mut self.memory
             }
         }
 
         let agent = BenchAgent {
-            memory: Box::new(InMemoryMemory::new()),
+            memory: InMemoryMemory::new(),
         };
         let registry = MockToolRegistry::new().with_echo_tool();
         let mut coordinator = Coordinator::new(agent, registry);

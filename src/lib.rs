@@ -7,28 +7,33 @@
 //! ## Core Components
 //!
 //! - **[Agent]**: Core trait defining agent behavior with observation, action, and tool usage
-//! - **[Memory]**: Persistent storage for agent state and context
+//! - **[MemoryReader], [MemoryWriter]**: Persistent storage for agent state and context
 //! - **[Tool]**: External capabilities that agents can invoke
 //! - **[Coordinator]**: Runtime that orchestrates agent execution and tool dispatch
 //!
 //! ## Quick Start
 //!
 //! ```rust
-//! use skreaver::{Agent, Memory, MemoryUpdate, Coordinator};
+//! use skreaver::{Agent, MemoryReader, MemoryWriter, MemoryUpdate, Coordinator};
 //! use skreaver::memory::InMemoryMemory;
 //! use skreaver::tool::registry::InMemoryToolRegistry;
+//! use skreaver::tool::{ToolCall, ExecutionResult};
 //!
 //! // Define your agent
 //! struct MyAgent {
-//!     memory: Box<dyn Memory + Send>,
+//!     memory: InMemoryMemory,
 //! }
 //!
 //! impl Agent for MyAgent {
 //!     type Observation = String;
 //!     type Action = String;
 //!
-//!     fn memory(&mut self) -> &mut dyn Memory {
-//!         &mut *self.memory
+//!     fn memory_reader(&self) -> &dyn MemoryReader {
+//!         &self.memory
+//!     }
+//!
+//!     fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+//!         &mut self.memory
 //!     }
 //!
 //!     fn observe(&mut self, input: String) {
@@ -39,8 +44,16 @@
 //!         "Hello from agent".to_string()
 //!     }
 //!
+//!     fn call_tools(&self) -> Vec<ToolCall> {
+//!         Vec::new()
+//!     }
+//!
+//!     fn handle_result(&mut self, result: ExecutionResult) {
+//!         // Handle tool execution results
+//!     }
+//!
 //!     fn update_context(&mut self, update: MemoryUpdate) {
-//!         self.memory().store(update);
+//!         let _ = self.memory_writer().store(update);
 //!     }
 //! }
 //! ```
@@ -60,6 +73,6 @@ pub mod tool;
 
 pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
-pub use memory::{Memory, MemoryUpdate};
+pub use memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
 pub use runtime::Coordinator;
 pub use tool::{ExecutionResult, Tool, ToolCall};

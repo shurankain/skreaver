@@ -5,7 +5,7 @@
 
 use skreaver::{
     Agent, MemoryUpdate, Tool,
-    memory::InMemoryMemory,
+    memory::{InMemoryMemory, MemoryReader, MemoryWriter},
     testing::{
         AgentTestHarness, BenchmarkRunner, IntegrationTest, MockTool, MockToolRegistry,
         PerformanceTest, TestHarnessBuilder, TestRunner, TestScenario,
@@ -16,7 +16,7 @@ use std::time::Duration;
 
 /// Example agent for testing demonstrations
 struct TestDemoAgent {
-    memory: Box<dyn skreaver::memory::Memory>,
+    memory: InMemoryMemory,
     last_input: Option<String>,
     tool_responses: Vec<String>,
 }
@@ -24,7 +24,7 @@ struct TestDemoAgent {
 impl TestDemoAgent {
     fn new() -> Self {
         Self {
-            memory: Box::new(InMemoryMemory::new()),
+            memory: InMemoryMemory::new(),
             last_input: None,
             tool_responses: Vec::new(),
         }
@@ -109,8 +109,12 @@ impl Agent for TestDemoAgent {
         let _ = self.memory.store(update);
     }
 
-    fn memory(&mut self) -> &mut dyn skreaver::memory::Memory {
-        &mut *self.memory
+    fn memory_reader(&self) -> &dyn MemoryReader {
+        &self.memory
+    }
+
+    fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
+        &mut self.memory
     }
 }
 
@@ -313,7 +317,6 @@ fn demo_test_builder() {
 
     let _harness = TestHarnessBuilder::new()
         .with_mock_tools()
-        .with_in_memory_storage()
         .build_with_agent(agent);
 
     println!("  Test harness created with builder pattern");

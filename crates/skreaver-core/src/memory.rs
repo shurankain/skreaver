@@ -227,59 +227,6 @@ impl MemoryUpdate {
     }
 }
 
-/// Basic trait for agent memory systems.
-///
-/// Memory provides persistent storage for agent state, context, and learned
-/// information across interactions. Different implementations can provide
-/// varying levels of persistence, performance, and distribution capabilities.
-///
-/// # Example
-///
-/// ```rust
-/// use skreaver_core::memory::{Memory, MemoryUpdate, MemoryKey};
-/// use skreaver_core::InMemoryMemory;
-///
-/// let mut memory = InMemoryMemory::new();
-///
-/// // Store some context
-/// let key = MemoryKey::new("user_preference").unwrap();
-/// memory.store(MemoryUpdate::from_validated(key.clone(), "concise responses".to_string())).unwrap();
-///
-/// // Retrieve it later
-/// let preference = memory.load(&key).unwrap();
-/// assert_eq!(preference, Some("concise responses".to_string()));
-/// ```
-pub trait Memory: Send + Sync {
-    /// Load a value from memory by its key.
-    ///
-    /// Returns the stored value if the key exists, or `None` if the key
-    /// is not found in the memory system. Returns an error if the operation fails.
-    ///
-    /// # Parameters
-    ///
-    /// * `key` - The validated key identifier to look up
-    ///
-    /// # Returns
-    ///
-    /// `Ok(Some(value))` if the key exists, `Ok(None)` if not found, `Err(MemoryError)` on failure
-    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError>;
-
-    /// Store a key-value pair in memory.
-    ///
-    /// If the key already exists, its value will be updated with the new data.
-    /// The specific persistence behavior (immediate vs. batched writes) depends
-    /// on the memory implementation.
-    ///
-    /// # Parameters
-    ///
-    /// * `update` - The memory update containing validated key and value data
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if successful, `Err(MemoryError)` if the operation fails
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError>;
-}
-
 /// Read-only memory operations trait.
 ///
 /// This trait provides immutable access to memory for read operations.
@@ -494,19 +441,6 @@ where
     }
 }
 
-impl<T> Memory for MemoryCompat<T>
-where
-    T: MemoryReader + MemoryWriter,
-{
-    fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        MemoryReader::load(&self.inner, key)
-    }
-
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        MemoryWriter::store(&mut self.inner, update)
-    }
-}
-
 /// Optional extension for memory types that support snapshot/restore operations.
 ///
 /// This trait provides backup and restore capabilities for memory systems
@@ -516,7 +450,7 @@ where
 /// # Example
 ///
 /// ```rust
-/// use skreaver_core::memory::{Memory, MemoryUpdate, SnapshotableMemory, MemoryKey};
+/// use skreaver_core::memory::{MemoryReader, MemoryWriter, MemoryUpdate, SnapshotableMemory, MemoryKey};
 /// use std::collections::HashMap;
 ///
 /// // Example implementation that supports snapshots
@@ -524,12 +458,23 @@ where
 ///     store: HashMap<String, String>,
 /// }
 ///
-/// impl Memory for ExampleMemory {
-///     fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, skreaver_core::error::MemoryError> {
+/// impl MemoryReader for ExampleMemory {
+///     fn load(&self, key: &MemoryKey) -> Result<Option<String>, skreaver_core::error::MemoryError> {
 ///         Ok(self.store.get(key.as_str()).cloned())
 ///     }
+///     fn load_many(&self, keys: &[MemoryKey]) -> Result<Vec<Option<String>>, skreaver_core::error::MemoryError> {
+///         Ok(keys.iter().map(|key| self.store.get(key.as_str()).cloned()).collect())
+///     }
+/// }
+/// impl MemoryWriter for ExampleMemory {
 ///     fn store(&mut self, update: MemoryUpdate) -> Result<(), skreaver_core::error::MemoryError> {
 ///         self.store.insert(update.key.as_str().to_string(), update.value);
+///         Ok(())
+///     }
+///     fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), skreaver_core::error::MemoryError> {
+///         for update in updates {
+///             self.store.insert(update.key.as_str().to_string(), update.value);
+///         }
 ///         Ok(())
 ///     }
 /// }
@@ -550,7 +495,7 @@ where
 ///
 /// let mut memory = ExampleMemory { store: HashMap::new() };
 /// let data_key = MemoryKey::new("data").unwrap();
-/// memory.store(MemoryUpdate {
+/// MemoryWriter::store(&mut memory, MemoryUpdate {
 ///     key: data_key.clone(),
 ///     value: "important".to_string(),
 /// }).unwrap();
@@ -561,9 +506,9 @@ where
 /// // Restore to a new memory instance  
 /// let mut new_memory = ExampleMemory { store: HashMap::new() };
 /// new_memory.restore(&snapshot).unwrap();
-/// assert_eq!(new_memory.load(&data_key).unwrap(), Some("important".to_string()));
+/// assert_eq!(MemoryReader::load(&new_memory, &data_key).unwrap(), Some("important".to_string()));
 /// ```
-pub trait SnapshotableMemory: Memory {
+pub trait SnapshotableMemory: Send + Sync {
     /// Create a snapshot of the current memory state.
     ///
     /// Returns a serialized representation of all stored data that can
@@ -599,14 +544,37 @@ mod tests {
         store: HashMap<String, String>,
     }
 
-    impl Memory for DummyMemory {
-        fn load(&mut self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
+    impl MemoryReader for DummyMemory {
+        fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
             Ok(self.store.get(key.as_str()).cloned())
         }
 
+        fn load_many(
+            &self,
+            keys: &[MemoryKey],
+        ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+            Ok(keys
+                .iter()
+                .map(|key| self.store.get(key.as_str()).cloned())
+                .collect())
+        }
+    }
+
+    impl MemoryWriter for DummyMemory {
         fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
             self.store
                 .insert(update.key.as_str().to_string(), update.value);
+            Ok(())
+        }
+
+        fn store_many(
+            &mut self,
+            updates: Vec<MemoryUpdate>,
+        ) -> Result<(), crate::error::MemoryError> {
+            for update in updates {
+                self.store
+                    .insert(update.key.as_str().to_string(), update.value);
+            }
             Ok(())
         }
     }
@@ -635,9 +603,12 @@ mod tests {
             store: Default::default(),
         };
         let key = MemoryKey::new("foo").unwrap();
-        mem.store(MemoryUpdate::from_validated(key.clone(), "bar".to_string()))
-            .unwrap();
-        assert_eq!(mem.load(&key).unwrap(), Some("bar".into()));
+        MemoryWriter::store(
+            &mut mem,
+            MemoryUpdate::from_validated(key.clone(), "bar".to_string()),
+        )
+        .unwrap();
+        assert_eq!(MemoryReader::load(&mem, &key).unwrap(), Some("bar".into()));
     }
 
     #[test]
@@ -653,6 +624,9 @@ mod tests {
         new_mem.restore(&snap).unwrap();
 
         let key = MemoryKey::new("a").unwrap();
-        assert_eq!(new_mem.load(&key).unwrap(), Some("1".into()));
+        assert_eq!(
+            MemoryReader::load(&new_mem, &key).unwrap(),
+            Some("1".into())
+        );
     }
 }

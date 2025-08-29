@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::agents::reasoning::coordinator::ReasoningCoordinatorExt;
     use crate::agents::reasoning::rich_result::RichResult;
     use crate::agents::reasoning::states::{AgentFinal, ReasoningState, ReasoningStep};
     use crate::agents::reasoning::tools::{AnalyzeTool, ConcludeTool, DeduceTool, ReflectTool};
-    use crate::agents::reasoning::wrapper::ReasoningAgent;
+    use crate::agents::reasoning::wrapper::ReasoningAgentWrapper;
     use skreaver::memory::InMemoryMemory;
     use skreaver::runtime::Coordinator;
     use skreaver::tool::Tool;
@@ -65,8 +64,8 @@ mod tests {
     #[test]
     fn test_agent_final_result() {
         let memory = Box::new(InMemoryMemory::new());
-        let agent = ReasoningAgent::new_for_test(
-            memory,
+        let agent = ReasoningAgentWrapper::new_for_test(
+            *memory,
             Some("test problem".into()),
             vec![ReasoningStep::new(
                 "reflect",
@@ -90,8 +89,8 @@ mod tests {
     #[test]
     fn test_agent_incomplete_result() {
         let memory = Box::new(InMemoryMemory::new());
-        let agent = ReasoningAgent::new_for_test(
-            memory,
+        let agent = ReasoningAgentWrapper::new_for_test(
+            *memory,
             Some("test problem".into()),
             vec![],
             ReasoningState::Initial,
@@ -102,8 +101,8 @@ mod tests {
 
     #[test]
     fn test_fsm_transitions_order() {
-        let agent = ReasoningAgent::new_for_test(
-            Box::new(InMemoryMemory::new()),
+        let agent = ReasoningAgentWrapper::new_for_test(
+            InMemoryMemory::new(),
             None,
             vec![],
             ReasoningState::Initial,
@@ -155,7 +154,7 @@ mod tests {
         }
 
         // Should be complete now
-        assert!(coordinator.is_complete());
+        assert!(coordinator.agent.is_complete());
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 0); // No more tools to call
 

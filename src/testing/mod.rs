@@ -14,11 +14,11 @@
 //!
 //! ```rust
 //! use skreaver::testing::{MockTool, MockToolRegistry, TestHarnessBuilder, TestScenario};
-//! use skreaver::memory::InMemoryMemory;
+//! use skreaver::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
 //! use skreaver::{Agent, MemoryUpdate, tool::{ExecutionResult, ToolCall}};
 //!
 //! // Example agent implementation
-//! struct TestAgent { memory: Box<dyn skreaver::memory::Memory> }
+//! struct TestAgent { memory: InMemoryMemory }
 //! impl Agent for TestAgent {
 //!     type Observation = String;
 //!     type Action = String;
@@ -26,11 +26,12 @@
 //!     fn act(&mut self) -> String { "response".to_string() }
 //!     fn call_tools(&self) -> Vec<ToolCall> { Vec::new() }
 //!     fn handle_result(&mut self, _result: ExecutionResult) {}
-//!     fn update_context(&mut self, update: MemoryUpdate) { let _ = self.memory.store(update); }
-//!     fn memory(&mut self) -> &mut dyn skreaver::memory::Memory { &mut *self.memory }
+//!     fn update_context(&mut self, update: MemoryUpdate) { let _ = self.memory_writer().store(update); }
+//!     fn memory_reader(&self) -> &dyn MemoryReader { &self.memory }
+//!     fn memory_writer(&mut self) -> &mut dyn MemoryWriter { &mut self.memory }
 //! }
 //!
-//! let agent = TestAgent { memory: Box::new(InMemoryMemory::new()) };
+//! let agent = TestAgent { memory: InMemoryMemory::new() };
 //! let mut harness = TestHarnessBuilder::new()
 //!     .with_mock_tools()
 //!     .build_with_agent(agent);

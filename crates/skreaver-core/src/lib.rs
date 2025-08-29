@@ -12,5 +12,5 @@ pub mod tool;
 pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
 pub use in_memory::InMemoryMemory;
-pub use memory::{Memory, MemoryUpdate};
+pub use memory::{MemoryReader, MemoryUpdate, MemoryWriter};
 pub use tool::{ExecutionResult, Tool, ToolCall};

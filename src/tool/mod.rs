@@ -41,6 +41,8 @@ pub mod registry;
 /// Standard tool library providing common functionality.
 pub mod standard;
 
-pub use core::{ExecutionResult, InvalidToolName, Tool, ToolCall, ToolCallBuildError, ToolName};
+pub use core::{
+    ExecutionResult, InvalidToolName, Tool, ToolCall, ToolCallBuildError, ToolCallBuilder, ToolName,
+};
 pub use registry::ToolRegistry;
 pub use standard::*;
