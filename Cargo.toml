@@ -43,6 +43,9 @@ regex = "1.0"
 html-escape = "0.2"
 base64 = "0.21"
 rand = "0.8"
+# Core crate
+skreaver-core = { path = "crates/skreaver-core" }
 
 [workspace]
-members = [".", "skreaver-cli"]
+members = [".", "skreaver-cli", "crates/skreaver-core"]
+resolver = "2"
