@@ -1,10 +1,11 @@
 //! Example demonstrating the new structured error handling in Skreaver.
 
 use skreaver::{
-    error::{MemoryError, SkreverError, SkreverResult, ToolError},
+    error::{SkreverError, SkreverResult},
     tool::registry::{InMemoryToolRegistry, ToolRegistry},
     tool::{ExecutionResult, Tool, ToolCall, ToolName},
 };
+use skreaver_core::error::{MemoryError, ToolError};
 use std::sync::Arc;
 
 /// Example tool that can fail with different error types
@@ -63,10 +64,9 @@ fn main() -> SkreverResult<()> {
 
     match result {
         Ok(exec_result) => println!("Success: {}", exec_result.output()),
-        Err(ToolError::NotFound { name }) => {
-            println!("Tool '{}' not found in registry", name);
+        Err(error_msg) => {
+            println!("Tool error: {}", error_msg);
         }
-        Err(other_error) => println!("Other tool error: {}", other_error),
     }
 
     // Example 3: Tool execution failure
