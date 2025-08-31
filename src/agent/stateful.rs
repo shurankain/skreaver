@@ -1,4 +1,4 @@
-use crate::memory::MemoryReader;
+use crate::MemoryReader;
 
 /// Stateful agent trait using the typestate pattern for compile-time state safety.
 ///
@@ -26,7 +26,7 @@ use crate::memory::MemoryReader;
 ///
 /// ```rust
 /// use skreaver::agent::{SimpleStatefulAgent, SimpleInitial};
-/// use skreaver::memory::InMemoryMemory;
+/// use skreaver::InMemoryMemory;
 ///
 /// // Agent starts in Initial state
 /// let memory = Box::new(InMemoryMemory::new());
@@ -207,7 +207,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::{MemoryKey, MemoryReader};
+    use crate::{MemoryKey, MemoryReader};
     use skreaver_core::ToolCall;
 
     // Example state types for testing

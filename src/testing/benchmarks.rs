@@ -78,7 +78,7 @@ impl BenchmarkRunner {
     pub fn benchmark_memory(
         &mut self,
         name: impl Into<String>,
-        memory: &mut dyn crate::memory::MemoryWriter,
+        memory: &mut dyn crate::MemoryWriter,
         iterations: usize,
     ) -> &BenchmarkResult {
         let mut durations = Vec::with_capacity(iterations);
@@ -330,7 +330,7 @@ impl PerformanceTest {
     /// Run memory performance benchmarks
     pub fn run_memory_benchmarks() -> Vec<BenchmarkResult> {
         let mut runner = BenchmarkRunner::new();
-        let mut memory = crate::memory::InMemoryMemory::new();
+        let mut memory = crate::InMemoryMemory::new();
 
         runner.benchmark_memory("memory_store_100", &mut memory, 100);
         runner.benchmark_memory("memory_store_1000", &mut memory, 1000);
@@ -344,7 +344,7 @@ impl PerformanceTest {
         println!("============================================");
 
         // Mock agent for testing
-        use crate::{MemoryUpdate, agent::Agent, memory::InMemoryMemory};
+        use crate::{InMemoryMemory, MemoryUpdate, agent::Agent};
         use skreaver_core::{ExecutionResult, ToolCall};
 
         struct BenchAgent {
@@ -366,10 +366,10 @@ impl PerformanceTest {
             fn update_context(&mut self, update: MemoryUpdate) {
                 let _ = self.memory_writer().store(update);
             }
-            fn memory_reader(&self) -> &dyn crate::memory::MemoryReader {
+            fn memory_reader(&self) -> &dyn crate::MemoryReader {
                 &self.memory
             }
-            fn memory_writer(&mut self) -> &mut dyn crate::memory::MemoryWriter {
+            fn memory_writer(&mut self) -> &mut dyn crate::MemoryWriter {
                 &mut self.memory
             }
         }

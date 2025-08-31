@@ -30,7 +30,8 @@ chrono = { version = "0.4", features = ["serde"] }
 skreaver-core = { path = "crates/skreaver-core" }
 skreaver-tools = { path = "crates/skreaver-tools" }
 skreaver-http = { path = "crates/skreaver-http" }
+skreaver-memory = { path = "crates/skreaver-memory" }
 
 [workspace]
-members = [".", "skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http"]
+members = [".", "skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-memory"]
 resolver = "2"

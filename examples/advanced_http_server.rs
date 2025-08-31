@@ -5,9 +5,8 @@
 //! and OpenAPI documentation generation.
 
 use skreaver::{
-    Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryToolRegistry, JsonParseTool,
-    MemoryUpdate, TextUppercaseTool, ToolCall, ToolName,
-    memory::{InMemoryMemory, MemoryReader, MemoryWriter},
+    Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryMemory, InMemoryToolRegistry,
+    JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall, ToolName,
     runtime::{
         HttpAgentRuntime, HttpRuntimeConfig, auth::create_jwt_token, rate_limit::RateLimitConfig,
     },

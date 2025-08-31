@@ -343,12 +343,12 @@ impl LoadTestResult {
 
 /// Test utilities for creating test agents and scenarios
 pub mod test_utils {
-    use crate::{MemoryUpdate, agent::Agent, memory::InMemoryMemory};
+    use crate::{InMemoryMemory, MemoryUpdate, agent::Agent};
     use skreaver_core::{ExecutionResult, ToolCall};
 
     /// Simple test agent for integration testing
     pub struct TestAgent {
-        pub memory: crate::memory::InMemoryMemory,
+        pub memory: crate::InMemoryMemory,
         pub last_input: Option<String>,
         pub responses: Vec<String>,
     }
@@ -407,11 +407,11 @@ pub mod test_utils {
             let _ = self.memory_writer().store(update);
         }
 
-        fn memory_reader(&self) -> &dyn crate::memory::MemoryReader {
+        fn memory_reader(&self) -> &dyn crate::MemoryReader {
             &self.memory
         }
 
-        fn memory_writer(&mut self) -> &mut dyn crate::memory::MemoryWriter {
+        fn memory_writer(&mut self) -> &mut dyn crate::MemoryWriter {
             &mut self.memory
         }
     }

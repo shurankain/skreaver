@@ -4,8 +4,8 @@
 //! for testing agents, tools, and runtime performance.
 
 use skreaver::{
-    Agent, ExecutionResult, MemoryUpdate, Tool, ToolCall, ToolName,
-    memory::{InMemoryMemory, MemoryReader, MemoryWriter},
+    Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, Tool,
+    ToolCall, ToolName,
     testing::{
         AgentTestHarness, BenchmarkRunner, IntegrationTest, MockTool, MockToolRegistry,
         PerformanceTest, TestHarnessBuilder, TestRunner, TestScenario,

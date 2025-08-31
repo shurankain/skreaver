@@ -1,28 +1,33 @@
-//! # Memory Module
+//! # Skreaver Memory
 //!
-//! This module provides persistent storage capabilities for agents. Memory allows agents
+//! This crate provides persistent storage capabilities for Skreaver agents. Memory allows agents
 //! to maintain state across interactions, learn from past experiences, and build context
 //! over time.
 //!
 //! ## Memory Types
 //!
 //! - **[InMemoryMemory]**: Fast, transient storage for development and testing
-//! - **[FileMemory]**: JSON-based file persistence for simple deployments
-//! - **[RedisMemory]**: Distributed storage with Redis backend for production
+//! - **[FileMemory]**: JSON-based file persistence for simple deployments  
+//! - **[RedisMemory]**: Distributed storage with Redis backend for production (requires `redis` feature)
 //! - **[NamespacedMemory]**: Key-value isolation for multi-tenant scenarios
 //!
 //! ## Core Traits
 //!
-//! - **[Memory]**: Basic load/store operations for key-value data (legacy, use MemoryReader/Writer)
 //! - **[MemoryReader]**: Read-only memory operations with concurrent access support
 //! - **[MemoryWriter]**: Write-only memory operations with batch support
 //! - **[TransactionalMemory]**: Atomic transaction support for consistent updates
 //! - **[SnapshotableMemory]**: Extended trait for backup and restore capabilities
 //!
+//! ## Feature Flags
+//!
+//! - **`redis`**: Enables Redis backend support
+//! - **`sqlite`**: Enables SQLite backend support (planned)  
+//! - **`postgres`**: Enables PostgreSQL backend support (planned)
+//!
 //! ## Usage
 //!
 //! ```rust
-//! use skreaver::memory::{MemoryReader, MemoryWriter, MemoryUpdate, InMemoryMemory, MemoryKey};
+//! use skreaver_memory::{MemoryReader, MemoryWriter, MemoryUpdate, InMemoryMemory, MemoryKey};
 //!
 //! let mut memory = InMemoryMemory::new();
 //!
@@ -42,6 +47,8 @@ mod core;
 mod file_memory;
 mod in_memory;
 mod namespaced;
+
+#[cfg(feature = "redis")]
 mod redis_memory;
 
 pub use core::{
@@ -51,4 +58,6 @@ pub use core::{
 pub use file_memory::FileMemory;
 pub use in_memory::InMemoryMemory;
 pub use namespaced::NamespacedMemory;
+
+#[cfg(feature = "redis")]
 pub use redis_memory::RedisMemory;

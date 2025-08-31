@@ -1,8 +1,8 @@
 use super::config::ReasoningProfile;
 use super::rich_result::RichResult;
 use super::states::*;
-use skreaver::memory::{MemoryReader, MemoryUpdate, MemoryWriter};
 use skreaver::{ExecutionResult, ToolCall};
+use skreaver::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
 
 /// Typestate pattern for compile-time state safety
 pub struct TypedReasoningAgent<M, S = Initial>
@@ -298,7 +298,7 @@ where
     fn save_step(&mut self, step: &ReasoningStep) {
         let step_json = serde_json::to_string(step).unwrap_or_default();
         let _ = self.memory.store(MemoryUpdate {
-            key: skreaver::memory::MemoryKey::new("last_reasoning_step").expect("Valid memory key"),
+            key: MemoryKey::new("last_reasoning_step").expect("Valid memory key"),
             value: step_json,
         });
     }

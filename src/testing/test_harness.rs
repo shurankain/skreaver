@@ -403,7 +403,7 @@ mod tests {
     use super::*;
     use crate::MemoryUpdate;
     use crate::agent::Agent;
-    use crate::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
+    use crate::{InMemoryMemory, MemoryReader, MemoryWriter};
     use skreaver_core::{ExecutionResult, ToolCall};
 
     struct TestAgent {

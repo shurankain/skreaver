@@ -15,7 +15,7 @@
 //!
 //! ```rust
 //! use skreaver::{Agent, MemoryReader, MemoryWriter, MemoryUpdate, Coordinator};
-//! use skreaver::memory::InMemoryMemory;
+//! use skreaver::InMemoryMemory;
 //! use skreaver::{InMemoryToolRegistry, ToolCall, ExecutionResult};
 //!
 //! // Define your agent
@@ -65,13 +65,13 @@
 
 pub mod agent;
 pub mod error;
-pub mod memory;
 pub mod testing;
 
 // Re-export core types
 pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
-pub use memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
+// Re-export memory functionality
+pub use skreaver_memory::*;
 
 // Re-export HTTP runtime functionality
 pub use skreaver_http::*;

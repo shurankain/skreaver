@@ -4,8 +4,8 @@ mod tests {
     use crate::agents::reasoning::states::{AgentFinal, ReasoningState, ReasoningStep};
     use crate::agents::reasoning::tools::{AnalyzeTool, ConcludeTool, DeduceTool, ReflectTool};
     use crate::agents::reasoning::wrapper::ReasoningAgentWrapper;
+    use skreaver::InMemoryMemory;
     use skreaver::InMemoryToolRegistry;
-    use skreaver::memory::InMemoryMemory;
     use skreaver::runtime::Coordinator;
     use skreaver::{ExecutionResult, Tool};
     use std::sync::Arc;

@@ -5,9 +5,9 @@
 //! RESTful API interactions.
 
 use skreaver::{
-    Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryToolRegistry, JsonParseTool,
-    MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall, ToolName,
-    memory::InMemoryMemory, runtime::HttpAgentRuntime,
+    Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryMemory, InMemoryToolRegistry,
+    JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall, ToolName,
+    runtime::HttpAgentRuntime,
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;

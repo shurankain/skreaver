@@ -4,7 +4,7 @@ use crate::error::MemoryError;
 /// This provides a practical example of how to implement compile-time state safety
 /// without the complexity of generic associated types. Based on the proven pattern
 /// from the CLI reasoning agent.
-use crate::memory::MemoryReader;
+use crate::{MemoryKey, MemoryReader};
 use skreaver_core::{ExecutionResult, ToolCall};
 
 /// Simple stateful agent with compile-time state transitions.
@@ -72,11 +72,10 @@ impl SimpleStatefulAgent<SimpleInitial> {
 
     fn load_context(&self) -> Result<Vec<String>, MemoryError> {
         // Try to load previous conversation context
-        let key =
-            crate::memory::MemoryKey::new("context").map_err(|_| MemoryError::LoadFailed {
-                key: "context".to_string(),
-                reason: "Invalid key".to_string(),
-            })?;
+        let key = MemoryKey::new("context").map_err(|_| MemoryError::LoadFailed {
+            key: "context".to_string(),
+            reason: "Invalid key".to_string(),
+        })?;
 
         Ok(if let Some(context_json) = self.memory.load(&key)? {
             serde_json::from_str(&context_json).unwrap_or_else(|_| Vec::new())
@@ -231,7 +230,7 @@ impl SimpleStatefulAgent<SimpleComplete> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::InMemoryMemory;
+    use crate::InMemoryMemory;
 
     #[test]
     fn test_stateful_agent_lifecycle_without_tools() {
