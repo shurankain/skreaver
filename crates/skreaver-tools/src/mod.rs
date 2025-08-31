@@ -21,7 +21,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use skreaver::tool::{Tool, ExecutionResult, ToolCall};
+//! use skreaver_core::{Tool, ExecutionResult, ToolCall};
 //!
 //! struct EchoTool;
 //!

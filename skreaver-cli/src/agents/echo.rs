@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use skreaver::agent::Agent;
-use skreaver::runtime::Coordinator;
-use skreaver::{ExecutionResult, InMemoryToolRegistry, Tool};
-use skreaver::{FileMemory, MemoryReader, MemoryUpdate, MemoryWriter};
-use skreaver::{ToolCall, ToolName};
+use skreaver::{
+    ExecutionResult, FileMemory, InMemoryToolRegistry, MemoryReader, MemoryUpdate, MemoryWriter,
+    Tool, ToolCall, ToolName, agent::Agent, runtime::Coordinator,
+};
 
 pub fn run_echo_agent() {
     let memory_path = PathBuf::from("echo_memory.json");

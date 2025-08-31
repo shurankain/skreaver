@@ -4,8 +4,7 @@ use crate::agents::reasoning::tools::{AnalyzeTool, ConcludeTool, DeduceTool, Ref
 use crate::agents::reasoning::wrapper::ReasoningAgentWrapper;
 use std::sync::Arc;
 
-use skreaver::InMemoryToolRegistry;
-use skreaver::runtime::Coordinator;
+use skreaver::{InMemoryToolRegistry, runtime::Coordinator};
 
 pub fn run_reasoning_agent() {
     let agent =

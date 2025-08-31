@@ -1,10 +1,10 @@
 [package]
 name = "skreaver-memory"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Memory backend implementations for Skreaver agents"
 license = "MIT"
-repository = "https://github.com/skreaver/skreaver"
+repository = "https://github.com/shurankain/skreaver"
 keywords = ["ai", "agents", "memory", "persistence", "storage"]
 categories = ["database", "caching", "data-structures"]
 

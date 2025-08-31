@@ -1,8 +1,7 @@
 use super::config::ReasoningProfile;
 use super::rich_result::RichResult;
 use super::states::*;
-use skreaver::{ExecutionResult, ToolCall};
-use skreaver::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
+use skreaver::{ExecutionResult, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall};
 
 /// Typestate pattern for compile-time state safety
 pub struct TypedReasoningAgent<M, S = Initial>

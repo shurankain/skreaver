@@ -1,9 +1,10 @@
 use super::config::ReasoningProfile;
 use super::states::*;
 use super::typestate::TypedReasoningAgent;
-use skreaver::agent::Agent;
-use skreaver::{ExecutionResult, ToolCall};
-use skreaver::{FileMemory, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter};
+use skreaver::{
+    ExecutionResult, FileMemory, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter,
+    ToolCall, agent::Agent,
+};
 
 // Type aliases for convenience
 #[allow(dead_code)]
