@@ -41,8 +41,7 @@ pub mod registry;
 /// Standard tool library providing common functionality.
 pub mod standard;
 
-pub use core::{
-    ExecutionResult, InvalidToolName, Tool, ToolCall, ToolCallBuildError, ToolCallBuilder, ToolName,
-};
+pub use core::{InvalidToolName, ToolCallBuildError, ToolCallBuilder, ToolName};
 pub use registry::ToolRegistry;
+pub use skreaver_core::{ExecutionResult, Tool, ToolCall};
 pub use standard::*;

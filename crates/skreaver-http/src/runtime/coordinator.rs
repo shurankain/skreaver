@@ -1,6 +1,5 @@
-use crate::agent::Agent;
-use crate::memory::MemoryUpdate;
-use crate::tool::{ExecutionResult, ToolCall, ToolRegistry};
+use crate::tool::ToolRegistry;
+use skreaver_core::{Agent, ExecutionResult, MemoryUpdate, ToolCall};
 use std::fmt::Display;
 
 /// Central runtime coordinator for agent execution.

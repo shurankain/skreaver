@@ -5,14 +5,13 @@
 //! rate limiting, and streaming capabilities. The runtime manages agent lifecycle,
 //! handles observations, and provides real-time status information.
 
-use crate::tool::registry::ToolRegistry;
 use crate::{
-    agent::Agent,
     runtime::{
         Coordinator, auth,
         rate_limit::{RateLimitConfig, RateLimitState},
         streaming::{self, StreamingAgentExecutor},
     },
+    tool::ToolRegistry,
 };
 use axum::response::Html;
 use axum::{
@@ -24,6 +23,7 @@ use axum::{
 };
 use futures::Stream;
 use serde::{Deserialize, Serialize};
+use skreaver_core::Agent;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -670,18 +670,15 @@ async fn openapi_spec() -> Json<utoipa::openapi::OpenApi> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        agent::Agent,
-        memory::{InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter},
-        runtime::auth::create_jwt_token,
-        tool::registry::InMemoryToolRegistry,
-        tool::{ExecutionResult, ToolCall},
-    };
+    use crate::{runtime::auth::create_jwt_token, tool::registry::InMemoryToolRegistry};
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
     use serde_json::{Value, json};
+    use skreaver_core::{
+        Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
+    };
     use tower::ServiceExt;
 
     /// Simple test agent that echoes input

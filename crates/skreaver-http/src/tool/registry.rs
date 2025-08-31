@@ -35,11 +35,9 @@ pub trait ToolRegistry {
     /// # Returns
     ///
     /// `Ok(ExecutionResult)` if successful, `Err(ToolError)` if the tool is not found
-    fn try_dispatch(&self, call: ToolCall) -> Result<ExecutionResult, crate::error::ToolError> {
+    fn try_dispatch(&self, call: ToolCall) -> Result<ExecutionResult, String> {
         self.dispatch(call.clone())
-            .ok_or(crate::error::ToolError::NotFound {
-                name: call.name.into_string(),
-            })
+            .ok_or(format!("Tool not found: {}", call.name.as_str()))
     }
 }
 

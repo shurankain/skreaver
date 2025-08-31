@@ -429,7 +429,7 @@ pub trait IntoRuntimeError<T> {
     fn into_runtime_error(self, request_id: RequestId) -> RuntimeResult<T>;
 }
 
-impl<T> IntoRuntimeError<T> for Result<T, crate::error::MemoryError> {
+impl<T> IntoRuntimeError<T> for Result<T, skreaver_core::SkreverError> {
     fn into_runtime_error(self, request_id: RequestId) -> RuntimeResult<T> {
         self.map_err(|e| RuntimeError::MemoryError {
             operation: "memory_operation".to_string(),

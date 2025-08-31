@@ -22,30 +22,10 @@ thiserror = "1.0"
 # Standard tools dependencies
 reqwest = { version = "0.12", features = ["json"] }
 quick-xml = { version = "0.36", features = ["serialize"] }
-# HTTP runtime dependencies
-axum = { version = "0.7", features = ["macros"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "limit"] }
-chrono = { version = "0.4", features = ["serde"] }
-# Authentication and security
-jsonwebtoken = "9.0"
-once_cell = "1.0"
-# Rate limiting
-governor = "0.6"
-# Streaming and async
-futures = "0.3"
-tokio-stream = "0.1"
-# OpenAPI documentation
-utoipa = { version = "4.0", features = ["axum_extras", "chrono"] }
-utoipa-swagger-ui = { version = "4.0", features = ["axum"] }
-# Security and validation
-regex = "1.0"
-html-escape = "0.2"
-base64 = "0.21"
-rand = "0.8"
-# Core crate
+# Core crates
 skreaver-core = { path = "crates/skreaver-core" }
+skreaver-http = { path = "crates/skreaver-http" }
 
 [workspace]
-members = [".", "skreaver-cli", "crates/skreaver-core"]
+members = [".", "skreaver-cli", "crates/skreaver-core", "crates/skreaver-http"]
 resolver = "2"

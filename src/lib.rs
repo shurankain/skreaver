@@ -67,12 +67,12 @@
 pub mod agent;
 pub mod error;
 pub mod memory;
-pub mod runtime;
 pub mod testing;
-pub mod tool;
 
+// Re-export core types
 pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
 pub use memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
-pub use runtime::Coordinator;
-pub use tool::{ExecutionResult, Tool, ToolCall};
+
+// Re-export HTTP runtime functionality
+pub use skreaver_http::*;
