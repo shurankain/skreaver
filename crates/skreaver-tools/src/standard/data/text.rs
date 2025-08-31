@@ -2,8 +2,8 @@
 //!
 //! This module provides tools for text manipulation, analysis, and transformation.
 
-use crate::tool::{ExecutionResult, Tool};
 use serde::{Deserialize, Serialize};
+use skreaver_core::{ExecutionResult, Tool};
 
 /// Configuration for text processing operations
 #[derive(Debug, Clone, Deserialize, Serialize)]

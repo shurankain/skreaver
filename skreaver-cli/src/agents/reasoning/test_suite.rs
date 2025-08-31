@@ -4,10 +4,10 @@ mod tests {
     use crate::agents::reasoning::states::{AgentFinal, ReasoningState, ReasoningStep};
     use crate::agents::reasoning::tools::{AnalyzeTool, ConcludeTool, DeduceTool, ReflectTool};
     use crate::agents::reasoning::wrapper::ReasoningAgentWrapper;
+    use skreaver::InMemoryToolRegistry;
     use skreaver::memory::InMemoryMemory;
     use skreaver::runtime::Coordinator;
-    use skreaver::tool::Tool;
-    use skreaver::tool::registry::InMemoryToolRegistry;
+    use skreaver::{ExecutionResult, Tool};
     use std::sync::Arc;
 
     struct TestTool {
@@ -19,19 +19,16 @@ mod tests {
             "test"
         }
 
-        fn call(&self, input: String) -> skreaver::tool::ExecutionResult {
+        fn call(&self, input: String) -> ExecutionResult {
             if self.json_output {
                 let payload = RichResult {
                     summary: format!("Test summary for: {}", input.trim()),
                     confidence: 0.95,
                     evidence: vec!["test evidence".into()],
                 };
-                skreaver::tool::ExecutionResult::success(serde_json::to_string(&payload).unwrap())
+                ExecutionResult::success(serde_json::to_string(&payload).unwrap())
             } else {
-                skreaver::tool::ExecutionResult::success(format!(
-                    "Plain text output for: {}",
-                    input.trim()
-                ))
+                ExecutionResult::success(format!("Plain text output for: {}", input.trim()))
             }
         }
     }

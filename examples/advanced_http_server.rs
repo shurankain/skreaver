@@ -5,15 +5,11 @@
 //! and OpenAPI documentation generation.
 
 use skreaver::{
-    Agent, MemoryUpdate,
+    Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryToolRegistry, JsonParseTool,
+    MemoryUpdate, TextUppercaseTool, ToolCall, ToolName,
     memory::{InMemoryMemory, MemoryReader, MemoryWriter},
     runtime::{
         HttpAgentRuntime, HttpRuntimeConfig, auth::create_jwt_token, rate_limit::RateLimitConfig,
-    },
-    tool::{
-        ExecutionResult, ToolCall,
-        registry::InMemoryToolRegistry,
-        standard::{FileReadTool, HttpGetTool, JsonParseTool, TextUppercaseTool},
     },
 };
 use std::sync::Arc;
@@ -111,21 +107,21 @@ impl Agent for AdvancedDemoAgent {
         if let Some(input) = &self.last_input {
             if let Some(text) = input.strip_prefix("transform:") {
                 return vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("text_uppercase").unwrap(),
+                    name: ToolName::new("text_uppercase").unwrap(),
                     input: text.to_string(),
                 }];
             }
 
             if let Some(url) = input.strip_prefix("fetch:") {
                 return vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("http_get").unwrap(),
+                    name: ToolName::new("http_get").unwrap(),
                     input: url.to_string(),
                 }];
             }
 
             if input.starts_with("analyze:") {
                 return vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("json_parse").unwrap(),
+                    name: ToolName::new("json_parse").unwrap(),
                     input: format!(
                         r#"{{"analysis_input": "{}", "timestamp": "{}", "agent_state": "analyzing"}}"#,
                         input,

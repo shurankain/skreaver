@@ -19,9 +19,10 @@
 //! ## Usage Pattern
 //!
 //! ```rust
-//! use skreaver::{Coordinator, Agent, MemoryUpdate};
-//! use skreaver::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
-//! use skreaver::tool::{registry::InMemoryToolRegistry, ExecutionResult, ToolCall};
+//! use skreaver_core::{Agent, MemoryUpdate, InMemoryMemory};
+//! use skreaver_core::memory::{MemoryReader, MemoryWriter};
+//! use skreaver_tools::{InMemoryToolRegistry, ExecutionResult, ToolCall};
+//! use skreaver_http::runtime::Coordinator;
 //!
 //! // Example agent implementation
 //! struct SimpleAgent {

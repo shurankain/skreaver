@@ -1,12 +1,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use skreaver::ToolCall;
 use skreaver::agent::Agent;
 use skreaver::memory::{FileMemory, MemoryReader, MemoryUpdate, MemoryWriter};
 use skreaver::runtime::Coordinator;
-use skreaver::tool::registry::InMemoryToolRegistry;
-use skreaver::tool::{ExecutionResult, Tool};
+use skreaver::{ExecutionResult, InMemoryToolRegistry, Tool};
+use skreaver::{ToolCall, ToolName};
 
 pub fn run_multi_agent() {
     let memory_path = PathBuf::from("multi_memory.json");
@@ -66,11 +65,11 @@ impl Agent for MultiToolAgent {
             .map(|input| {
                 vec![
                     ToolCall {
-                        name: skreaver::tool::ToolName::new("uppercase").expect("Valid tool name"),
+                        name: ToolName::new("uppercase").expect("Valid tool name"),
                         input: input.clone(),
                     },
                     ToolCall {
-                        name: skreaver::tool::ToolName::new("reverse").expect("Valid tool name"),
+                        name: ToolName::new("reverse").expect("Valid tool name"),
                         input: input.clone(),
                     },
                 ]

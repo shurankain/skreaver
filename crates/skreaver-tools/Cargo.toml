@@ -1,0 +1,34 @@
+[package]
+name = "skreaver-tools"
+version = "0.1.0"
+edition = "2024"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Standard tool library for Skreaver agent infrastructure"
+repository = "https://github.com/shurankain/skreaver"
+homepage = "https://ohusiev.com"
+keywords = ["agent", "tools", "ai", "rust"]
+categories = ["development-tools", "ai"]
+
+[features]
+default = ["io", "network", "data"]
+io = []
+network = ["dep:reqwest"]
+data = ["dep:quick-xml"]
+
+[dependencies]
+# Core dependencies
+skreaver-core = { path = "../skreaver-core", version = "0.1.0" }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+thiserror = "1.0"
+
+# Network tools
+reqwest = { version = "0.12", features = ["json"], optional = true }
+
+# Data processing tools
+quick-xml = { version = "0.36", features = ["serialize"], optional = true }
+regex = "1.0"
+
+# I/O tools
+tokio = { version = "1", features = ["fs", "rt", "rt-multi-thread"] }

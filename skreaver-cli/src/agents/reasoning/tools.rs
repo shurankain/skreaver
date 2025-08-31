@@ -1,5 +1,5 @@
 use super::rich_result::RichResult;
-use skreaver::tool::{ExecutionResult, Tool};
+use skreaver::{ExecutionResult, Tool};
 
 pub struct AnalyzeTool;
 

@@ -50,8 +50,9 @@ pub trait ToolRegistry {
 /// # Example
 ///
 /// ```rust
-/// use skreaver::tool::registry::{InMemoryToolRegistry, ToolRegistry};
-/// use skreaver::tool::{Tool, ExecutionResult, ToolCall, ToolName};
+/// use skreaver_tools::{InMemoryToolRegistry, ToolRegistry};
+/// use skreaver_core::{Tool, ExecutionResult, ToolCall};
+/// use skreaver_tools::ToolName;
 /// use std::sync::Arc;
 ///
 /// struct EchoTool;
@@ -171,7 +172,7 @@ impl super::registry::ToolRegistry for InMemoryToolRegistry {
 mod tests {
     use super::*;
     use crate::Tool;
-    use crate::tool::ToolName;
+    use crate::ToolName;
     use std::sync::Arc;
 
     struct UppercaseTool;

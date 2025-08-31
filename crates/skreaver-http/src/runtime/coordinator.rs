@@ -1,5 +1,5 @@
-use crate::tool::ToolRegistry;
 use skreaver_core::{Agent, ExecutionResult, MemoryUpdate, ToolCall};
+use skreaver_tools::ToolRegistry;
 use std::fmt::Display;
 
 /// Central runtime coordinator for agent execution.
@@ -16,9 +16,10 @@ use std::fmt::Display;
 /// # Example
 ///
 /// ```rust
-/// use skreaver::{Coordinator, Agent, MemoryUpdate};
-/// use skreaver::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
-/// use skreaver::tool::{registry::InMemoryToolRegistry, ExecutionResult, ToolCall};
+/// use skreaver_core::{Agent, MemoryUpdate, InMemoryMemory};
+/// use skreaver_core::memory::{MemoryReader, MemoryWriter};
+/// use skreaver_tools::{InMemoryToolRegistry, ExecutionResult, ToolCall};
+/// use skreaver_http::runtime::Coordinator;
 ///
 /// struct SimpleAgent {
 ///     memory: InMemoryMemory,

@@ -28,8 +28,9 @@ tower-http = { version = "0.5", features = ["cors"] }
 chrono = { version = "0.4", features = ["serde"] }
 # Core crates
 skreaver-core = { path = "crates/skreaver-core" }
+skreaver-tools = { path = "crates/skreaver-tools" }
 skreaver-http = { path = "crates/skreaver-http" }
 
 [workspace]
-members = [".", "skreaver-cli", "crates/skreaver-core", "crates/skreaver-http"]
+members = [".", "skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http"]
 resolver = "2"

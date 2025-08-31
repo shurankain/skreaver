@@ -1,6 +1,6 @@
 use crate::agents::reasoning::wrapper::ReasoningAgent;
+use skreaver::InMemoryToolRegistry;
 use skreaver::runtime::Coordinator;
-use skreaver::tool::registry::InMemoryToolRegistry;
 
 /// Extension trait for reasoning-specific coordinator methods
 pub trait ReasoningCoordinatorExt {

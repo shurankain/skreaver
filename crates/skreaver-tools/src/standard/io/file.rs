@@ -3,8 +3,8 @@
 //! This module provides file system operation tools for reading, writing,
 //! and managing files and directories safely.
 
-use crate::tool::{ExecutionResult, Tool};
 use serde::{Deserialize, Serialize};
+use skreaver_core::{ExecutionResult, Tool};
 use std::fs;
 use std::path::Path;
 

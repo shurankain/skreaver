@@ -13,8 +13,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use skreaver::tool::standard::{HttpGetTool, FileReadTool};
-//! use skreaver::tool::registry::InMemoryToolRegistry;
+//! use skreaver_tools::{HttpGetTool, FileReadTool, InMemoryToolRegistry};
 //! use std::sync::Arc;
 //!
 //! let registry = InMemoryToolRegistry::new()

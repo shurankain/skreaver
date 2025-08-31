@@ -3,7 +3,8 @@
 //! This module provides mock tool implementations that return predictable responses,
 //! allowing for reliable and controlled agent testing scenarios.
 
-use crate::tool::{ExecutionResult, Tool, ToolCall, ToolName, ToolRegistry};
+use skreaver_core::{ExecutionResult, Tool, ToolCall};
+use skreaver_http::{ToolName, ToolRegistry};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

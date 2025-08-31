@@ -3,7 +3,8 @@
 //! This module provides controlled testing environments for agents with
 //! scenarios, assertions, and comprehensive result tracking.
 
-use crate::{agent::Agent, runtime::Coordinator, testing::MockToolRegistry, tool::ToolRegistry};
+use crate::{agent::Agent, runtime::Coordinator, testing::MockToolRegistry};
+use skreaver_http::ToolRegistry;
 use std::fmt;
 use std::time::{Duration, Instant};
 
@@ -403,7 +404,7 @@ mod tests {
     use crate::MemoryUpdate;
     use crate::agent::Agent;
     use crate::memory::{InMemoryMemory, MemoryReader, MemoryWriter};
-    use crate::tool::{ExecutionResult, ToolCall};
+    use skreaver_core::{ExecutionResult, ToolCall};
 
     struct TestAgent {
         memory: InMemoryMemory,

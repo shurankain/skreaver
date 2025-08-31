@@ -6,12 +6,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use skreaver::ToolCall;
 use skreaver::agent::Agent;
 use skreaver::memory::{FileMemory, MemoryReader, MemoryUpdate, MemoryWriter};
 use skreaver::runtime::Coordinator;
-use skreaver::tool::registry::InMemoryToolRegistry;
-use skreaver::tool::{ExecutionResult, standard::*};
+use skreaver::{ExecutionResult, InMemoryToolRegistry};
+use skreaver::{
+    FileReadTool, FileWriteTool, HttpGetTool, JsonParseTool, JsonTransformTool, TextAnalyzeTool,
+    TextReverseTool, TextSearchTool, TextUppercaseTool,
+};
+use skreaver::{ToolCall, ToolName};
 
 pub fn run_standard_tools_agent() {
     let memory_path = PathBuf::from("standard_tools_memory.json");
@@ -132,34 +135,31 @@ impl Agent for StandardToolsAgent {
             if let Some(text) = input.strip_prefix("text ") {
                 vec![
                     ToolCall {
-                        name: skreaver::tool::ToolName::new("text_analyze")
-                            .expect("Valid tool name"),
+                        name: ToolName::new("text_analyze").expect("Valid tool name"),
                         input: text.to_string(),
                     },
                     ToolCall {
-                        name: skreaver::tool::ToolName::new("text_uppercase")
-                            .expect("Valid tool name"),
+                        name: ToolName::new("text_uppercase").expect("Valid tool name"),
                         input: text.to_string(),
                     },
                     ToolCall {
-                        name: skreaver::tool::ToolName::new("text_reverse")
-                            .expect("Valid tool name"),
+                        name: ToolName::new("text_reverse").expect("Valid tool name"),
                         input: text.to_string(),
                     },
                 ]
             } else if let Some(json) = input.strip_prefix("json ") {
                 vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("json_parse").expect("Valid tool name"),
+                    name: ToolName::new("json_parse").expect("Valid tool name"),
                     input: json.to_string(),
                 }]
             } else if let Some(path) = input.strip_prefix("file ") {
                 vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("file_read").expect("Valid tool name"),
+                    name: ToolName::new("file_read").expect("Valid tool name"),
                     input: serde_json::json!({"path": path}).to_string(),
                 }]
             } else if let Some(url) = input.strip_prefix("http ") {
                 vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("http_get").expect("Valid tool name"),
+                    name: ToolName::new("http_get").expect("Valid tool name"),
                     input: url.to_string(),
                 }]
             } else {

@@ -66,7 +66,7 @@ pub trait StatefulAgent<State> {
     /// # Returns
     ///
     /// Vector of tool calls to be executed, or empty vector if no tools needed
-    fn get_tool_calls(&self) -> Vec<crate::tool::ToolCall>;
+    fn get_tool_calls(&self) -> Vec<skreaver_core::ToolCall>;
 
     /// Check if the agent has completed its processing.
     ///
@@ -133,7 +133,7 @@ pub trait StatefulAgentTransitions<State>: StatefulAgent<State> {
     ///
     /// This method is only available on agents in processing states.
     /// Based on the tool results, the agent transitions to the next state.
-    fn handle_result(self, result: crate::tool::ExecutionResult) -> Self::HandleResult
+    fn handle_result(self, result: skreaver_core::ExecutionResult) -> Self::HandleResult
     where
         State: ProcessingState;
 
@@ -208,7 +208,7 @@ where
 mod tests {
     use super::*;
     use crate::memory::{MemoryKey, MemoryReader};
-    use crate::tool::ToolCall;
+    use skreaver_core::ToolCall;
 
     // Example state types for testing
     #[derive(Debug)]

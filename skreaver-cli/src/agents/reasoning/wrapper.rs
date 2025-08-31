@@ -3,7 +3,7 @@ use super::states::*;
 use super::typestate::TypedReasoningAgent;
 use skreaver::agent::Agent;
 use skreaver::memory::{FileMemory, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter};
-use skreaver::tool::{ExecutionResult, ToolCall};
+use skreaver::{ExecutionResult, ToolCall};
 
 // Type aliases for convenience
 #[allow(dead_code)]

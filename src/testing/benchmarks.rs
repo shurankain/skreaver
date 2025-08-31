@@ -7,8 +7,9 @@ use crate::{
     agent::Agent,
     runtime::Coordinator,
     testing::{MockTool, MockToolRegistry},
-    tool::{Tool, ToolRegistry},
 };
+use skreaver_core::Tool;
+use skreaver_http::ToolRegistry;
 use std::time::{Duration, Instant};
 
 /// Performance benchmark runner
@@ -343,12 +344,8 @@ impl PerformanceTest {
         println!("============================================");
 
         // Mock agent for testing
-        use crate::{
-            MemoryUpdate,
-            agent::Agent,
-            memory::InMemoryMemory,
-            tool::{ExecutionResult, ToolCall},
-        };
+        use crate::{MemoryUpdate, agent::Agent, memory::InMemoryMemory};
+        use skreaver_core::{ExecutionResult, ToolCall};
 
         struct BenchAgent {
             memory: InMemoryMemory,

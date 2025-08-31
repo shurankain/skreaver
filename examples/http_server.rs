@@ -5,14 +5,9 @@
 //! RESTful API interactions.
 
 use skreaver::{
-    Agent, MemoryReader, MemoryUpdate, MemoryWriter,
-    memory::InMemoryMemory,
-    runtime::HttpAgentRuntime,
-    tool::{
-        ExecutionResult, ToolCall,
-        registry::InMemoryToolRegistry,
-        standard::{FileReadTool, HttpGetTool, JsonParseTool, TextUppercaseTool},
-    },
+    Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryToolRegistry, JsonParseTool,
+    MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall, ToolName,
+    memory::InMemoryMemory, runtime::HttpAgentRuntime,
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -62,21 +57,21 @@ impl Agent for HttpDemoAgent {
         if let Some(input) = &self.last_input {
             if let Some(text) = input.strip_prefix("uppercase:") {
                 return vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("text_uppercase").unwrap(),
+                    name: ToolName::new("text_uppercase").unwrap(),
                     input: text.to_string(),
                 }];
             }
 
             if let Some(url) = input.strip_prefix("fetch:") {
                 return vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("http_get").unwrap(),
+                    name: ToolName::new("http_get").unwrap(),
                     input: url.to_string(),
                 }];
             }
 
             if input == "demo_json" {
                 return vec![ToolCall {
-                    name: skreaver::tool::ToolName::new("json_parse").unwrap(),
+                    name: ToolName::new("json_parse").unwrap(),
                     input: r#"{"message": "Hello from HTTP agent!", "timestamp": "2024-01-01T00:00:00Z"}"#.to_string(),
                 }];
             }

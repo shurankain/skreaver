@@ -4,18 +4,11 @@
 //! including HTTP clients, file operations, JSON processing, and text manipulation.
 
 use skreaver::{
-    MemoryUpdate,
+    ExecutionResult, FileReadTool, FileWriteTool, HttpGetTool, InMemoryToolRegistry, JsonParseTool,
+    MemoryUpdate, TextAnalyzeTool, TextUppercaseTool, ToolCall, ToolName,
     agent::Agent,
     memory::{InMemoryMemory, MemoryReader, MemoryWriter},
     runtime::Coordinator,
-    tool::{
-        ExecutionResult, ToolCall,
-        registry::InMemoryToolRegistry,
-        standard::{
-            FileReadTool, FileWriteTool, HttpGetTool, JsonParseTool, TextAnalyzeTool,
-            TextUppercaseTool,
-        },
-    },
 };
 use std::sync::Arc;
 
@@ -49,25 +42,25 @@ impl Agent for StandardToolsAgent {
                 "test_text" => {
                     vec![
                         ToolCall {
-                            name: skreaver::tool::ToolName::new("text_uppercase").unwrap(),
+                            name: ToolName::new("text_uppercase").unwrap(),
                             input: "hello world".to_string(),
                         },
                         ToolCall {
-                            name: skreaver::tool::ToolName::new("text_analyze").unwrap(),
+                            name: ToolName::new("text_analyze").unwrap(),
                             input: "hello world".to_string(),
                         },
                     ]
                 }
                 "test_json" => {
                     vec![ToolCall {
-                        name: skreaver::tool::ToolName::new("json_parse").unwrap(),
+                        name: ToolName::new("json_parse").unwrap(),
                         input: r#"{"name": "Skreaver", "version": "0.1.0", "tools": ["http", "file", "json", "text"]}"#.to_string(),
                     }]
                 }
                 "test_file" => {
                     vec![
                         ToolCall {
-                            name: skreaver::tool::ToolName::new("file_write").unwrap(),
+                            name: ToolName::new("file_write").unwrap(),
                             input: serde_json::json!({
                                 "path": "/tmp/skreaver_test.txt",
                                 "content": "Hello from Skreaver standard tools!"
@@ -75,7 +68,7 @@ impl Agent for StandardToolsAgent {
                             .to_string(),
                         },
                         ToolCall {
-                            name: skreaver::tool::ToolName::new("file_read").unwrap(),
+                            name: ToolName::new("file_read").unwrap(),
                             input: serde_json::json!({
                                 "path": "/tmp/skreaver_test.txt"
                             })

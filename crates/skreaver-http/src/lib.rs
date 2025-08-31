@@ -14,8 +14,7 @@
 //! - **WebSocket** (`unstable-websocket`): WebSocket support (unstable)
 
 pub mod runtime;
-pub mod tool;
 
 // Re-export main types for public API
 pub use runtime::*;
-pub use tool::{ExecutionResult, Tool, ToolCall, ToolRegistry};
+pub use skreaver_tools::*;

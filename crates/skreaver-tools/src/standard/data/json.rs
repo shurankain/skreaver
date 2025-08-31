@@ -3,10 +3,10 @@
 //! This module provides tools for processing and transforming structured data
 //! including JSON and XML parsing, validation, and transformation.
 
-use crate::tool::{ExecutionResult, Tool};
 use quick_xml::de::from_str as xml_from_str;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonValue};
+use skreaver_core::{ExecutionResult, Tool};
 
 /// Configuration for data processing operations
 #[derive(Debug, Clone, Deserialize, Serialize)]

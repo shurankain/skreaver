@@ -3,9 +3,9 @@
 //! This module provides HTTP client tools for making REST API requests with
 //! authentication support, error handling, and flexible configuration.
 
-use crate::tool::{ExecutionResult, Tool};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use skreaver_core::{ExecutionResult, Tool};
 use std::collections::HashMap;
 use std::time::Duration;
 

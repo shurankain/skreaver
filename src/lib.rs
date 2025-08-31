@@ -16,8 +16,7 @@
 //! ```rust
 //! use skreaver::{Agent, MemoryReader, MemoryWriter, MemoryUpdate, Coordinator};
 //! use skreaver::memory::InMemoryMemory;
-//! use skreaver::tool::registry::InMemoryToolRegistry;
-//! use skreaver::tool::{ToolCall, ExecutionResult};
+//! use skreaver::{InMemoryToolRegistry, ToolCall, ExecutionResult};
 //!
 //! // Define your agent
 //! struct MyAgent {

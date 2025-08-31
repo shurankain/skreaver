@@ -5,7 +5,7 @@ use crate::error::MemoryError;
 /// without the complexity of generic associated types. Based on the proven pattern
 /// from the CLI reasoning agent.
 use crate::memory::MemoryReader;
-use crate::tool::{ExecutionResult, ToolCall};
+use skreaver_core::{ExecutionResult, ToolCall};
 
 /// Simple stateful agent with compile-time state transitions.
 ///

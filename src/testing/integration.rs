@@ -3,10 +3,9 @@
 //! This module provides end-to-end integration testing capabilities,
 //! particularly for the HTTP runtime and agent coordination.
 
-use crate::{
-    agent::Agent, runtime::HttpAgentRuntime, testing::MockToolRegistry, tool::ToolRegistry,
-};
+use crate::{agent::Agent, runtime::HttpAgentRuntime, testing::MockToolRegistry};
 use serde_json::Value;
+use skreaver_http::ToolRegistry;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -344,12 +343,8 @@ impl LoadTestResult {
 
 /// Test utilities for creating test agents and scenarios
 pub mod test_utils {
-    use crate::{
-        MemoryUpdate,
-        agent::Agent,
-        memory::InMemoryMemory,
-        tool::{ExecutionResult, ToolCall},
-    };
+    use crate::{MemoryUpdate, agent::Agent, memory::InMemoryMemory};
+    use skreaver_core::{ExecutionResult, ToolCall};
 
     /// Simple test agent for integration testing
     pub struct TestAgent {
