@@ -34,6 +34,34 @@ skreaver-memory = { path = "crates/skreaver-memory" }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
 
+# Benchmarking dependencies
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+tokio-test = "0.4"
+tempfile = "3.8"
+rand = "0.8"
+
 [workspace]
 members = ["skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-memory", "crates/skreaver-testing", "crates/skreaver"]
 resolver = "2"
+
+# Benchmark configuration
+[[bench]]
+name = "simple_benchmarks" 
+harness = false
+
+[[bench]]
+name = "realistic_benchmarks"
+harness = false
+
+[[bench]]
+name = "comprehensive_benchmark"
+harness = false
+
+[[bench]]
+name = "optimized_benchmark"
+harness = false
+
+[[bench]]
+name = "quick_benchmark"
+harness = false
