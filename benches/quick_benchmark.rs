@@ -4,6 +4,7 @@
 
 use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
 use skreaver::{InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool};
+use skreaver_core::memory::SnapshotableMemory;
 use skreaver_tools::standard::data::json::JsonParseTool;
 use skreaver_tools::standard::io::file::{FileReadTool, FileWriteTool};
 use std::time::Duration;
@@ -40,6 +41,21 @@ fn bench_memory_quick(c: &mut Criterion) {
             let session_id = rand::random::<u32>() % 100;
             let key = MemoryKey::new(&format!("session_{}", session_id)).unwrap();
             black_box(memory.load(black_box(&key)))
+        })
+    });
+
+    // Test snapshot functionality
+    group.bench_function("snapshot", |b| {
+        b.iter(|| {
+            let mut snapshot_memory = InMemoryMemory::new();
+            // Add some test data
+            for i in 0..10 {
+                let key = format!("key_{}", i);
+                let value = format!("value_{}", i);
+                let update = MemoryUpdate::new(&key, &value).unwrap();
+                snapshot_memory.store(update).unwrap();
+            }
+            black_box(snapshot_memory.snapshot())
         })
     });
 

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use crate::memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, TransactionalMemory};
+use crate::memory::{
+    MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
+};
 
 /// Fast, transient memory implementation using HashMap with concurrent access.
 ///
@@ -148,5 +150,50 @@ impl TransactionalMemory for InMemoryMemory {
                 Err(err)
             }
         }
+    }
+}
+
+impl SnapshotableMemory for InMemoryMemory {
+    fn snapshot(&mut self) -> Option<String> {
+        let store = self.store.read().ok()?;
+
+        // Convert HashMap<MemoryKey, String> to HashMap<String, String> for JSON serialization
+        let serializable_store: HashMap<String, String> = store
+            .iter()
+            .map(|(key, value)| (key.as_str().to_string(), value.clone()))
+            .collect();
+
+        serde_json::to_string(&serializable_store).ok()
+    }
+
+    fn restore(&mut self, snapshot: &str) -> Result<(), crate::error::MemoryError> {
+        // Parse the JSON snapshot
+        let serializable_store: HashMap<String, String> =
+            serde_json::from_str(snapshot).map_err(|e| {
+                crate::error::MemoryError::RestoreFailed {
+                    reason: format!("JSON parsing failed: {}", e),
+                }
+            })?;
+
+        // Convert back to HashMap<MemoryKey, String>
+        let mut new_store = HashMap::new();
+        for (key_str, value) in serializable_store {
+            let memory_key =
+                MemoryKey::new(&key_str).map_err(|e| crate::error::MemoryError::RestoreFailed {
+                    reason: format!("Invalid key '{}': {}", key_str, e),
+                })?;
+            new_store.insert(memory_key, value);
+        }
+
+        // Replace the store
+        let mut store =
+            self.store
+                .write()
+                .map_err(|e| crate::error::MemoryError::RestoreFailed {
+                    reason: format!("Lock poisoned during restore: {}", e),
+                })?;
+        *store = new_store;
+
+        Ok(())
     }
 }

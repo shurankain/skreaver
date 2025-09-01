@@ -40,6 +40,7 @@ criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 tokio-test = "0.4"
 tempfile = "3.8"
 rand = "0.8"
+skreaver-testing = { path = "crates/skreaver-testing" }
 
 [workspace]
 members = ["skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-memory", "crates/skreaver-testing", "crates/skreaver"]

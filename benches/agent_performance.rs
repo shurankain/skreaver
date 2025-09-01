@@ -6,12 +6,12 @@
 //! - Tool loop scenario: HTTP GET → JSON parse → Text transform → File write
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use skreaver::testing::{MockTool, MockToolRegistry};
 use skreaver::{
     Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
     ToolName,
 };
 use skreaver_http::runtime::Coordinator;
+use skreaver_testing::{MockTool, MockToolRegistry};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
@@ -221,7 +221,7 @@ fn bench_memory_operations(c: &mut Criterion) {
                 let value = format!("bench_value_{}", i);
 
                 if let Ok(update) = MemoryUpdate::new(&key, &value) {
-                    black_box(agent.memory.store(update));
+                    let _ = black_box(agent.memory.store(update));
                 }
             }
 
@@ -229,7 +229,7 @@ fn bench_memory_operations(c: &mut Criterion) {
             for i in 0..10 {
                 let key = format!("bench_key_{}", i);
                 if let Ok(key_obj) = skreaver_core::MemoryKey::new(&key) {
-                    black_box(agent.memory.load(&key_obj));
+                    let _ = black_box(agent.memory.load(&key_obj));
                 }
             }
         })

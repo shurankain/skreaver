@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use super::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
+use super::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory};
 use skreaver_core::error::MemoryError;
 
 /// A simple persistent key-value memory that syncs to a JSON file.
@@ -70,5 +70,29 @@ impl MemoryWriter for FileMemory {
 impl Default for FileMemory {
     fn default() -> Self {
         Self::new(std::env::temp_dir().join("skreaver_temp_memory.json"))
+    }
+}
+
+impl SnapshotableMemory for FileMemory {
+    fn snapshot(&mut self) -> Option<String> {
+        // For FileMemory, we can simply serialize the current cache
+        // which represents the current state
+        serde_json::to_string(&self.cache).ok()
+    }
+
+    fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
+        // Parse the JSON snapshot
+        let new_cache: HashMap<String, String> =
+            serde_json::from_str(snapshot).map_err(|e| MemoryError::RestoreFailed {
+                reason: format!("JSON parsing failed: {}", e),
+            })?;
+
+        // Replace the current cache
+        self.cache = new_cache;
+
+        // Persist the restored state to file
+        self.persist();
+
+        Ok(())
     }
 }

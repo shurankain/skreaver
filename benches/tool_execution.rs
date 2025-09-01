@@ -5,8 +5,9 @@
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use skreaver::ToolName;
-use skreaver::testing::{MockTool, MockToolRegistry, ToolRegistry};
 use skreaver_core::{Tool, ToolCall};
+use skreaver_testing::{MockTool, MockToolRegistry};
+use skreaver_tools::ToolRegistry;
 use std::time::Duration;
 
 /// Benchmark individual tool execution
@@ -33,7 +34,7 @@ fn bench_tool_execution(c: &mut Criterion) {
         ),
         (
             "large_response_tool",
-            MockTool::new("large_tool").with_default_response(&"x".repeat(10000)),
+            MockTool::new("large_tool").with_default_response("x".repeat(10000)),
         ),
     ];
 
@@ -62,13 +63,13 @@ fn bench_tool_registry(c: &mut Criterion) {
 
     let medium_registry = (0..20).fold(MockToolRegistry::new(), |registry, i| {
         registry.with_tool(
-            MockTool::new(&format!("tool{}", i)).with_default_response(&format!("response{}", i)),
+            MockTool::new(format!("tool{}", i)).with_default_response(format!("response{}", i)),
         )
     });
 
     let large_registry = (0..100).fold(MockToolRegistry::new(), |registry, i| {
         registry.with_tool(
-            MockTool::new(&format!("tool{}", i)).with_default_response(&format!("response{}", i)),
+            MockTool::new(format!("tool{}", i)).with_default_response(format!("response{}", i)),
         )
     });
 
@@ -88,7 +89,7 @@ fn bench_tool_registry(c: &mut Criterion) {
                         name: ToolName::new("tool1").unwrap(),
                         input: "benchmark input".to_string(),
                     };
-                    black_box(registry.dispatch(black_box(tool_call)))
+                    black_box(registry.dispatch(black_box(tool_call)).unwrap())
                 })
             },
         );
@@ -131,7 +132,7 @@ fn bench_batch_tool_execution(c: &mut Criterion) {
                             input: format!("batch input {}", i),
                         };
 
-                        black_box(registry.dispatch(black_box(tool_call)));
+                        black_box(registry.dispatch(black_box(tool_call)).unwrap());
                     }
                 })
             },
@@ -159,7 +160,7 @@ fn bench_tool_error_handling(c: &mut Criterion) {
                 name: ToolName::new("success_tool").unwrap(),
                 input: "test input".to_string(),
             };
-            black_box(registry.execute(black_box(tool_call)))
+            black_box(registry.dispatch(black_box(tool_call)).unwrap())
         })
     });
 
@@ -169,7 +170,7 @@ fn bench_tool_error_handling(c: &mut Criterion) {
                 name: ToolName::new("failure_tool").unwrap(),
                 input: "input".to_string(),
             };
-            black_box(registry.execute(black_box(tool_call)))
+            black_box(registry.dispatch(black_box(tool_call)).unwrap())
         })
     });
 
@@ -179,7 +180,7 @@ fn bench_tool_error_handling(c: &mut Criterion) {
                 name: ToolName::new("nonexistent").unwrap(),
                 input: "test input".to_string(),
             };
-            black_box(registry.execute(black_box(tool_call)))
+            black_box(registry.dispatch(black_box(tool_call)).unwrap())
         })
     });
 
@@ -212,7 +213,7 @@ fn bench_tool_name_operations(c: &mut Criterion) {
     group.bench_function("valid_tool_names", |b| {
         b.iter(|| {
             for name in &valid_names {
-                black_box(ToolName::new(black_box(name)));
+                let _ = black_box(ToolName::new(black_box(name)));
             }
         })
     });
@@ -220,7 +221,7 @@ fn bench_tool_name_operations(c: &mut Criterion) {
     group.bench_function("invalid_tool_names", |b| {
         b.iter(|| {
             for name in &invalid_names {
-                black_box(ToolName::new(black_box(name)));
+                let _ = black_box(ToolName::new(black_box(name)));
             }
         })
     });

@@ -7,8 +7,9 @@
 //! - Memory usage under load
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use skreaver_core::memory::SnapshotableMemory;
 use skreaver_core::{InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
-use skreaver_memory::{FileMemory, SnapshotableMemory};
+use skreaver_memory::FileMemory;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
@@ -48,7 +49,7 @@ fn bench_memory_basic_operations(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let temp_dir = TempDir::new().unwrap();
-                FileMemory::new(temp_dir.path().join("bench.db")).unwrap()
+                FileMemory::new(temp_dir.path().join("bench.db"))
             },
             |mut memory| {
                 let update = MemoryUpdate::new("benchmark_key", "benchmark_value").unwrap();
@@ -62,7 +63,7 @@ fn bench_memory_basic_operations(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let temp_dir = TempDir::new().unwrap();
-                let mut memory = FileMemory::new(temp_dir.path().join("bench.db")).unwrap();
+                let mut memory = FileMemory::new(temp_dir.path().join("bench.db"));
                 let update = MemoryUpdate::new("benchmark_key", "benchmark_value").unwrap();
                 memory.store(update).unwrap();
                 (memory, MemoryKey::new("benchmark_key").unwrap())
@@ -95,7 +96,7 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
                         let key = format!("key_{}", i);
                         let value = format!("value_{}", i);
                         let update = MemoryUpdate::new(&key, &value).unwrap();
-                        black_box(memory.store(update));
+                        let _ = black_box(memory.store(update));
                     }
                 })
             },
@@ -119,7 +120,7 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
                     |memory| {
                         for i in 0..count {
                             let key = MemoryKey::new(&format!("key_{}", i)).unwrap();
-                            black_box(memory.load(&key));
+                            let _ = black_box(memory.load(&key));
                         }
                     },
                     criterion::BatchSize::SmallInput,
@@ -134,14 +135,14 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
                 b.iter_batched(
                     || {
                         let temp_dir = TempDir::new().unwrap();
-                        FileMemory::new(temp_dir.path().join("bench.db")).unwrap()
+                        FileMemory::new(temp_dir.path().join("bench.db"))
                     },
                     |mut memory| {
                         for i in 0..count {
                             let key = format!("key_{}", i);
                             let value = format!("value_{}", i);
                             let update = MemoryUpdate::new(&key, &value).unwrap();
-                            black_box(memory.store(update));
+                            let _ = black_box(memory.store(update));
                         }
                     },
                     criterion::BatchSize::SmallInput,
@@ -178,14 +179,15 @@ fn bench_memory_concurrent_access(c: &mut Criterion) {
                                 let key = format!("task_{}_key_{}", task_id, i);
                                 let value = format!("task_{}_value_{}", task_id, i);
                                 let update = MemoryUpdate::new(&key, &value).unwrap();
-                                black_box(memory.store(update));
+                                let _ = black_box(memory.store(update));
                             }
                         });
                         handles.push(handle);
                     }
 
                     for handle in handles {
-                        black_box(handle.await.unwrap());
+                        handle.await.unwrap();
+                        black_box(());
                     }
                 })
             },
@@ -200,19 +202,17 @@ fn bench_memory_snapshots(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_snapshots");
 
     group.sample_size(200);
-    group.measurement_time(Duration::from_secs(15));
+    group.measurement_time(Duration::from_secs(10));
 
-    // Benchmark snapshot creation with different data sizes
-    for data_size in [10, 100, 1000].iter() {
+    // Test snapshots with InMemoryMemory
+    for data_size in [10, 100, 500].iter() {
         group.bench_with_input(
-            BenchmarkId::new("snapshot_create", data_size),
+            BenchmarkId::new("inmemory_snapshot_create", data_size),
             data_size,
             |b, &size| {
                 b.iter_batched(
                     || {
-                        let temp_dir = TempDir::new().unwrap();
-                        let mut memory = FileMemory::new(temp_dir.path().join("bench.db")).unwrap();
-
+                        let mut memory = InMemoryMemory::new();
                         // Populate with test data
                         for i in 0..size {
                             let key = format!("key_{}", i);
@@ -222,21 +222,19 @@ fn bench_memory_snapshots(c: &mut Criterion) {
                         }
                         memory
                     },
-                    |memory| black_box(memory.create_snapshot()),
+                    |mut memory| black_box(memory.snapshot()),
                     criterion::BatchSize::SmallInput,
                 )
             },
         );
 
         group.bench_with_input(
-            BenchmarkId::new("snapshot_restore", data_size),
+            BenchmarkId::new("inmemory_snapshot_restore", data_size),
             data_size,
             |b, &size| {
                 b.iter_batched(
                     || {
-                        let temp_dir = TempDir::new().unwrap();
-                        let mut memory = FileMemory::new(temp_dir.path().join("bench.db")).unwrap();
-
+                        let mut memory = InMemoryMemory::new();
                         // Populate with test data
                         for i in 0..size {
                             let key = format!("key_{}", i);
@@ -245,12 +243,73 @@ fn bench_memory_snapshots(c: &mut Criterion) {
                             memory.store(update).unwrap();
                         }
 
-                        let snapshot = memory.create_snapshot().unwrap();
-                        let empty_memory =
-                            FileMemory::new(temp_dir.path().join("restore.db")).unwrap();
+                        let snapshot = memory.snapshot();
+                        let empty_memory = InMemoryMemory::new();
                         (empty_memory, snapshot)
                     },
-                    |(mut memory, snapshot)| black_box(memory.restore_snapshot(snapshot)),
+                    |(mut memory, snapshot)| {
+                        if let Some(snap) = snapshot {
+                            black_box(memory.restore(&snap))
+                        } else {
+                            black_box(Ok(()))
+                        }
+                    },
+                    criterion::BatchSize::SmallInput,
+                )
+            },
+        );
+
+        // Test snapshots with FileMemory
+        group.bench_with_input(
+            BenchmarkId::new("file_memory_snapshot_create", data_size),
+            data_size,
+            |b, &size| {
+                b.iter_batched(
+                    || {
+                        let temp_dir = TempDir::new().unwrap();
+                        let mut memory = FileMemory::new(temp_dir.path().join("bench.db"));
+                        // Populate with test data
+                        for i in 0..size {
+                            let key = format!("key_{}", i);
+                            let value = format!("value_{}", i);
+                            let update = MemoryUpdate::new(&key, &value).unwrap();
+                            memory.store(update).unwrap();
+                        }
+                        memory
+                    },
+                    |mut memory| black_box(memory.snapshot()),
+                    criterion::BatchSize::SmallInput,
+                )
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("file_memory_snapshot_restore", data_size),
+            data_size,
+            |b, &size| {
+                b.iter_batched(
+                    || {
+                        let temp_dir = TempDir::new().unwrap();
+                        let mut memory = FileMemory::new(temp_dir.path().join("bench.db"));
+                        // Populate with test data
+                        for i in 0..size {
+                            let key = format!("key_{}", i);
+                            let value = format!("value_{}", i);
+                            let update = MemoryUpdate::new(&key, &value).unwrap();
+                            memory.store(update).unwrap();
+                        }
+
+                        let snapshot = memory.snapshot();
+                        let empty_memory = FileMemory::new(temp_dir.path().join("restore.db"));
+                        (empty_memory, snapshot)
+                    },
+                    |(mut memory, snapshot)| {
+                        if let Some(snap) = snapshot {
+                            black_box(memory.restore(&snap))
+                        } else {
+                            black_box(Ok(()))
+                        }
+                    },
                     criterion::BatchSize::SmallInput,
                 )
             },
@@ -295,7 +354,7 @@ fn bench_memory_value_sizes(c: &mut Criterion) {
                 b.iter_batched(
                     || {
                         let temp_dir = TempDir::new().unwrap();
-                        FileMemory::new(temp_dir.path().join("bench.db")).unwrap()
+                        FileMemory::new(temp_dir.path().join("bench.db"))
                     },
                     |mut memory| {
                         let update = MemoryUpdate::new("benchmark_key", value).unwrap();

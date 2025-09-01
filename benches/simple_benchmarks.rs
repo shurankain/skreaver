@@ -4,10 +4,10 @@
 //! This gives us immediate baseline performance measurements.
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use skreaver::testing::{MockTool, MockToolRegistry};
 use skreaver::{
     InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool, ToolCall, ToolName,
 };
+use skreaver_testing::{MockTool, MockToolRegistry};
 use skreaver_tools::ToolRegistry;
 use std::time::Duration;
 
@@ -155,8 +155,8 @@ fn bench_registry_scalability(c: &mut Criterion) {
         // Build registry with specified number of tools
         let registry = (0..count).fold(MockToolRegistry::new(), |reg, i| {
             reg.with_tool(
-                MockTool::new(&format!("tool_{}", i))
-                    .with_default_response(&format!("response_{}", i)),
+                MockTool::new(format!("tool_{}", i))
+                    .with_default_response(format!("response_{}", i)),
             )
         });
 
