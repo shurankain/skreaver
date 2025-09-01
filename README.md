@@ -15,6 +15,7 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - File-backed memory support via `FileMemory`
 - **HTTP runtime with RESTful API endpoints**
 - **Standard tool library (HTTP, File, JSON, Text processing)**
+- **Comprehensive performance benchmarking suite**
 - Designed for performance and modularity
 
 ---
@@ -65,6 +66,7 @@ Core components implemented:
 * `FileMemory` (persistent key-value storage)
 * **Axum-based HTTP runtime with RESTful endpoints**
 * **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
+* **Comprehensive performance benchmarking framework**
 * Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`)
 * Self-hosted CI pipeline
 
@@ -128,6 +130,32 @@ The HTTP runtime supports all standard tools and provides full agent lifecycle m
 
 ---
 
+## ⚡ Performance Benchmarks
+
+Skreaver includes comprehensive performance benchmarks to validate its efficiency:
+
+```bash
+# Quick benchmarks (completes in ~30 seconds)
+cargo bench --bench quick_benchmark
+
+# Optimized benchmarks with detailed metrics
+cargo bench --bench optimized_benchmark
+
+# Memory-focused benchmarks
+cargo bench --bench memory_operations
+
+# Realistic I/O benchmarks
+cargo bench --bench realistic_benchmarks
+```
+
+**Performance Highlights:**
+- Memory operations: ~350ns store, ~130ns load
+- File I/O: ~17μs read (1KB), ~111μs write (1KB) 
+- JSON processing: ~3.5μs simple, ~5.5μs complex
+- **8-500x faster than Python agent frameworks** (see `PERFORMANCE_COMPARISON.md`)
+
+---
+
 ▶️ Try it now:
 
 ```bash
@@ -139,6 +167,9 @@ cargo run --example standard_tools
 # HTTP server (RESTful agent runtime)
 cargo run --example http_server
 # Then test with: curl http://localhost:3000/health
+
+# Performance benchmarks
+cargo bench --bench quick_benchmark
 ```
 
 ---
