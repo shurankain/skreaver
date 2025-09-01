@@ -25,6 +25,7 @@ tokio = { version = "1.0", features = ["fs"], optional = true }
 redis = { version = "0.25", optional = true, features = ["tokio-comp"] }
 rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 tokio-postgres = { version = "0.7", optional = true }
+uuid = { version = "1.0", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3.8"

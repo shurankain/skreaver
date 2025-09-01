@@ -12,5 +12,12 @@ pub mod tool;
 pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
 pub use in_memory::InMemoryMemory;
-pub use memory::{MemoryReader, MemoryUpdate, MemoryWriter};
+pub use memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
 pub use tool::{ExecutionResult, Tool, ToolCall};
+
+// Re-export agent extensions
+pub use agent::{
+    CompleteState, InitialState, ProcessingState, SimpleComplete, SimpleInitial, SimpleProcessing,
+    SimpleStatefulAgent, SimpleToolExecution, StatefulAgent, StatefulAgentAdapter,
+    StatefulAgentTransitions, ToolExecutionState,
+};

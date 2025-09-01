@@ -93,7 +93,7 @@ impl MemoryWriter for RedisMemory {
             pipe.set(update.key.as_str(), update.value);
         }
 
-        pipe.exec(&mut *conn).unwrap();
+        pipe.execute(&mut *conn).unwrap();
         Ok(())
     }
 }
@@ -145,7 +145,7 @@ impl<'a> MemoryWriter for RedisTransactionWriter<'a> {
         for update in updates {
             pipe.set(update.key.as_str(), update.value);
         }
-        pipe.exec(self.memory.conn).unwrap();
+        pipe.execute(self.memory.conn).unwrap();
         Ok(())
     }
 }
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn redis_memory_with_namespace() {
-        use crate::memory::NamespacedMemory;
+        use crate::NamespacedMemory;
 
         // Create a Redis backend
         let redis = RedisMemory::new("redis://127.0.0.1/").unwrap();
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn redis_memory_snapshot_and_restore() {
-        use crate::memory::{NamespacedMemory, SnapshotableMemory};
+        use crate::{NamespacedMemory, SnapshotableMemory};
 
         // Step 1: Write data to a namespaced Redis memory for Agent 47
         let redis = RedisMemory::new("redis://127.0.0.1/").unwrap();

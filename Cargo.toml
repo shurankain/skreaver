@@ -1,5 +1,5 @@
 [package]
-name = "skreaver"
+name = "skreaver-workspace"
 version = "0.1.0"
 edition = "2024"
 authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
@@ -31,7 +31,9 @@ skreaver-core = { path = "crates/skreaver-core" }
 skreaver-tools = { path = "crates/skreaver-tools" }
 skreaver-http = { path = "crates/skreaver-http" }
 skreaver-memory = { path = "crates/skreaver-memory" }
+# Meta crate for examples
+skreaver = { path = "crates/skreaver", features = ["testing"] }
 
 [workspace]
-members = [".", "skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-memory"]
+members = ["skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-memory", "crates/skreaver-testing", "crates/skreaver"]
 resolver = "2"

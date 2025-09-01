@@ -1,77 +1,24 @@
 //! # Skreaver
 //!
 //! Skreaver is a Rust-native coordination runtime for building modular AI agents.
-//! It provides a flexible architecture for creating autonomous agents that can
-//! reason, use tools, and maintain memory across interactions.
+//! This is a compatibility wrapper that re-exports from the main skreaver crate.
 //!
-//! ## Core Components
+//! ## Migration Note
 //!
-//! - **[Agent]**: Core trait defining agent behavior with observation, action, and tool usage
-//! - **[MemoryReader], [MemoryWriter]**: Persistent storage for agent state and context
-//! - **[Tool]**: External capabilities that agents can invoke
-//! - **[Coordinator]**: Runtime that orchestrates agent execution and tool dispatch
-//!
-//! ## Quick Start
+//! For new code, prefer importing from the main `skreaver` crate instead:
 //!
 //! ```rust
-//! use skreaver::{Agent, MemoryReader, MemoryWriter, MemoryUpdate, Coordinator};
-//! use skreaver::InMemoryMemory;
-//! use skreaver::{InMemoryToolRegistry, ToolCall, ExecutionResult};
+//! // New preferred way
+//! use skreaver::{Agent, MemoryReader, MemoryWriter};
 //!
-//! // Define your agent
-//! struct MyAgent {
-//!     memory: InMemoryMemory,
-//! }
-//!
-//! impl Agent for MyAgent {
-//!     type Observation = String;
-//!     type Action = String;
-//!
-//!     fn memory_reader(&self) -> &dyn MemoryReader {
-//!         &self.memory
-//!     }
-//!
-//!     fn memory_writer(&mut self) -> &mut dyn MemoryWriter {
-//!         &mut self.memory
-//!     }
-//!
-//!     fn observe(&mut self, input: String) {
-//!         // Process observation
-//!     }
-//!
-//!     fn act(&mut self) -> String {
-//!         "Hello from agent".to_string()
-//!     }
-//!
-//!     fn call_tools(&self) -> Vec<ToolCall> {
-//!         Vec::new()
-//!     }
-//!
-//!     fn handle_result(&mut self, result: ExecutionResult) {
-//!         // Handle tool execution results
-//!     }
-//!
-//!     fn update_context(&mut self, update: MemoryUpdate) {
-//!         let _ = self.memory_writer().store(update);
-//!     }
-//! }
+//! // Or use specific crates for more fine-grained control  
+//! use skreaver_core::{Agent as CoreAgent, MemoryReader as CoreMemoryReader, MemoryWriter as CoreMemoryWriter};
+//! use skreaver_tools::{HttpGetTool, JsonParseTool};
+//! use skreaver_http::runtime::Coordinator;
 //! ```
-//!
-//! ## Architecture
-//!
-//! Skreaver follows a modular architecture where agents coordinate through a runtime
-//! that manages tool execution and memory persistence. This enables building complex
-//! AI systems with clear separation of concerns and robust error handling.
 
-pub mod agent;
-pub mod error;
-pub mod testing;
-
-// Re-export core types
-pub use agent::Agent;
-pub use error::{SkreverError, SkreverResult};
-// Re-export memory functionality
-pub use skreaver_memory::*;
-
-// Re-export HTTP runtime functionality
+// Re-export everything from the main skreaver crate for compatibility
+pub use skreaver_core::*;
 pub use skreaver_http::*;
+pub use skreaver_memory::*;
+pub use skreaver_tools::{ExecutionResult, Tool, ToolCall};

@@ -1,0 +1,30 @@
+[package]
+name = "skreaver"
+version = "0.1.0"
+edition = "2024"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Rust-native coordination runtime for building modular AI agents"
+repository = "https://github.com/shurankain/skreaver"
+homepage = "https://ohusiev.com"
+keywords = ["agent", "infrastructure", "ai", "rust"]
+categories = ["development-tools", "ai"]
+
+[features]
+default = []  # Core functionality only by default
+auth = ["skreaver-http/auth"]
+openapi = ["skreaver-http/openapi"]
+openapi-ui = ["openapi", "skreaver-http/openapi-ui"]  # Dev builds only
+sqlite = ["skreaver-memory/sqlite"]
+postgres = ["skreaver-memory/postgres"]
+redis = ["skreaver-memory/redis"]
+streaming = ["skreaver-http/streaming"]
+unstable-websocket = ["streaming", "skreaver-http/unstable-websocket"]
+testing = ["skreaver-testing"]
+
+[dependencies]
+skreaver-core = { path = "../skreaver-core", version = "0.1.0" }
+skreaver-tools = { path = "../skreaver-tools", version = "0.1.0" }
+skreaver-memory = { path = "../skreaver-memory", version = "0.1.0" }
+skreaver-http = { path = "../skreaver-http", version = "0.1.0" }
+skreaver-testing = { path = "../skreaver-testing", version = "0.1.0", optional = true }
