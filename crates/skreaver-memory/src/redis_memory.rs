@@ -31,13 +31,13 @@ impl RedisMemory {
 impl MemoryReader for RedisMemory {
     fn load(&self, key: &MemoryKey) -> Result<Option<String>, MemoryError> {
         let mut conn = self.conn.lock().map_err(|e| MemoryError::LoadFailed {
-            key: key.as_str().to_string(),
+            key: key.clone(),
             reason: format!("Lock poisoned: {}", e),
         })?;
 
         conn.get::<_, Option<String>>(key.as_str())
             .map_err(|e| MemoryError::LoadFailed {
-                key: key.as_str().to_string(),
+                key: key.clone(),
                 reason: e.to_string(),
             })
     }
@@ -48,14 +48,14 @@ impl MemoryReader for RedisMemory {
         }
 
         let mut conn = self.conn.lock().map_err(|e| MemoryError::LoadFailed {
-            key: "batch".to_string(),
+            key: MemoryKey::new("batch").unwrap(),
             reason: format!("Lock poisoned: {}", e),
         })?;
 
         let key_strs: Vec<&str> = keys.iter().map(|k| k.as_str()).collect();
         let values: Vec<Option<String>> =
             conn.get(key_strs).map_err(|e| MemoryError::LoadFailed {
-                key: "batch".to_string(),
+                key: MemoryKey::new("batch").unwrap(),
                 reason: e.to_string(),
             })?;
 
@@ -66,13 +66,13 @@ impl MemoryReader for RedisMemory {
 impl MemoryWriter for RedisMemory {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
         let mut conn = self.conn.lock().map_err(|e| MemoryError::StoreFailed {
-            key: update.key.as_str().to_string(),
+            key: update.key.clone(),
             reason: format!("Lock poisoned: {}", e),
         })?;
 
         conn.set::<_, _, ()>(update.key.as_str(), update.value)
             .map_err(|e| MemoryError::StoreFailed {
-                key: update.key.as_str().to_string(),
+                key: update.key.clone(),
                 reason: e.to_string(),
             })
     }
@@ -83,7 +83,7 @@ impl MemoryWriter for RedisMemory {
         }
 
         let mut conn = self.conn.lock().map_err(|e| MemoryError::StoreFailed {
-            key: "batch".to_string(),
+            key: MemoryKey::new("batch").unwrap(),
             reason: format!("Lock poisoned: {}", e),
         })?;
 
@@ -135,7 +135,7 @@ impl<'a> MemoryWriter for RedisTransactionWriter<'a> {
             .conn
             .set::<_, _, ()>(update.key.as_str(), update.value)
             .map_err(|e| MemoryError::StoreFailed {
-                key: update.key.as_str().to_string(),
+                key: update.key.clone(),
                 reason: e.to_string(),
             })
     }
@@ -158,13 +158,13 @@ impl RedisMemory {
         ttl_secs: u64,
     ) -> Result<(), MemoryError> {
         let mut conn = self.conn.lock().map_err(|e| MemoryError::StoreFailed {
-            key: update.key.as_str().to_string(),
+            key: update.key.clone(),
             reason: format!("Lock poisoned: {}", e),
         })?;
 
         conn.set_ex(update.key.as_str(), &update.value, ttl_secs)
             .map_err(|e| MemoryError::StoreFailed {
-                key: update.key.as_str().to_string(),
+                key: update.key.clone(),
                 reason: e.to_string(),
             })
     }

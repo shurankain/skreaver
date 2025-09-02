@@ -1,7 +1,7 @@
 //! Example demonstrating the new structured error handling in Skreaver.
 
 use skreaver::{
-    ExecutionResult, InMemoryToolRegistry, Tool, ToolCall, ToolRegistry,
+    ExecutionResult, InMemoryToolRegistry, MemoryKey, Tool, ToolCall, ToolRegistry,
     error::{SkreverError, SkreverResult},
 };
 use skreaver_core::error::{MemoryError, ToolError};
@@ -79,7 +79,7 @@ fn main() -> SkreverResult<()> {
     // Example 4: Memory error handling
     println!("\n❌ Example 4: Memory error example");
     let memory_error = MemoryError::StoreFailed {
-        key: "test_key".to_string(),
+        key: MemoryKey::new("test_key").unwrap(),
         reason: "Disk full".to_string(),
     };
 

@@ -72,8 +72,9 @@ impl SimpleStatefulAgent<SimpleInitial> {
 
     fn load_context(&self) -> Result<Vec<String>, MemoryError> {
         // Try to load previous conversation context
+        let fallback_key = MemoryKey::new("context_fallback").unwrap();
         let key = MemoryKey::new("context").map_err(|_| MemoryError::LoadFailed {
-            key: "context".to_string(),
+            key: fallback_key,
             reason: "Invalid key".to_string(),
         })?;
 

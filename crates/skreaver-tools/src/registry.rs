@@ -60,7 +60,7 @@ pub trait ToolRegistry {
 /// impl Tool for EchoTool {
 ///     fn name(&self) -> &str { "echo" }
 ///     fn call(&self, input: String) -> ExecutionResult {
-///         ExecutionResult::Success(input)
+///         ExecutionResult::Success { output: input }
 ///     }
 /// }
 ///
@@ -219,7 +219,9 @@ mod tests {
         }
 
         fn call(&self, input: String) -> ExecutionResult {
-            ExecutionResult::Success(input.to_uppercase())
+            ExecutionResult::Success {
+                output: input.to_uppercase(),
+            }
         }
     }
 
@@ -231,7 +233,9 @@ mod tests {
         }
 
         fn call(&self, input: String) -> ExecutionResult {
-            ExecutionResult::Success(input.chars().rev().collect())
+            ExecutionResult::Success {
+                output: input.chars().rev().collect(),
+            }
         }
     }
 

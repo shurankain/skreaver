@@ -489,13 +489,13 @@ pub enum ExecutionResult {
     ///
     /// The output can be any string data - plain text, JSON, XML, etc.
     /// The format depends on the specific tool implementation.
-    Success(String),
+    Success { output: String },
 
-    /// Tool execution failed with the given error message.
+    /// Tool execution failed with the given error.
     ///
     /// This indicates that the tool encountered an error, received
     /// invalid input, or could not complete the requested operation.
-    Failure(String),
+    Failure { error: String },
 }
 
 impl ExecutionResult {
@@ -509,7 +509,7 @@ impl ExecutionResult {
     ///
     /// An `ExecutionResult::Success` variant
     pub fn success(output: String) -> Self {
-        ExecutionResult::Success(output)
+        ExecutionResult::Success { output }
     }
 
     /// Create a failed execution result.
@@ -522,7 +522,9 @@ impl ExecutionResult {
     ///
     /// An `ExecutionResult::Failure` variant
     pub fn failure(error_message: String) -> Self {
-        ExecutionResult::Failure(error_message)
+        ExecutionResult::Failure {
+            error: error_message,
+        }
     }
 
     /// Check if the execution was successful.
@@ -531,7 +533,7 @@ impl ExecutionResult {
     ///
     /// `true` if this is a Success variant, `false` otherwise
     pub fn is_success(&self) -> bool {
-        matches!(self, ExecutionResult::Success(_))
+        matches!(self, ExecutionResult::Success { .. })
     }
 
     /// Check if the execution failed.
@@ -540,17 +542,42 @@ impl ExecutionResult {
     ///
     /// `true` if this is a Failure variant, `false` otherwise
     pub fn is_failure(&self) -> bool {
-        matches!(self, ExecutionResult::Failure(_))
+        matches!(self, ExecutionResult::Failure { .. })
     }
 
-    /// Get the output regardless of success/failure status.
+    /// Get the output string (for success) or error message (for failure).
     ///
     /// # Returns
     ///
-    /// A reference to the output or error message
+    /// A reference to the output string or error message
     pub fn output(&self) -> &str {
         match self {
-            ExecutionResult::Success(output) | ExecutionResult::Failure(output) => output,
+            ExecutionResult::Success { output } => output,
+            ExecutionResult::Failure { error } => error,
+        }
+    }
+
+    /// Get the success output if available.
+    ///
+    /// # Returns
+    ///
+    /// `Some(output)` if successful, `None` if failed
+    pub fn success_output(&self) -> Option<&str> {
+        match self {
+            ExecutionResult::Success { output } => Some(output),
+            ExecutionResult::Failure { .. } => None,
+        }
+    }
+
+    /// Get the error message if available.
+    ///
+    /// # Returns
+    ///
+    /// `Some(error)` if failed, `None` if successful
+    pub fn error_message(&self) -> Option<&str> {
+        match self {
+            ExecutionResult::Success { .. } => None,
+            ExecutionResult::Failure { error } => Some(error),
         }
     }
 
@@ -561,8 +588,8 @@ impl ExecutionResult {
     /// `Ok(output)` if successful, `Err(error_message)` if failed
     pub fn into_result(self) -> Result<String, String> {
         match self {
-            ExecutionResult::Success(output) => Ok(output),
-            ExecutionResult::Failure(error) => Err(error),
+            ExecutionResult::Success { output } => Ok(output),
+            ExecutionResult::Failure { error } => Err(error),
         }
     }
 }
@@ -588,9 +615,9 @@ impl ExecutionResult {
 ///
 ///     fn call(&self, input: String) -> ExecutionResult {
 ///         if let Ok(num) = input.parse::<f64>() {
-///             ExecutionResult::Success((num * 2.0).to_string())
+///             ExecutionResult::Success { output: (num * 2.0).to_string() }
 ///         } else {
-///             ExecutionResult::Failure("Invalid number".to_string())
+///             ExecutionResult::Failure { error: "Invalid number".to_string() }
 ///         }
 ///     }
 /// }
@@ -635,7 +662,9 @@ mod tests {
         }
 
         fn call(&self, input: String) -> ExecutionResult {
-            ExecutionResult::Success(format!("Echo: {input}"))
+            ExecutionResult::Success {
+                output: format!("Echo: {input}"),
+            }
         }
     }
 

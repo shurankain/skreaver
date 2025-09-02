@@ -57,7 +57,7 @@ impl MemoryReader for InMemoryMemory {
             .store
             .read()
             .map_err(|e| crate::error::MemoryError::LoadFailed {
-                key: key.as_str().to_string(),
+                key: key.clone(),
                 reason: format!("Lock poisoned: {}", e),
             })?;
         Ok(store.get(key).cloned())
@@ -67,14 +67,25 @@ impl MemoryReader for InMemoryMemory {
         &self,
         keys: &[MemoryKey],
     ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let batch_key = MemoryKey::new("batch").unwrap();
         let store = self
             .store
             .read()
             .map_err(|e| crate::error::MemoryError::LoadFailed {
-                key: "batch".to_string(),
+                key: batch_key,
                 reason: format!("Lock poisoned: {}", e),
             })?;
-        Ok(keys.iter().map(|key| store.get(key).cloned()).collect())
+
+        // Pre-allocate result vector with exact capacity
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            result.push(store.get(key).cloned());
+        }
+        Ok(result)
     }
 }
 
@@ -84,7 +95,7 @@ impl MemoryWriter for InMemoryMemory {
             .store
             .write()
             .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: update.key.as_str().to_string(),
+                key: update.key.clone(),
                 reason: format!("Lock poisoned: {}", e),
             })?;
         store.insert(update.key, update.value);
@@ -92,13 +103,21 @@ impl MemoryWriter for InMemoryMemory {
     }
 
     fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        let batch_key = MemoryKey::new("batch").unwrap();
         let mut store = self
             .store
             .write()
             .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: "batch".to_string(),
+                key: batch_key,
                 reason: format!("Lock poisoned: {}", e),
             })?;
+
+        // Reserve capacity if we know the size
+        store.reserve(updates.len());
         for update in updates {
             store.insert(update.key, update.value);
         }

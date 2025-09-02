@@ -53,10 +53,16 @@ pub enum ToolError {
 #[derive(Debug, Clone)]
 pub enum MemoryError {
     /// Failed to store data in memory.
-    StoreFailed { key: String, reason: String },
+    StoreFailed {
+        key: crate::memory::MemoryKey,
+        reason: String,
+    },
 
     /// Failed to load data from memory.
-    LoadFailed { key: String, reason: String },
+    LoadFailed {
+        key: crate::memory::MemoryKey,
+        reason: String,
+    },
 
     /// Snapshot creation failed.
     SnapshotFailed { reason: String },
@@ -119,7 +125,10 @@ pub enum CoordinatorError {
     ToolDispatchFailed { failed_tools: Vec<String> },
 
     /// Context update failed.
-    ContextUpdateFailed { key: String, reason: String },
+    ContextUpdateFailed {
+        key: crate::memory::MemoryKey,
+        reason: String,
+    },
 }
 
 impl fmt::Display for SkreverError {
@@ -161,10 +170,10 @@ impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MemoryError::StoreFailed { key, reason } => {
-                write!(f, "Failed to store key '{}': {}", key, reason)
+                write!(f, "Failed to store key '{}': {}", key.as_str(), reason)
             }
             MemoryError::LoadFailed { key, reason } => {
-                write!(f, "Failed to load key '{}': {}", key, reason)
+                write!(f, "Failed to load key '{}': {}", key.as_str(), reason)
             }
             MemoryError::SnapshotFailed { reason } => {
                 write!(f, "Snapshot creation failed: {}", reason)
@@ -236,7 +245,12 @@ impl fmt::Display for CoordinatorError {
                 write!(f, "Tool dispatch failed for: {}", failed_tools.join(", "))
             }
             CoordinatorError::ContextUpdateFailed { key, reason } => {
-                write!(f, "Context update for '{}' failed: {}", key, reason)
+                write!(
+                    f,
+                    "Context update for '{}' failed: {}",
+                    key.as_str(),
+                    reason
+                )
             }
         }
     }
@@ -282,8 +296,9 @@ impl From<MemoryError> for TransactionError {
 
 impl From<crate::memory::InvalidMemoryKey> for TransactionError {
     fn from(err: crate::memory::InvalidMemoryKey) -> Self {
+        let fallback_key = crate::memory::MemoryKey::new("fallback").expect("fallback is valid");
         TransactionError::MemoryError(MemoryError::StoreFailed {
-            key: "invalid_key".to_string(),
+            key: fallback_key,
             reason: err.to_string(),
         })
     }
