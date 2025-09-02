@@ -105,16 +105,16 @@ where
             if let Some(result) = self.registry.dispatch(tool_call.clone()) {
                 self.agent.handle_result(result);
             } else {
-                failed_tools.push(tool_call.name.as_str().to_string());
+                failed_tools.push(tool_call.name().to_string());
                 tracing::warn!(
-                    tool_name = %tool_call.name,
+                    tool_name = %tool_call.name(),
                     "Tool not found in registry"
                 );
 
                 // Pre-allocate error message to avoid format! in hot path
-                let mut error_msg = String::with_capacity(tool_call.name.len() + 32);
+                let mut error_msg = String::with_capacity(tool_call.name().len() + 32);
                 error_msg.push_str("Tool '");
-                error_msg.push_str(tool_call.name.as_str());
+                error_msg.push_str(tool_call.name());
                 error_msg.push_str("' not found in registry");
 
                 self.agent

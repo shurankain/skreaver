@@ -5,7 +5,7 @@
 
 use skreaver::{
     Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, Tool,
-    ToolCall, ToolName,
+    ToolCall,
     testing::{
         AgentTestHarness, BenchmarkRunner, IntegrationTest, MockTool, MockToolRegistry,
         PerformanceTest, TestHarnessBuilder, TestRunner, TestScenario,
@@ -67,22 +67,13 @@ impl Agent for TestDemoAgent {
         if let Some(input) = &self.last_input {
             if input.starts_with("tool:") {
                 let tool_input = input.strip_prefix("tool:").unwrap_or("");
-                return vec![ToolCall {
-                    name: ToolName::new("demo_tool").unwrap(),
-                    input: tool_input.to_string(),
-                }];
+                return vec![ToolCall::new("demo_tool", tool_input).unwrap()];
             }
 
             if input == "multi_tools" {
                 return vec![
-                    ToolCall {
-                        name: ToolName::new("tool1").unwrap(),
-                        input: "first".to_string(),
-                    },
-                    ToolCall {
-                        name: ToolName::new("tool2").unwrap(),
-                        input: "second".to_string(),
-                    },
+                    ToolCall::new("tool1", "first").unwrap(),
+                    ToolCall::new("tool2", "second").unwrap(),
                 ];
             }
         }

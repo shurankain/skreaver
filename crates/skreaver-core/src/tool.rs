@@ -153,18 +153,151 @@ impl TryFrom<String> for ToolName {
     }
 }
 
+/// Standard tool types for strongly-typed dispatch.
+///
+/// This enum provides compile-time tool validation and eliminates
+/// string-based lookup overhead in the hot path. Each variant
+/// corresponds to a specific tool implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StandardTool {
+    // Network tools
+    HttpGet,
+    HttpPost,
+    HttpPut,
+    HttpDelete,
+
+    // File I/O tools
+    FileRead,
+    FileWrite,
+    DirectoryList,
+    DirectoryCreate,
+
+    // Data processing tools
+    JsonParse,
+    JsonTransform,
+    XmlParse,
+    TextAnalyze,
+    TextReverse,
+    TextSearch,
+    TextSplit,
+    TextUppercase,
+}
+
+impl StandardTool {
+    /// Get the tool name as a string for backwards compatibility.
+    pub fn name(&self) -> &'static str {
+        match self {
+            StandardTool::HttpGet => "http_get",
+            StandardTool::HttpPost => "http_post",
+            StandardTool::HttpPut => "http_put",
+            StandardTool::HttpDelete => "http_delete",
+            StandardTool::FileRead => "file_read",
+            StandardTool::FileWrite => "file_write",
+            StandardTool::DirectoryList => "directory_list",
+            StandardTool::DirectoryCreate => "directory_create",
+            StandardTool::JsonParse => "json_parse",
+            StandardTool::JsonTransform => "json_transform",
+            StandardTool::XmlParse => "xml_parse",
+            StandardTool::TextAnalyze => "text_analyze",
+            StandardTool::TextReverse => "text_reverse",
+            StandardTool::TextSearch => "text_search",
+            StandardTool::TextSplit => "text_split",
+            StandardTool::TextUppercase => "text_uppercase",
+        }
+    }
+
+    /// Try to parse a tool name string into a StandardTool.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "http_get" => Some(StandardTool::HttpGet),
+            "http_post" => Some(StandardTool::HttpPost),
+            "http_put" => Some(StandardTool::HttpPut),
+            "http_delete" => Some(StandardTool::HttpDelete),
+            "file_read" => Some(StandardTool::FileRead),
+            "file_write" => Some(StandardTool::FileWrite),
+            "directory_list" => Some(StandardTool::DirectoryList),
+            "directory_create" => Some(StandardTool::DirectoryCreate),
+            "json_parse" => Some(StandardTool::JsonParse),
+            "json_transform" => Some(StandardTool::JsonTransform),
+            "xml_parse" => Some(StandardTool::XmlParse),
+            "text_analyze" => Some(StandardTool::TextAnalyze),
+            "text_reverse" => Some(StandardTool::TextReverse),
+            "text_search" => Some(StandardTool::TextSearch),
+            "text_split" => Some(StandardTool::TextSplit),
+            "text_uppercase" => Some(StandardTool::TextUppercase),
+            _ => None,
+        }
+    }
+
+    /// Get all standard tools as a slice.
+    pub fn all() -> &'static [StandardTool] {
+        &[
+            StandardTool::HttpGet,
+            StandardTool::HttpPost,
+            StandardTool::HttpPut,
+            StandardTool::HttpDelete,
+            StandardTool::FileRead,
+            StandardTool::FileWrite,
+            StandardTool::DirectoryList,
+            StandardTool::DirectoryCreate,
+            StandardTool::JsonParse,
+            StandardTool::JsonTransform,
+            StandardTool::XmlParse,
+            StandardTool::TextAnalyze,
+            StandardTool::TextReverse,
+            StandardTool::TextSearch,
+            StandardTool::TextSplit,
+            StandardTool::TextUppercase,
+        ]
+    }
+}
+
+impl std::fmt::Display for StandardTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+/// Tool dispatch method for improved type safety and performance.
+#[derive(Debug, Clone)]
+pub enum ToolDispatch {
+    /// Dispatch to a standard tool using compile-time validation.
+    Standard(StandardTool),
+    /// Dispatch to a custom tool using runtime validation.
+    Custom(ToolName),
+}
+
+impl ToolDispatch {
+    /// Create a dispatch method from a tool name string.
+    pub fn from_name(name: &str) -> Result<Self, InvalidToolName> {
+        if let Some(standard_tool) = StandardTool::from_name(name) {
+            Ok(ToolDispatch::Standard(standard_tool))
+        } else {
+            Ok(ToolDispatch::Custom(ToolName::new(name)?))
+        }
+    }
+
+    /// Get the tool name as a string.
+    pub fn name(&self) -> &str {
+        match self {
+            ToolDispatch::Standard(tool) => tool.name(),
+            ToolDispatch::Custom(name) => name.as_str(),
+        }
+    }
+}
+
 /// A request to invoke a specific tool with input data.
 ///
 /// `ToolCall` represents an agent's intent to use an external capability.
 /// The coordinator will route this call to the appropriate tool implementation
-/// based on the name field.
+/// based on the dispatch field.
 #[derive(Debug, Clone)]
 pub struct ToolCall {
-    /// The validated name of the tool to invoke.
+    /// The tool dispatch method (strongly-typed or custom).
     ///
-    /// This must match a tool registered in the tool registry.
-    /// Using `ToolName` prevents typos and ensures valid tool names.
-    pub name: ToolName,
+    /// Using `ToolDispatch` enables compile-time validation for standard tools
+    /// while still supporting custom tool extensions.
+    pub dispatch: ToolDispatch,
 
     /// The input data to pass to the tool.
     ///
@@ -173,6 +306,11 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
+    /// Backwards compatibility: get the name field.
+    pub fn name(&self) -> &str {
+        self.dispatch.name()
+    }
+
     /// Create a new ToolCall from string references.
     ///
     /// This validates the tool name and creates a new ToolCall instance.
@@ -187,9 +325,28 @@ impl ToolCall {
     /// `Ok(ToolCall)` if the name is valid, `Err(InvalidToolName)` otherwise
     pub fn new(name: &str, input: &str) -> Result<Self, InvalidToolName> {
         Ok(Self {
-            name: ToolName::new(name)?,
+            dispatch: ToolDispatch::from_name(name)?,
             input: input.to_string(),
         })
+    }
+
+    /// Create a new ToolCall from a standard tool type.
+    ///
+    /// This provides compile-time validation for standard tools.
+    ///
+    /// # Parameters
+    ///
+    /// * `tool` - The standard tool type
+    /// * `input` - The input data
+    ///
+    /// # Returns
+    ///
+    /// A new `ToolCall` instance
+    pub fn from_standard(tool: StandardTool, input: String) -> Self {
+        Self {
+            dispatch: ToolDispatch::Standard(tool),
+            input,
+        }
     }
 
     /// Create a new ToolCall from a validated ToolName and input string.
@@ -205,7 +362,10 @@ impl ToolCall {
     ///
     /// A new `ToolCall` instance
     pub fn from_validated(name: ToolName, input: String) -> Self {
-        Self { name, input }
+        Self {
+            dispatch: ToolDispatch::Custom(name),
+            input,
+        }
     }
 
     /// Create a new ToolCall from owned strings with validation.
@@ -220,7 +380,7 @@ impl ToolCall {
     /// `Ok(ToolCall)` if the name is valid, `Err(InvalidToolName)` otherwise
     pub fn from_owned(name: String, input: String) -> Result<Self, InvalidToolName> {
         Ok(Self {
-            name: ToolName::new(&name)?,
+            dispatch: ToolDispatch::from_name(&name)?,
             input,
         })
     }
@@ -282,10 +442,10 @@ impl ToolCallBuilder {
     /// `Ok(ToolCall)` if the name is valid, `Err(BuildError)` otherwise
     pub fn build(self) -> Result<ToolCall, ToolCallBuildError> {
         let name = self.name.ok_or(ToolCallBuildError::MissingName)?;
-        let tool_name = ToolName::new(&name).map_err(ToolCallBuildError::InvalidName)?;
+        let dispatch = ToolDispatch::from_name(&name).map_err(ToolCallBuildError::InvalidName)?;
 
         Ok(ToolCall {
-            name: tool_name,
+            dispatch,
             input: self.input,
         })
     }
@@ -496,13 +656,13 @@ mod tests {
     #[test]
     fn test_tool_call_builder() {
         let call = ToolCall::builder()
-            .name("calculator")
-            .input("2 + 2")
+            .name("http_get")
+            .input("https://example.com")
             .build()
             .expect("Valid tool name");
 
-        assert_eq!(call.name.as_str(), "calculator");
-        assert_eq!(call.input, "2 + 2");
+        assert_eq!(call.name(), "http_get");
+        assert_eq!(call.input, "https://example.com");
     }
 
     #[test]
@@ -517,20 +677,45 @@ mod tests {
 
     #[test]
     fn test_tool_call_new() {
-        let call = ToolCall::new("test_tool", "test input").expect("Valid tool name");
+        let call = ToolCall::new("file_read", "test.txt").expect("Valid tool name");
 
-        assert_eq!(call.name.as_str(), "test_tool");
-        assert_eq!(call.input, "test input");
+        assert_eq!(call.name(), "file_read");
+        assert_eq!(call.input, "test.txt");
     }
 
     #[test]
     fn test_tool_call_from_owned() {
-        let name = String::from("owned_tool");
-        let input = String::from("owned input");
+        let name = String::from("json_parse");
+        let input = String::from("{\"key\": \"value\"}");
         let call = ToolCall::from_owned(name, input).expect("Valid tool name");
 
-        assert_eq!(call.name.as_str(), "owned_tool");
-        assert_eq!(call.input, "owned input");
+        assert_eq!(call.name(), "json_parse");
+        assert_eq!(call.input, "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_tool_call_from_standard() {
+        let call = ToolCall::from_standard(StandardTool::HttpPost, "POST data".to_string());
+
+        assert_eq!(call.name(), "http_post");
+        assert_eq!(call.input, "POST data");
+    }
+
+    #[test]
+    fn test_standard_tool_dispatch() {
+        // Test standard tool recognition
+        let dispatch = ToolDispatch::from_name("http_get").expect("Valid tool name");
+        match dispatch {
+            ToolDispatch::Standard(StandardTool::HttpGet) => {} // Expected
+            _ => panic!("Expected StandardTool::HttpGet"),
+        }
+
+        // Test custom tool fallback
+        let dispatch = ToolDispatch::from_name("custom_tool").expect("Valid tool name");
+        match dispatch {
+            ToolDispatch::Custom(name) => assert_eq!(name.as_str(), "custom_tool"),
+            _ => panic!("Expected Custom dispatch"),
+        }
     }
 
     #[test]

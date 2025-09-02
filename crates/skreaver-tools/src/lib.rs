@@ -33,5 +33,5 @@ pub mod standard;
 
 pub use core::{InvalidToolName, ToolCallBuildError, ToolCallBuilder, ToolName};
 pub use registry::{InMemoryToolRegistry, ToolRegistry};
-pub use skreaver_core::{ExecutionResult, Tool, ToolCall};
+pub use skreaver_core::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 pub use standard::*;

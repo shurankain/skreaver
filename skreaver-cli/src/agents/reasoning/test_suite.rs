@@ -117,7 +117,7 @@ mod tests {
         coordinator.observe("test problem".to_string());
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name.as_str(), "analyze");
+        assert_eq!(tools[0].name(), "analyze");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);
@@ -126,7 +126,7 @@ mod tests {
         // Step 2: Analyzing -> Deducing
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name.as_str(), "deduce");
+        assert_eq!(tools[0].name(), "deduce");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);
@@ -135,7 +135,7 @@ mod tests {
         // Step 3: Deducing -> Concluding
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name.as_str(), "conclude");
+        assert_eq!(tools[0].name(), "conclude");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);
@@ -144,7 +144,7 @@ mod tests {
         // Step 4: Concluding -> Complete
         let tools = coordinator.get_tool_calls();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name.as_str(), "reflect");
+        assert_eq!(tools[0].name(), "reflect");
 
         if let Some(result) = coordinator.dispatch_tool(tools[0].clone()) {
             coordinator.handle_tool_result(result);

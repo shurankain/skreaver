@@ -37,7 +37,7 @@ pub trait ToolRegistry {
     /// `Ok(ExecutionResult)` if successful, `Err(ToolError)` if the tool is not found
     fn try_dispatch(&self, call: ToolCall) -> Result<ExecutionResult, String> {
         self.dispatch(call.clone())
-            .ok_or(format!("Tool not found: {}", call.name.as_str()))
+            .ok_or(format!("Tool not found: {}", call.name()))
     }
 }
 
@@ -67,14 +67,12 @@ pub trait ToolRegistry {
 /// let registry = InMemoryToolRegistry::new()
 ///     .with_tool("echo", Arc::new(EchoTool));
 ///
-/// let result = registry.dispatch(ToolCall {
-///     name: ToolName::new("echo").expect("Valid tool name"),
-///     input: "hello".to_string(),
-/// });
+/// let result = registry.dispatch(ToolCall::new("echo", "hello").expect("Valid tool name"));
 /// ```
 #[derive(Clone)]
 pub struct InMemoryToolRegistry {
-    tools: HashMap<super::ToolName, Arc<dyn super::Tool>>,
+    standard_tools: HashMap<super::StandardTool, Arc<dyn super::Tool>>,
+    custom_tools: HashMap<super::ToolName, Arc<dyn super::Tool>>,
 }
 
 impl Default for InMemoryToolRegistry {
@@ -91,7 +89,8 @@ impl InMemoryToolRegistry {
     /// A new `InMemoryToolRegistry` with no tools registered
     pub fn new() -> Self {
         Self {
-            tools: HashMap::new(),
+            standard_tools: HashMap::new(),
+            custom_tools: HashMap::new(),
         }
     }
 
@@ -113,8 +112,12 @@ impl InMemoryToolRegistry {
     ///
     /// Panics if the tool name is invalid. Use `try_with_tool` for error handling.
     pub fn with_tool(mut self, name: &str, tool: Arc<dyn super::Tool>) -> Self {
-        let tool_name = super::ToolName::new(name).expect("Valid tool name");
-        self.tools.insert(tool_name, tool);
+        if let Some(standard_tool) = super::StandardTool::from_name(name) {
+            self.standard_tools.insert(standard_tool, tool);
+        } else {
+            let tool_name = super::ToolName::new(name).expect("Valid tool name");
+            self.custom_tools.insert(tool_name, tool);
+        }
         self
     }
 
@@ -135,9 +138,34 @@ impl InMemoryToolRegistry {
         name: &str,
         tool: Arc<dyn super::Tool>,
     ) -> Result<Self, super::InvalidToolName> {
-        let tool_name = super::ToolName::new(name)?;
-        self.tools.insert(tool_name, tool);
+        if let Some(standard_tool) = super::StandardTool::from_name(name) {
+            self.standard_tools.insert(standard_tool, tool);
+        } else {
+            let tool_name = super::ToolName::new(name)?;
+            self.custom_tools.insert(tool_name, tool);
+        }
         Ok(self)
+    }
+
+    /// Add a standard tool to the registry.
+    ///
+    /// This provides compile-time validation for standard tools.
+    ///
+    /// # Parameters
+    ///
+    /// * `standard_tool` - The standard tool type
+    /// * `tool` - The tool implementation wrapped in `Arc` for sharing
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining
+    pub fn with_standard_tool(
+        mut self,
+        standard_tool: super::StandardTool,
+        tool: Arc<dyn super::Tool>,
+    ) -> Self {
+        self.standard_tools.insert(standard_tool, tool);
+        self
     }
 
     /// Add a tool to the registry with a validated ToolName.
@@ -157,14 +185,23 @@ impl InMemoryToolRegistry {
         name: super::ToolName,
         tool: Arc<dyn super::Tool>,
     ) -> Self {
-        self.tools.insert(name, tool);
+        self.custom_tools.insert(name, tool);
         self
     }
 }
 
 impl super::registry::ToolRegistry for InMemoryToolRegistry {
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult> {
-        self.tools.get(&call.name).map(|tool| tool.call(call.input))
+        match &call.dispatch {
+            super::ToolDispatch::Standard(standard_tool) => self
+                .standard_tools
+                .get(standard_tool)
+                .map(|tool| tool.call(call.input)),
+            super::ToolDispatch::Custom(tool_name) => self
+                .custom_tools
+                .get(tool_name)
+                .map(|tool| tool.call(call.input)),
+        }
     }
 }
 
@@ -172,7 +209,6 @@ impl super::registry::ToolRegistry for InMemoryToolRegistry {
 mod tests {
     use super::*;
     use crate::Tool;
-    use crate::ToolName;
     use std::sync::Arc;
 
     struct UppercaseTool;
@@ -205,20 +241,14 @@ mod tests {
             .with_tool("uppercase", Arc::new(UppercaseTool))
             .with_tool("reverse", Arc::new(ReverseTool));
 
-        let upper = registry.dispatch(ToolCall {
-            name: ToolName::new("uppercase").expect("Valid tool name"),
-            input: "skreaver".into(),
-        });
+        let upper =
+            registry.dispatch(ToolCall::new("uppercase", "skreaver").expect("Valid tool name"));
 
-        let reversed = registry.dispatch(ToolCall {
-            name: ToolName::new("reverse").expect("Valid tool name"),
-            input: "skreaver".into(),
-        });
+        let reversed =
+            registry.dispatch(ToolCall::new("reverse", "skreaver").expect("Valid tool name"));
 
-        let missing = registry.dispatch(ToolCall {
-            name: ToolName::new("nonexistent").expect("Valid tool name"),
-            input: "skreaver".into(),
-        });
+        let missing =
+            registry.dispatch(ToolCall::new("nonexistent", "skreaver").expect("Valid tool name"));
 
         assert_eq!(upper.unwrap().output(), "SKREAVER");
         assert_eq!(reversed.unwrap().output(), "revaerks");

@@ -6,7 +6,7 @@
 
 use skreaver::{
     Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryMemory, InMemoryToolRegistry,
-    JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall, ToolName,
+    JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall,
     runtime::{
         HttpAgentRuntime, HttpRuntimeConfig, auth::create_jwt_token, rate_limit::RateLimitConfig,
     },
@@ -105,28 +105,19 @@ impl Agent for AdvancedDemoAgent {
     fn call_tools(&self) -> Vec<ToolCall> {
         if let Some(input) = &self.last_input {
             if let Some(text) = input.strip_prefix("transform:") {
-                return vec![ToolCall {
-                    name: ToolName::new("text_uppercase").unwrap(),
-                    input: text.to_string(),
-                }];
+                return vec![ToolCall::new("text_uppercase", text).unwrap()];
             }
 
             if let Some(url) = input.strip_prefix("fetch:") {
-                return vec![ToolCall {
-                    name: ToolName::new("http_get").unwrap(),
-                    input: url.to_string(),
-                }];
+                return vec![ToolCall::new("http_get", url).unwrap()];
             }
 
             if input.starts_with("analyze:") {
-                return vec![ToolCall {
-                    name: ToolName::new("json_parse").unwrap(),
-                    input: format!(
-                        r#"{{"analysis_input": "{}", "timestamp": "{}", "agent_state": "analyzing"}}"#,
-                        input,
-                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-                    ),
-                }];
+                return vec![ToolCall::new("json_parse", &format!(
+                    r#"{{"analysis_input": "{}", "timestamp": "{}", "agent_state": "analyzing"}}"#,
+                    input,
+                    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+                )).unwrap()];
             }
         }
         Vec::new()

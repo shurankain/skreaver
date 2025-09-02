@@ -13,7 +13,7 @@ pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
 pub use in_memory::InMemoryMemory;
 pub use memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
-pub use tool::{ExecutionResult, Tool, ToolCall};
+pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 
 // Re-export agent extensions
 pub use agent::{

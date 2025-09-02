@@ -85,10 +85,7 @@ fn bench_tool_registry(c: &mut Criterion) {
             &registry,
             |b, registry| {
                 b.iter(|| {
-                    let tool_call = ToolCall {
-                        name: ToolName::new("tool1").unwrap(),
-                        input: "benchmark input".to_string(),
-                    };
+                    let tool_call = ToolCall::new("tool1", "benchmark input").unwrap();
                     black_box(registry.dispatch(black_box(tool_call)).unwrap())
                 })
             },
@@ -127,10 +124,8 @@ fn bench_batch_tool_execution(c: &mut Criterion) {
                             _ => "file_write",
                         };
 
-                        let tool_call = ToolCall {
-                            name: ToolName::new(tool_name).unwrap(),
-                            input: format!("batch input {}", i),
-                        };
+                        let tool_call =
+                            ToolCall::new(tool_name, &format!("batch input {}", i)).unwrap();
 
                         black_box(registry.dispatch(black_box(tool_call)).unwrap());
                     }
@@ -156,30 +151,21 @@ fn bench_tool_error_handling(c: &mut Criterion) {
 
     group.bench_function("successful_execution", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("success_tool").unwrap(),
-                input: "test input".to_string(),
-            };
+            let tool_call = ToolCall::new("success_tool", "test input").unwrap();
             black_box(registry.dispatch(black_box(tool_call)).unwrap())
         })
     });
 
     group.bench_function("failed_execution", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("failure_tool").unwrap(),
-                input: "input".to_string(),
-            };
+            let tool_call = ToolCall::new("failure_tool", "input").unwrap();
             black_box(registry.dispatch(black_box(tool_call)).unwrap())
         })
     });
 
     group.bench_function("nonexistent_tool", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("nonexistent").unwrap(),
-                input: "test input".to_string(),
-            };
+            let tool_call = ToolCall::new("nonexistent", "test input").unwrap();
             black_box(registry.dispatch(black_box(tool_call)).unwrap())
         })
     });

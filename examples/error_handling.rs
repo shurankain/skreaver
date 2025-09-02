@@ -1,7 +1,7 @@
 //! Example demonstrating the new structured error handling in Skreaver.
 
 use skreaver::{
-    ExecutionResult, InMemoryToolRegistry, Tool, ToolCall, ToolName, ToolRegistry,
+    ExecutionResult, InMemoryToolRegistry, Tool, ToolCall, ToolRegistry,
     error::{SkreverError, SkreverResult},
 };
 use skreaver_core::error::{MemoryError, ToolError};
@@ -41,10 +41,8 @@ fn main() -> SkreverResult<()> {
 
     // Example 1: Successful tool call
     println!("\n✅ Example 1: Successful tool call");
-    let result = registry.dispatch(ToolCall {
-        name: ToolName::new("example").expect("Valid tool name"),
-        input: "test input".to_string(),
-    });
+    let result =
+        registry.dispatch(ToolCall::new("example", "test input").expect("Valid tool name"));
 
     match result {
         Some(exec_result) => match exec_result.into_result() {
@@ -56,10 +54,8 @@ fn main() -> SkreverResult<()> {
 
     // Example 2: Tool not found (using new structured error handling)
     println!("\n❌ Example 2: Tool not found");
-    let result = registry.try_dispatch(ToolCall {
-        name: ToolName::new("nonexistent").expect("Valid tool name"),
-        input: "test".to_string(),
-    });
+    let result =
+        registry.try_dispatch(ToolCall::new("nonexistent", "test").expect("Valid tool name"));
 
     match result {
         Ok(exec_result) => println!("Success: {}", exec_result.output()),
@@ -70,10 +66,8 @@ fn main() -> SkreverResult<()> {
 
     // Example 3: Tool execution failure
     println!("\n❌ Example 3: Tool execution failure");
-    let result = registry.dispatch(ToolCall {
-        name: ToolName::new("failing").expect("Valid tool name"),
-        input: "test input".to_string(),
-    });
+    let result =
+        registry.dispatch(ToolCall::new("failing", "test input").expect("Valid tool name"));
 
     if let Some(exec_result) = result {
         match exec_result.into_result() {

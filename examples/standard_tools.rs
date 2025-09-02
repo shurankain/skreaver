@@ -6,7 +6,7 @@
 use skreaver::{
     ExecutionResult, FileReadTool, FileWriteTool, HttpGetTool, InMemoryMemory,
     InMemoryToolRegistry, JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextAnalyzeTool,
-    TextUppercaseTool, ToolCall, ToolName, agent::Agent, runtime::Coordinator,
+    TextUppercaseTool, ToolCall, agent::Agent, runtime::Coordinator,
 };
 use std::sync::Arc;
 
@@ -39,39 +39,32 @@ impl Agent for StandardToolsAgent {
             match input.as_str() {
                 "test_text" => {
                     vec![
-                        ToolCall {
-                            name: ToolName::new("text_uppercase").unwrap(),
-                            input: "hello world".to_string(),
-                        },
-                        ToolCall {
-                            name: ToolName::new("text_analyze").unwrap(),
-                            input: "hello world".to_string(),
-                        },
+                        ToolCall::new("text_uppercase", "hello world").unwrap(),
+                        ToolCall::new("text_analyze", "hello world").unwrap(),
                     ]
                 }
                 "test_json" => {
-                    vec![ToolCall {
-                        name: ToolName::new("json_parse").unwrap(),
-                        input: r#"{"name": "Skreaver", "version": "0.1.0", "tools": ["http", "file", "json", "text"]}"#.to_string(),
-                    }]
+                    vec![ToolCall::new("json_parse", r#"{"name": "Skreaver", "version": "0.1.0", "tools": ["http", "file", "json", "text"]}"#).unwrap()]
                 }
                 "test_file" => {
                     vec![
-                        ToolCall {
-                            name: ToolName::new("file_write").unwrap(),
-                            input: serde_json::json!({
+                        ToolCall::new(
+                            "file_write",
+                            &serde_json::json!({
                                 "path": "/tmp/skreaver_test.txt",
                                 "content": "Hello from Skreaver standard tools!"
                             })
                             .to_string(),
-                        },
-                        ToolCall {
-                            name: ToolName::new("file_read").unwrap(),
-                            input: serde_json::json!({
+                        )
+                        .unwrap(),
+                        ToolCall::new(
+                            "file_read",
+                            &serde_json::json!({
                                 "path": "/tmp/skreaver_test.txt"
                             })
                             .to_string(),
-                        },
+                        )
+                        .unwrap(),
                     ]
                 }
                 _ => Vec::new(),

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use skreaver::{
     ExecutionResult, FileMemory, InMemoryToolRegistry, MemoryReader, MemoryUpdate, MemoryWriter,
-    Tool, ToolCall, ToolName, agent::Agent, runtime::Coordinator,
+    Tool, ToolCall, agent::Agent, runtime::Coordinator,
 };
 
 pub fn run_multi_agent() {
@@ -63,14 +63,8 @@ impl Agent for MultiToolAgent {
             .as_ref()
             .map(|input| {
                 vec![
-                    ToolCall {
-                        name: ToolName::new("uppercase").expect("Valid tool name"),
-                        input: input.clone(),
-                    },
-                    ToolCall {
-                        name: ToolName::new("reverse").expect("Valid tool name"),
-                        input: input.clone(),
-                    },
+                    ToolCall::new("uppercase", input).expect("Valid tool name"),
+                    ToolCall::new("reverse", input).expect("Valid tool name"),
                 ]
             })
             .unwrap_or_default()

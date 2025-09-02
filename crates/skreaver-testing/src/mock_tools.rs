@@ -170,7 +170,10 @@ impl Default for MockToolRegistry {
 
 impl ToolRegistry for MockToolRegistry {
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult> {
-        self.tools.get(&call.name).map(|tool| tool.call(call.input))
+        // For testing, we look up by name string regardless of dispatch type
+        let name_str = call.name();
+        let tool_name = ToolName::new(name_str).ok()?;
+        self.tools.get(&tool_name).map(|tool| tool.call(call.input))
     }
 }
 
@@ -283,10 +286,7 @@ mod tests {
 
         let registry = MockToolRegistry::new().with_tool(tool);
 
-        let call = ToolCall {
-            name: ToolName::new("test_tool").unwrap(),
-            input: "hello".to_string(),
-        };
+        let call = ToolCall::new("test_tool", "hello").unwrap();
 
         let result = registry.dispatch(call).unwrap();
         assert!(result.is_success());

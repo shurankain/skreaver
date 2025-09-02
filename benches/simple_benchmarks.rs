@@ -81,10 +81,7 @@ fn bench_tool_operations(c: &mut Criterion) {
 
     group.bench_function("registry_dispatch", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("tool1").unwrap(),
-                input: "benchmark input".to_string(),
-            };
+            let tool_call = ToolCall::new("tool1", "benchmark input").unwrap();
             black_box(registry.dispatch(black_box(tool_call)))
         })
     });
@@ -167,10 +164,7 @@ fn bench_registry_scalability(c: &mut Criterion) {
             |b, registry| {
                 b.iter(|| {
                     // Test lookup of first tool (best case) and middle tool
-                    let tool_call = ToolCall {
-                        name: ToolName::new("tool_0").unwrap(),
-                        input: "test".to_string(),
-                    };
+                    let tool_call = ToolCall::new("tool_0", "test").unwrap();
                     black_box(registry.dispatch(black_box(tool_call)))
                 })
             },
@@ -194,30 +188,21 @@ fn bench_error_handling(c: &mut Criterion) {
 
     group.bench_function("success_path", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("success_tool").unwrap(),
-                input: "test".to_string(),
-            };
+            let tool_call = ToolCall::new("success_tool", "test").unwrap();
             black_box(registry.dispatch(black_box(tool_call)))
         })
     });
 
     group.bench_function("failure_path", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("failure_tool").unwrap(),
-                input: "test".to_string(),
-            };
+            let tool_call = ToolCall::new("failure_tool", "test").unwrap();
             black_box(registry.dispatch(black_box(tool_call)))
         })
     });
 
     group.bench_function("nonexistent_tool", |b| {
         b.iter(|| {
-            let tool_call = ToolCall {
-                name: ToolName::new("nonexistent").unwrap(),
-                input: "test".to_string(),
-            };
+            let tool_call = ToolCall::new("nonexistent", "test").unwrap();
             black_box(registry.dispatch(black_box(tool_call)))
         })
     });

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use skreaver::{
     ExecutionResult, FileMemory, InMemoryToolRegistry, MemoryReader, MemoryUpdate, MemoryWriter,
-    Tool, ToolCall, ToolName, agent::Agent, runtime::Coordinator,
+    Tool, ToolCall, agent::Agent, runtime::Coordinator,
 };
 
 pub fn run_echo_agent() {
@@ -53,10 +53,7 @@ impl Agent for EchoAgent {
 
     fn call_tools(&self) -> Vec<ToolCall> {
         if let Some(input) = &self.last_input {
-            vec![ToolCall {
-                name: ToolName::new("uppercase").expect("Valid tool name"),
-                input: input.clone(),
-            }]
+            vec![ToolCall::new("uppercase", input).expect("Valid tool name")]
         } else {
             Vec::new()
         }

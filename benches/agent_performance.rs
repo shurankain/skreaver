@@ -8,7 +8,6 @@
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use skreaver::{
     Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
-    ToolName,
 };
 use skreaver_http::runtime::Coordinator;
 use skreaver_testing::{MockTool, MockToolRegistry};
@@ -61,22 +60,10 @@ impl Agent for BenchmarkAgent {
     fn call_tools(&self) -> Vec<ToolCall> {
         if let (true, Some(input)) = (self.call_tools, &self.last_input) {
             return vec![
-                ToolCall {
-                    name: ToolName::new("http_get").unwrap(),
-                    input: "http://localhost/test".to_string(),
-                },
-                ToolCall {
-                    name: ToolName::new("json_parse").unwrap(),
-                    input: input.clone(),
-                },
-                ToolCall {
-                    name: ToolName::new("text_transform").unwrap(),
-                    input: input.clone(),
-                },
-                ToolCall {
-                    name: ToolName::new("file_write").unwrap(),
-                    input: input.clone(),
-                },
+                ToolCall::new("http_get", "http://localhost/test").unwrap(),
+                ToolCall::new("json_parse", input).unwrap(),
+                ToolCall::new("text_transform", input).unwrap(),
+                ToolCall::new("file_write", input).unwrap(),
             ];
         }
         Vec::new()

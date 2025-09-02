@@ -6,7 +6,7 @@
 
 use skreaver::{
     Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryMemory, InMemoryToolRegistry,
-    JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall, ToolName,
+    JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall,
     runtime::HttpAgentRuntime,
 };
 use std::sync::Arc;
@@ -56,24 +56,15 @@ impl Agent for HttpDemoAgent {
     fn call_tools(&self) -> Vec<ToolCall> {
         if let Some(input) = &self.last_input {
             if let Some(text) = input.strip_prefix("uppercase:") {
-                return vec![ToolCall {
-                    name: ToolName::new("text_uppercase").unwrap(),
-                    input: text.to_string(),
-                }];
+                return vec![ToolCall::new("text_uppercase", text).unwrap()];
             }
 
             if let Some(url) = input.strip_prefix("fetch:") {
-                return vec![ToolCall {
-                    name: ToolName::new("http_get").unwrap(),
-                    input: url.to_string(),
-                }];
+                return vec![ToolCall::new("http_get", url).unwrap()];
             }
 
             if input == "demo_json" {
-                return vec![ToolCall {
-                    name: ToolName::new("json_parse").unwrap(),
-                    input: r#"{"message": "Hello from HTTP agent!", "timestamp": "2024-01-01T00:00:00Z"}"#.to_string(),
-                }];
+                return vec![ToolCall::new("json_parse", r#"{"message": "Hello from HTTP agent!", "timestamp": "2024-01-01T00:00:00Z"}"#).unwrap()];
             }
         }
         Vec::new()

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use skreaver::{
     ExecutionResult, FileMemory, FileReadTool, FileWriteTool, HttpGetTool, InMemoryToolRegistry,
     JsonParseTool, JsonTransformTool, MemoryReader, MemoryUpdate, MemoryWriter, TextAnalyzeTool,
-    TextReverseTool, TextSearchTool, TextUppercaseTool, ToolCall, ToolName, agent::Agent,
+    TextReverseTool, TextSearchTool, TextUppercaseTool, ToolCall, agent::Agent,
     runtime::Coordinator,
 };
 
@@ -131,34 +131,19 @@ impl Agent for StandardToolsAgent {
         if let Some(input) = &self.last_input {
             if let Some(text) = input.strip_prefix("text ") {
                 vec![
-                    ToolCall {
-                        name: ToolName::new("text_analyze").expect("Valid tool name"),
-                        input: text.to_string(),
-                    },
-                    ToolCall {
-                        name: ToolName::new("text_uppercase").expect("Valid tool name"),
-                        input: text.to_string(),
-                    },
-                    ToolCall {
-                        name: ToolName::new("text_reverse").expect("Valid tool name"),
-                        input: text.to_string(),
-                    },
+                    ToolCall::new("text_analyze", text).expect("Valid tool name"),
+                    ToolCall::new("text_uppercase", text).expect("Valid tool name"),
+                    ToolCall::new("text_reverse", text).expect("Valid tool name"),
                 ]
             } else if let Some(json) = input.strip_prefix("json ") {
-                vec![ToolCall {
-                    name: ToolName::new("json_parse").expect("Valid tool name"),
-                    input: json.to_string(),
-                }]
+                vec![ToolCall::new("json_parse", json).expect("Valid tool name")]
             } else if let Some(path) = input.strip_prefix("file ") {
-                vec![ToolCall {
-                    name: ToolName::new("file_read").expect("Valid tool name"),
-                    input: serde_json::json!({"path": path}).to_string(),
-                }]
+                vec![
+                    ToolCall::new("file_read", &serde_json::json!({"path": path}).to_string())
+                        .expect("Valid tool name"),
+                ]
             } else if let Some(url) = input.strip_prefix("http ") {
-                vec![ToolCall {
-                    name: ToolName::new("http_get").expect("Valid tool name"),
-                    input: url.to_string(),
-                }]
+                vec![ToolCall::new("http_get", url).expect("Valid tool name")]
             } else {
                 Vec::new()
             }
