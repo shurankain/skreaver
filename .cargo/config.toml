@@ -1,0 +1,32 @@
+# Cargo build configuration for faster builds
+
+[build]
+# Enable incremental compilation for faster rebuilds
+incremental = true
+
+# Use more parallel jobs (omit to use all available cores automatically)
+
+[profile.dev]
+# Faster debug builds with minimal optimization
+opt-level = 1
+debug = true
+# Split debug info to reduce link times
+split-debuginfo = "unpacked"
+
+[profile.dev.build-override]
+# Fast builds for build scripts and proc macros
+opt-level = 3
+codegen-units = 1
+
+[target.x86_64-apple-darwin]
+# macOS specific optimizations
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-unknown-linux-gnu] 
+# Linux specific optimizations
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# Faster linking on supported platforms
+[env]
+# Use mold linker if available (fastest)
+# RUSTFLAGS = "-C link-arg=-fuse-ld=mold"

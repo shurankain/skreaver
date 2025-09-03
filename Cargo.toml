@@ -13,16 +13,13 @@ categories = ["development-tools", "ai"]
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
-redis = { version = "0.32.4", features = ["tokio-comp", "json"] }
-tokio = { version = "1", features = ["full"] }
+redis = { version = "0.32.4", features = ["tokio-comp"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
 humantime = "2.1"
 thiserror = "1.0"
-# Standard tools dependencies
-reqwest = { version = "0.12", features = ["json"] }
-quick-xml = { version = "0.36", features = ["serialize"] }
-# Examples dependencies
+# Examples dependencies (only loaded when running examples)
 axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -33,13 +30,14 @@ skreaver-http = { path = "crates/skreaver-http" }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
 
-# Benchmarking dependencies
+# Benchmarking dependencies  
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 tokio-test = "0.4"
 tempfile = "3.8"
 rand = "0.8"
 skreaver-testing = { path = "crates/skreaver-testing" }
+# Only for benchmarks - not compiled in normal builds
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 
 [workspace]
 members = ["skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-testing", "crates/skreaver"]
