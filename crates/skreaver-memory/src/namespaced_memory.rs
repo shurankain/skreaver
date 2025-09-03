@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
-use crate::error::MemoryError;
-use crate::memory::{
+use skreaver_core::error::MemoryError;
+use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 
@@ -97,9 +97,9 @@ impl<M: MemoryWriter> MemoryWriter for NamespacedMemory<M> {
 }
 
 impl<M: TransactionalMemory> TransactionalMemory for NamespacedMemory<M> {
-    fn transaction<F, R>(&mut self, f: F) -> Result<R, crate::error::TransactionError>
+    fn transaction<F, R>(&mut self, f: F) -> Result<R, skreaver_core::error::TransactionError>
     where
-        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>,
+        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, skreaver_core::error::TransactionError>,
     {
         self.inner.transaction(f)
     }

@@ -3,8 +3,8 @@ use redis::{Client, Commands, Connection, RedisResult};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::error::{MemoryError, TransactionError};
-use crate::memory::{
+use skreaver_core::error::{MemoryError, TransactionError};
+use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 

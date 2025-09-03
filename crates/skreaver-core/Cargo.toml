@@ -12,19 +12,11 @@ categories = ["development-tools", "ai"]
 
 [features]
 default = []
-redis = ["dep:redis", "dep:tokio"]
-sqlite = ["dep:rusqlite"]
-postgres = ["dep:tokio-postgres", "dep:tokio"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-tokio = { version = "1.0", features = ["fs"], optional = true }
-dashmap = "6.0"
-
-# Optional backend dependencies
-redis = { version = "0.25", optional = true, features = ["tokio-comp"] }
-rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
-tokio-postgres = { version = "0.7", optional = true }
 uuid = { version = "1.0", features = ["v4"] }
+dashmap = "5.5"
+

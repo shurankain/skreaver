@@ -21,7 +21,8 @@ use crate::tool::{ExecutionResult, ToolCall};
 ///
 /// ```rust
 /// use skreaver_core::{Agent, MemoryReader, MemoryWriter, MemoryUpdate};
-/// use skreaver_core::{InMemoryMemory, ExecutionResult, ToolCall};
+/// use skreaver_core::{ExecutionResult, ToolCall};
+/// use skreaver_core::InMemoryMemory;
 ///
 /// struct EchoAgent {
 ///     memory: InMemoryMemory,

@@ -63,8 +63,9 @@
 //! that manages tool execution and memory persistence. This enables building complex
 //! AI systems with clear separation of concerns and robust error handling.
 
-// Re-export core types (now includes all memory backends)
+// Re-export core types
 pub use skreaver_core::*;
+pub use skreaver_memory::*;
 pub use skreaver_tools::*;
 
 // Re-export HTTP runtime
@@ -76,6 +77,7 @@ pub use skreaver_testing::*;
 
 // Create convenient module aliases
 pub use skreaver_core as core;
+pub use skreaver_memory as memory;
 pub use skreaver_tools as tools;
 
 pub use skreaver_http as http;
@@ -85,9 +87,11 @@ pub use skreaver_testing as testing;
 
 // Re-export memory types for backwards compatibility
 pub use skreaver_core::{
-    FileMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, NamespacedMemory,
-    SnapshotableMemory, TransactionalMemory,
+    MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 
+// Memory backend implementations
+pub use skreaver_memory::{FileMemory, NamespacedMemory};
+
 #[cfg(feature = "redis")]
-pub use skreaver_core::RedisMemory;
+pub use skreaver_memory::RedisMemory;

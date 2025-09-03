@@ -674,8 +674,9 @@ mod tests {
         http::{Request, StatusCode},
     };
     use serde_json::{Value, json};
+    use skreaver_core::InMemoryMemory;
     use skreaver_core::{
-        Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
+        Agent, ExecutionResult, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
     };
     use skreaver_tools::InMemoryToolRegistry;
     use tower::ServiceExt;

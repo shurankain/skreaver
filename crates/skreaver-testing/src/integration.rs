@@ -345,7 +345,8 @@ impl LoadTestResult {
 
 /// Test utilities for creating test agents and scenarios
 pub mod test_utils {
-    use skreaver_core::{Agent, InMemoryMemory, MemoryUpdate};
+    use skreaver_core::InMemoryMemory;
+    use skreaver_core::{Agent, MemoryUpdate};
     use skreaver_core::{ExecutionResult, ToolCall};
 
     /// Simple test agent for integration testing

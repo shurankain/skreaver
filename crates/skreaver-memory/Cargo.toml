@@ -1,0 +1,35 @@
+[package]
+name = "skreaver-memory"
+version = "0.1.0"
+edition = "2024"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Memory backend implementations for Skreaver agent infrastructure"
+repository = "https://github.com/shurankain/skreaver"
+homepage = "https://ohusiev.com"
+keywords = ["agent", "memory", "storage", "ai", "rust"]
+categories = ["development-tools", "database"]
+
+[features]
+default = []
+sqlite = ["dep:rusqlite"]
+postgres = ["dep:tokio-postgres", "dep:tokio"]
+redis = ["dep:redis", "dep:tokio"]
+
+[dependencies]
+# Core dependency
+skreaver-core = { path = "../skreaver-core", version = "0.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+
+# Optional backend dependencies
+tokio = { version = "1.0", features = ["fs"], optional = true }
+redis = { version = "0.25", optional = true, features = ["tokio-comp"] }
+rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
+tokio-postgres = { version = "0.7", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"

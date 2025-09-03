@@ -14,7 +14,8 @@
 //!
 //! ```rust
 //! use skreaver_testing::{MockTool, MockToolRegistry, TestHarnessBuilder, TestScenario};
-//! use skreaver_core::{Agent, MemoryUpdate, ExecutionResult, ToolCall, InMemoryMemory, MemoryReader, MemoryWriter};
+//! use skreaver_core::{Agent, MemoryUpdate, ExecutionResult, ToolCall, MemoryReader, MemoryWriter};
+//! use skreaver_core::InMemoryMemory;
 //!
 //! // Example agent implementation
 //! struct TestAgent { memory: InMemoryMemory }

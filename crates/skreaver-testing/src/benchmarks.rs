@@ -4,7 +4,8 @@
 //! for agents, tools, and the overall Skreaver runtime.
 
 use crate::{MockTool, MockToolRegistry};
-use skreaver_core::{Agent, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, Tool};
+use skreaver_core::InMemoryMemory;
+use skreaver_core::{Agent, MemoryReader, MemoryUpdate, MemoryWriter, Tool};
 use skreaver_http::runtime::Coordinator;
 use skreaver_tools::ToolRegistry;
 use std::time::{Duration, Instant};
@@ -341,7 +342,7 @@ impl PerformanceTest {
         println!("============================================");
 
         // Mock agent for testing
-        use skreaver_core::{Agent, InMemoryMemory, MemoryUpdate};
+        use skreaver_core::{Agent, MemoryUpdate};
         use skreaver_core::{ExecutionResult, ToolCall};
 
         struct BenchAgent {

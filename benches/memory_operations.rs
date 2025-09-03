@@ -7,10 +7,11 @@
 //! - Memory usage under load
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use skreaver_core::memory::SnapshotableMemory;
-use skreaver_core::{
-    FileMemory, InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter,
+use skreaver_core::InMemoryMemory;
+use skreaver_core::memory::{
+    MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory,
 };
+use skreaver_memory::FileMemory;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;

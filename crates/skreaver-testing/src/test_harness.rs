@@ -404,9 +404,10 @@ pub struct TestSummary {
 mod tests {
     use super::*;
     use skreaver_core::Agent;
+    use skreaver_core::InMemoryMemory;
     use skreaver_core::MemoryUpdate;
     use skreaver_core::{ExecutionResult, ToolCall};
-    use skreaver_core::{InMemoryMemory, MemoryReader, MemoryWriter};
+    use skreaver_core::{MemoryReader, MemoryWriter};
 
     struct TestAgent {
         memory: InMemoryMemory,

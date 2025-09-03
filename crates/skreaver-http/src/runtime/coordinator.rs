@@ -16,7 +16,8 @@ use std::fmt::Display;
 /// # Example
 ///
 /// ```rust
-/// use skreaver_core::{Agent, MemoryUpdate, InMemoryMemory};
+/// use skreaver_core::{Agent, MemoryUpdate};
+/// use skreaver_core::InMemoryMemory;
 /// use skreaver_core::memory::{MemoryReader, MemoryWriter};
 /// use skreaver_tools::{InMemoryToolRegistry, ExecutionResult, ToolCall};
 /// use skreaver_http::runtime::Coordinator;

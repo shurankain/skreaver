@@ -26,7 +26,8 @@ use crate::tool::{ExecutionResult, ToolCall};
 /// # Example
 ///
 /// ```rust
-/// use skreaver_core::{SimpleStatefulAgent, SimpleInitial, InMemoryMemory};
+/// use skreaver_core::{SimpleStatefulAgent, SimpleInitial};
+/// use skreaver_core::InMemoryMemory;
 ///
 /// // Agent starts in Initial state
 /// let memory = Box::new(InMemoryMemory::new());
