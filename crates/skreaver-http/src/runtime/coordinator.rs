@@ -98,12 +98,12 @@ where
         // Pre-allocate with capacity if we know tools will fail
         let mut failed_tools = Vec::with_capacity(tool_calls.len());
 
-        for tool_call in tool_calls {
-            if let Some(result) = self.registry.dispatch(tool_call.clone()) {
+        for tool_call in &tool_calls {
+            if let Some(result) = self.registry.dispatch_ref(tool_call) {
                 self.agent.handle_result(result);
             } else {
-                let tool_name = tool_call.name().to_string();
-                failed_tools.push(tool_name.clone());
+                let tool_name = tool_call.name();
+                failed_tools.push(tool_name.to_string());
                 tracing::warn!(
                     tool_name = %tool_name,
                     "Tool not found in registry"
@@ -112,7 +112,7 @@ where
                 // Pre-allocate error message with exact capacity
                 let mut error_msg = String::with_capacity(tool_name.len() + 28);
                 error_msg.push_str("Tool '");
-                error_msg.push_str(&tool_name);
+                error_msg.push_str(tool_name);
                 error_msg.push_str("' not found in registry");
 
                 self.agent
@@ -173,6 +173,22 @@ where
     /// `Some(ExecutionResult)` if the tool exists, `None` if not found
     pub fn dispatch_tool(&self, tool_call: ToolCall) -> Option<ExecutionResult> {
         self.registry.dispatch(tool_call)
+    }
+
+    /// Dispatch a single tool call through the registry using a reference.
+    ///
+    /// Zero-copy version that executes a tool call without taking ownership.
+    /// This eliminates cloning in hot paths for better performance.
+    ///
+    /// # Parameters
+    ///
+    /// * `tool_call` - Reference to the tool call to execute
+    ///
+    /// # Returns
+    ///
+    /// `Some(ExecutionResult)` if the tool exists, `None` if not found
+    pub fn dispatch_tool_ref(&self, tool_call: &ToolCall) -> Option<ExecutionResult> {
+        self.registry.dispatch_ref(tool_call)
     }
 
     /// Handle a tool execution result.

@@ -54,8 +54,8 @@ fn main() -> SkreverResult<()> {
 
     // Example 2: Tool not found (using new structured error handling)
     println!("\n❌ Example 2: Tool not found");
-    let result =
-        registry.try_dispatch(ToolCall::new("nonexistent", "test").expect("Valid tool name"));
+    let tool_call = ToolCall::new("nonexistent", "test").expect("Valid tool name");
+    let result = registry.try_dispatch(&tool_call);
 
     match result {
         Ok(exec_result) => println!("Success: {}", exec_result.output()),

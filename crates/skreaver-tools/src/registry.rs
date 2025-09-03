@@ -23,20 +23,37 @@ pub trait ToolRegistry {
     /// `Some(ExecutionResult)` if the tool exists, `None` otherwise
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult>;
 
+    /// Dispatch a tool call using a reference to avoid cloning.
+    ///
+    /// Zero-copy dispatch method that looks up and executes tools without
+    /// taking ownership of the ToolCall. This eliminates cloning in hot paths.
+    ///
+    /// # Parameters
+    ///
+    /// * `call` - Reference to the tool call containing name and input data
+    ///
+    /// # Returns
+    ///
+    /// `Some(ExecutionResult)` if the tool exists, `None` otherwise
+    fn dispatch_ref(&self, call: &ToolCall) -> Option<ExecutionResult> {
+        // Default implementation for backward compatibility - clones the call
+        self.dispatch(call.clone())
+    }
+
     /// Dispatch a tool call with structured error handling.
     ///
-    /// This method provides the same functionality as `dispatch` but with
+    /// This method provides the same functionality as `dispatch_ref` but with
     /// proper error types for better error handling and debugging.
     ///
     /// # Parameters
     ///
-    /// * `call` - The tool call containing name and input data
+    /// * `call` - Reference to the tool call containing name and input data
     ///
     /// # Returns
     ///
     /// `Ok(ExecutionResult)` if successful, `Err(ToolError)` if the tool is not found
-    fn try_dispatch(&self, call: ToolCall) -> Result<ExecutionResult, String> {
-        self.dispatch(call.clone())
+    fn try_dispatch(&self, call: &ToolCall) -> Result<ExecutionResult, String> {
+        self.dispatch_ref(call)
             .ok_or(format!("Tool not found: {}", call.name()))
     }
 }
@@ -201,6 +218,20 @@ impl super::registry::ToolRegistry for InMemoryToolRegistry {
                 .custom_tools
                 .get(tool_name)
                 .map(|tool| tool.call(call.input)),
+        }
+    }
+
+    fn dispatch_ref(&self, call: &ToolCall) -> Option<ExecutionResult> {
+        // Zero-copy implementation: only clone the input string, not the entire ToolCall
+        match &call.dispatch {
+            super::ToolDispatch::Standard(standard_tool) => self
+                .standard_tools
+                .get(standard_tool)
+                .map(|tool| tool.call(call.input.clone())),
+            super::ToolDispatch::Custom(tool_name) => self
+                .custom_tools
+                .get(tool_name)
+                .map(|tool| tool.call(call.input.clone())),
         }
     }
 }
