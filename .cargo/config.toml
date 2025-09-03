@@ -18,15 +18,13 @@ split-debuginfo = "unpacked"
 opt-level = 3
 codegen-units = 1
 
-[target.x86_64-apple-darwin]
-# macOS specific optimizations
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+# Faster linking (uncomment if lld/mold are available)
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
-[target.x86_64-unknown-linux-gnu] 
-# Linux specific optimizations
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+# [target.x86_64-unknown-linux-gnu] 
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
-# Faster linking on supported platforms
-[env]
-# Use mold linker if available (fastest)
+# Alternative: Use mold if available (fastest)
+# [env]
 # RUSTFLAGS = "-C link-arg=-fuse-ld=mold"
