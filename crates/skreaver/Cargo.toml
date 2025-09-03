@@ -15,9 +15,9 @@ default = []  # Core functionality only by default
 auth = ["skreaver-http/auth"]
 openapi = ["skreaver-http/openapi"]
 openapi-ui = ["openapi", "skreaver-http/openapi-ui"]  # Dev builds only
-sqlite = ["skreaver-memory/sqlite"]
-postgres = ["skreaver-memory/postgres"]
-redis = ["skreaver-memory/redis"]
+sqlite = ["skreaver-core/sqlite"]
+postgres = ["skreaver-core/postgres"]
+redis = ["skreaver-core/redis"]
 streaming = ["skreaver-http/streaming"]
 unstable-websocket = ["streaming", "skreaver-http/unstable-websocket"]
 testing = ["skreaver-testing"]
@@ -25,6 +25,5 @@ testing = ["skreaver-testing"]
 [dependencies]
 skreaver-core = { path = "../skreaver-core", version = "0.1.0" }
 skreaver-tools = { path = "../skreaver-tools", version = "0.1.0" }
-skreaver-memory = { path = "../skreaver-memory", version = "0.1.0" }
 skreaver-http = { path = "../skreaver-http", version = "0.1.0" }
 skreaver-testing = { path = "../skreaver-testing", version = "0.1.0", optional = true }

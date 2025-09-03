@@ -8,8 +8,9 @@
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use skreaver_core::memory::SnapshotableMemory;
-use skreaver_core::{InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
-use skreaver_memory::FileMemory;
+use skreaver_core::{
+    FileMemory, InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter,
+};
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;

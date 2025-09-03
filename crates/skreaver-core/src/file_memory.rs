@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use super::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory};
-use skreaver_core::error::MemoryError;
+use crate::error::MemoryError;
+use crate::memory::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory};
 
 /// A simple persistent key-value memory that syncs to a JSON file.
 pub struct FileMemory {

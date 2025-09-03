@@ -27,10 +27,9 @@ axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["cors"] }
 chrono = { version = "0.4", features = ["serde"] }
 # Core crates
-skreaver-core = { path = "crates/skreaver-core" }
+skreaver-core = { path = "crates/skreaver-core", features = ["redis"] }
 skreaver-tools = { path = "crates/skreaver-tools" }
 skreaver-http = { path = "crates/skreaver-http" }
-skreaver-memory = { path = "crates/skreaver-memory" }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
 
@@ -43,7 +42,7 @@ rand = "0.8"
 skreaver-testing = { path = "crates/skreaver-testing" }
 
 [workspace]
-members = ["skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-memory", "crates/skreaver-testing", "crates/skreaver"]
+members = ["skreaver-cli", "crates/skreaver-core", "crates/skreaver-tools", "crates/skreaver-http", "crates/skreaver-testing", "crates/skreaver"]
 resolver = "2"
 
 # Benchmark configuration

@@ -1,37 +1,36 @@
-//! Namespaced memory wrapper implementation.
-//!
-//! This module provides a memory wrapper that prefixes keys with a namespace
-//! for multi-tenant scenarios and key isolation.
+use std::marker::PhantomData;
 
-use super::{MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter};
-use skreaver_core::error::MemoryError;
+use crate::error::MemoryError;
+use crate::memory::{
+    MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
+};
 
-/// Wraps a memory backend and prefixes all keys with a namespace
-pub struct NamespacedMemory<M>
-where
-    M: MemoryReader + MemoryWriter,
-{
+/// A memory wrapper that adds namespacing to keys.
+///
+/// This allows multiple agents or contexts to share the same underlying
+/// memory backend while maintaining isolation between their data.
+pub struct NamespacedMemory<M> {
     prefix: String,
     inner: M,
+    _phantom: PhantomData<M>,
 }
 
-impl<M> NamespacedMemory<M>
-where
-    M: MemoryReader + MemoryWriter,
-{
+impl<M> NamespacedMemory<M> {
     /// Create a new namespaced memory wrapper.
-    ///
-    /// All keys will be prefixed with the provided namespace to enable
-    /// key isolation in multi-tenant scenarios.
     ///
     /// # Parameters
     ///
-    /// * `prefix` - The namespace prefix for all keys
-    /// * `inner` - The underlying memory implementation to wrap
+    /// * `prefix` - The namespace prefix to prepend to all keys
+    /// * `inner` - The underlying memory implementation
+    ///
+    /// # Returns
+    ///
+    /// A new `NamespacedMemory` instance
     pub fn new(prefix: impl Into<String>, inner: M) -> Self {
         Self {
             prefix: prefix.into(),
             inner,
+            _phantom: PhantomData,
         }
     }
 
@@ -48,38 +47,38 @@ where
     /// Get a mutable reference to the underlying memory implementation.
     ///
     /// This allows direct access to the wrapped memory for operations
-    /// that need to bypass the namespace prefix.
-    pub fn inner(&mut self) -> &mut M {
+    /// that don't need namespacing.
+    pub fn inner_mut(&mut self) -> &mut M {
         &mut self.inner
+    }
+
+    /// Get an immutable reference to the underlying memory implementation.
+    pub fn inner(&self) -> &M {
+        &self.inner
     }
 }
 
-impl<M> MemoryReader for NamespacedMemory<M>
-where
-    M: MemoryReader + MemoryWriter,
-{
+impl<M: MemoryReader> MemoryReader for NamespacedMemory<M> {
     fn load(&self, key: &MemoryKey) -> Result<Option<String>, MemoryError> {
         let wrapped_key = self.wrap_key(key)?;
         self.inner.load(&wrapped_key)
     }
 
     fn load_many(&self, keys: &[MemoryKey]) -> Result<Vec<Option<String>>, MemoryError> {
-        let wrapped_keys: Result<Vec<_>, _> = keys.iter().map(|key| self.wrap_key(key)).collect();
+        let wrapped_keys: Result<Vec<_>, _> = keys.iter().map(|k| self.wrap_key(k)).collect();
         let wrapped_keys = wrapped_keys?;
         self.inner.load_many(&wrapped_keys)
     }
 }
 
-impl<M> MemoryWriter for NamespacedMemory<M>
-where
-    M: MemoryReader + MemoryWriter,
-{
+impl<M: MemoryWriter> MemoryWriter for NamespacedMemory<M> {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
         let wrapped_key = self.wrap_key(&update.key)?;
-        self.inner.store(MemoryUpdate {
+        let wrapped_update = MemoryUpdate {
             key: wrapped_key,
             value: update.value,
-        })
+        };
+        self.inner.store(wrapped_update)
     }
 
     fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), MemoryError> {
@@ -93,7 +92,25 @@ where
                 })
             })
             .collect();
-        let wrapped_updates = wrapped_updates?;
-        self.inner.store_many(wrapped_updates)
+        self.inner.store_many(wrapped_updates?)
+    }
+}
+
+impl<M: TransactionalMemory> TransactionalMemory for NamespacedMemory<M> {
+    fn transaction<F, R>(&mut self, f: F) -> Result<R, crate::error::TransactionError>
+    where
+        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>,
+    {
+        self.inner.transaction(f)
+    }
+}
+
+impl<M: SnapshotableMemory> SnapshotableMemory for NamespacedMemory<M> {
+    fn snapshot(&mut self) -> Option<String> {
+        self.inner.snapshot()
+    }
+
+    fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
+        self.inner.restore(snapshot)
     }
 }

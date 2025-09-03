@@ -20,5 +20,4 @@
 // Re-export everything from the main skreaver crate for compatibility
 pub use skreaver_core::*;
 pub use skreaver_http::*;
-pub use skreaver_memory::*;
 pub use skreaver_tools::{ExecutionResult, Tool, ToolCall};
