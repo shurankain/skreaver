@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Fast validation job - basic compilation and tests without heavy features
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.4
+        
+      - name: Configure sccache
+        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+          
+      - name: Cargo check (core only)
+        run: cargo check --workspace --no-default-features
+        
+      - name: Cargo check (default features)
+        run: cargo check --workspace
+
+  # Matrix testing job - test different feature combinations in parallel
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Core functionality tests
+          - name: "Core + InMemory"
+            features: ""
+            test_args: "--package skreaver-core --package skreaver-memory --package skreaver-tools"
+          
+          # HTTP runtime tests  
+          - name: "HTTP + Auth"
+            features: "--features auth,openapi"
+            test_args: "--package skreaver-http"
+          
+          # Memory backends
+          - name: "Memory Backends"
+            features: "--features sqlite,redis"
+            test_args: "--package skreaver-memory"
+            services: |
+              redis:
+                image: redis:7-alpine
+                options: >-
+                  --health-cmd "redis-cli ping"
+                  --health-interval 10s
+                  --health-timeout 5s
+                  --health-retries 5
+                ports:
+                  - 6379:6379
+          
+          # Full integration tests
+          - name: "Integration"
+            features: "--features testing,auth,openapi,sqlite"
+            test_args: "--package skreaver-testing --package skreaver"
+            
+          # Documentation tests
+          - name: "Doctests"
+            features: "--features auth,openapi,sqlite"
+            test_args: "--doc"
+
+    services: ${{ fromJson(matrix.services || '{}') }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.4
+        
+      - name: Configure sccache
+        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+          
+      - name: Setup test database (SQLite)
+        if: contains(matrix.features, 'sqlite')
+        run: |
+          mkdir -p /tmp/skreaver-test
+          echo "SKREAVER_TEST_DB_PATH=/tmp/skreaver-test/test.db" >> $GITHUB_ENV
+          
+      - name: Setup Redis connection
+        if: contains(matrix.features, 'redis')
+        run: echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+        
+      - name: Run tests (${{ matrix.name }})
+        run: cargo test ${{ matrix.features }} ${{ matrix.test_args }} --verbose
+
+  # Benchmarks and performance validation
+  bench:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.4
+        
+      - name: Configure sccache
+        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+          
+      - name: Run quick benchmarks
+        run: cargo bench --bench quick_benchmark
+        
+      - name: Print sccache stats
+        run: sccache --show-stats
+
+  # Final validation with optimized release build
+  release:
+    name: Release Build
+    runs-on: ubuntu-latest
+    needs: [test, bench]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.4
+        
+      - name: Configure sccache
+        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
+          
+      - name: Build release with all features
+        run: cargo build --release --all-features
+        
+      - name: Print sccache final stats
+        run: sccache --show-stats
