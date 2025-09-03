@@ -1,18 +1,19 @@
+use dashmap::DashMap;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use crate::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 
-/// Fast, transient memory implementation using HashMap with concurrent access.
+/// Fast, transient memory implementation using lock-free DashMap for concurrent access.
 ///
 /// `InMemoryMemory` provides high-performance memory storage suitable for
 /// development, testing, and scenarios where persistence across process
 /// restarts is not required. All data is lost when the process terminates.
 ///
-/// This implementation supports concurrent read access while maintaining
-/// exclusive write access through internal RwLock synchronization.
+/// This implementation uses DashMap for lock-free concurrent access, providing
+/// excellent performance under high concurrency with minimal contention.
 ///
 /// # Example
 ///
@@ -28,7 +29,7 @@ use crate::memory::{
 /// ```
 #[derive(Clone)]
 pub struct InMemoryMemory {
-    store: Arc<RwLock<HashMap<MemoryKey, String>>>,
+    store: Arc<DashMap<MemoryKey, String>>,
 }
 
 impl Default for InMemoryMemory {
@@ -45,7 +46,7 @@ impl InMemoryMemory {
     /// A new `InMemoryMemory` with no stored data
     pub fn new() -> Self {
         Self {
-            store: Arc::new(RwLock::new(HashMap::new())),
+            store: Arc::new(DashMap::new()),
         }
     }
 }
@@ -53,14 +54,7 @@ impl InMemoryMemory {
 // Implement new trait hierarchy
 impl MemoryReader for InMemoryMemory {
     fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        let store = self
-            .store
-            .read()
-            .map_err(|e| crate::error::MemoryError::LoadFailed {
-                key: key.clone(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
-        Ok(store.get(key).cloned())
+        Ok(self.store.get(key).map(|entry| entry.value().clone()))
     }
 
     fn load_many(
@@ -71,19 +65,10 @@ impl MemoryReader for InMemoryMemory {
             return Ok(Vec::new());
         }
 
-        let batch_key = MemoryKey::new("batch").unwrap();
-        let store = self
-            .store
-            .read()
-            .map_err(|e| crate::error::MemoryError::LoadFailed {
-                key: batch_key,
-                reason: format!("Lock poisoned: {}", e),
-            })?;
-
         // Pre-allocate result vector with exact capacity
         let mut result = Vec::with_capacity(keys.len());
         for key in keys {
-            result.push(store.get(key).cloned());
+            result.push(self.store.get(key).map(|entry| entry.value().clone()));
         }
         Ok(result)
     }
@@ -91,14 +76,7 @@ impl MemoryReader for InMemoryMemory {
 
 impl MemoryWriter for InMemoryMemory {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        let mut store = self
-            .store
-            .write()
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: update.key.clone(),
-                reason: format!("Lock poisoned: {}", e),
-            })?;
-        store.insert(update.key, update.value);
+        self.store.insert(update.key, update.value);
         Ok(())
     }
 
@@ -107,19 +85,9 @@ impl MemoryWriter for InMemoryMemory {
             return Ok(());
         }
 
-        let batch_key = MemoryKey::new("batch").unwrap();
-        let mut store = self
-            .store
-            .write()
-            .map_err(|e| crate::error::MemoryError::StoreFailed {
-                key: batch_key,
-                reason: format!("Lock poisoned: {}", e),
-            })?;
-
-        // Reserve capacity if we know the size
-        store.reserve(updates.len());
+        // DashMap handles concurrent access internally
         for update in updates {
-            store.insert(update.key, update.value);
+            self.store.insert(update.key, update.value);
         }
         Ok(())
     }
@@ -130,38 +98,28 @@ impl TransactionalMemory for InMemoryMemory {
     where
         F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>,
     {
-        // For InMemoryMemory, we implement a simple transaction using a clone-and-swap approach
-        let original_state = {
-            let store = self.store.read().map_err(|e| {
-                crate::error::TransactionError::TransactionFailed {
-                    reason: format!("Failed to acquire read lock: {}", e),
-                }
-            })?;
-            store.clone()
-        };
+        // For DashMap-based InMemoryMemory, we snapshot current state
+        let original_state: HashMap<MemoryKey, String> = self
+            .store
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
 
-        // Create a temporary transaction memory
-        let mut tx_memory = InMemoryMemory {
-            store: Arc::new(RwLock::new(original_state.clone())),
-        };
+        // Create a temporary transaction memory with the same state
+        let mut tx_memory = InMemoryMemory::new();
+        for (key, value) in &original_state {
+            tx_memory.store.insert(key.clone(), value.clone());
+        }
 
         // Execute the transaction
         match f(&mut tx_memory) {
             Ok(result) => {
-                // Commit: replace the original store with the transaction state
-                let tx_state = tx_memory.store.read().map_err(|e| {
-                    crate::error::TransactionError::TransactionFailed {
-                        reason: format!("Failed to read transaction state: {}", e),
-                    }
-                })?;
-
-                let mut store = self.store.write().map_err(|e| {
-                    crate::error::TransactionError::TransactionFailed {
-                        reason: format!("Failed to acquire write lock for commit: {}", e),
-                    }
-                })?;
-
-                *store = tx_state.clone();
+                // Commit: replace our store with the transaction store
+                self.store.clear();
+                for entry in tx_memory.store.iter() {
+                    self.store
+                        .insert(entry.key().clone(), entry.value().clone());
+                }
                 Ok(result)
             }
             Err(err) => {
@@ -174,12 +132,11 @@ impl TransactionalMemory for InMemoryMemory {
 
 impl SnapshotableMemory for InMemoryMemory {
     fn snapshot(&mut self) -> Option<String> {
-        let store = self.store.read().ok()?;
-
-        // Convert HashMap<MemoryKey, String> to HashMap<String, String> for JSON serialization
-        let serializable_store: HashMap<String, String> = store
+        // Convert DashMap<MemoryKey, String> to HashMap<String, String> for JSON serialization
+        let serializable_store: HashMap<String, String> = self
+            .store
             .iter()
-            .map(|(key, value)| (key.as_str().to_string(), value.clone()))
+            .map(|entry| (entry.key().as_str().to_string(), entry.value().clone()))
             .collect();
 
         serde_json::to_string(&serializable_store).ok()
@@ -194,24 +151,15 @@ impl SnapshotableMemory for InMemoryMemory {
                 }
             })?;
 
-        // Convert back to HashMap<MemoryKey, String>
-        let mut new_store = HashMap::new();
+        // Clear and populate the DashMap
+        self.store.clear();
         for (key_str, value) in serializable_store {
             let memory_key =
                 MemoryKey::new(&key_str).map_err(|e| crate::error::MemoryError::RestoreFailed {
                     reason: format!("Invalid key '{}': {}", key_str, e),
                 })?;
-            new_store.insert(memory_key, value);
+            self.store.insert(memory_key, value);
         }
-
-        // Replace the store
-        let mut store =
-            self.store
-                .write()
-                .map_err(|e| crate::error::MemoryError::RestoreFailed {
-                    reason: format!("Lock poisoned during restore: {}", e),
-                })?;
-        *store = new_store;
 
         Ok(())
     }
