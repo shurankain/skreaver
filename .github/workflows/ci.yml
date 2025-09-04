@@ -126,26 +126,26 @@ jobs:
 
     services:
       redis:
-        image: ${{ matrix.use_redis && 'redis:7-alpine' || '' }}
+        image: redis:7-alpine
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
         ports:
-          - ${{ matrix.use_redis && '6379:6379' || '' }}
+          - 6379:6379
       postgres:
-        image: ${{ matrix.use_postgres && 'postgres:15' || '' }}
+        image: postgres:15
         env:
-          POSTGRES_PASSWORD: ${{ matrix.use_postgres && 'postgres' || '' }}
-          POSTGRES_DB: ${{ matrix.use_postgres && 'skreaver_test' || '' }}
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: skreaver_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
         ports:
-          - ${{ matrix.use_postgres && '5432:5432' || '' }}
+          - 5432:5432
     
     steps:
       - uses: actions/checkout@v4
