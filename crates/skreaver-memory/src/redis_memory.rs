@@ -7,6 +7,7 @@ use skreaver_core::error::{MemoryError, TransactionError};
 use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
+use skreaver_core::InMemoryMemory;
 
 /// Redis-based memory backend with connection sharing for concurrent access.
 #[cfg(feature = "redis")]
@@ -100,7 +101,7 @@ impl MemoryWriter for RedisMemory {
             pipe.set(update.key.as_str(), update.value);
         }
 
-        pipe.execute(&mut *conn);
+        pipe.exec(&mut *conn).unwrap();
         Ok(())
     }
 }
@@ -126,7 +127,7 @@ impl TransactionalMemory for RedisMemory {
         })?;
 
         // Create a temporary in-memory storage for transaction operations
-        let mut tx_memory = crate::InMemoryMemory::new();
+        let mut tx_memory = InMemoryMemory::new();
 
         // Execute the transaction function
         let result = f(&mut tx_memory);
@@ -205,7 +206,7 @@ impl SnapshotableMemory for RedisMemory {
             pipe.set(&key, &value);
         }
 
-        pipe.execute(&mut *conn);
+        pipe.exec(&mut *conn).unwrap();
 
         Ok(())
     }
