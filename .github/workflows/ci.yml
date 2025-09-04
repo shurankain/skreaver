@@ -21,6 +21,20 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.name || 'check' }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
+        
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
         
@@ -54,42 +68,104 @@ jobs:
             test_args: "--package skreaver-core --package skreaver-memory --package skreaver-tools"
           
           # HTTP runtime tests  
-          - name: "HTTP + Auth"
-            features: "--features auth,openapi"
-            test_args: "--package skreaver-http"
+          - name: "HTTP Basic"
+            features: "--package skreaver-http --features auth,openapi"
+            test_args: ""
           
-          # Memory backends
-          - name: "Memory Backends"
-            features: "--features sqlite,redis"
-            test_args: "--package skreaver-memory"
-            services: |
-              redis:
-                image: redis:7-alpine
-                options: >-
-                  --health-cmd "redis-cli ping"
-                  --health-interval 10s
-                  --health-timeout 5s
-                  --health-retries 5
-                ports:
-                  - 6379:6379
+          # HTTP advanced features
+          - name: "HTTP Advanced"
+            features: "--package skreaver-http --features auth,openapi,compression,streaming"
+            test_args: ""
+            
+          # WebSocket testing
+          - name: "WebSocket"
+            features: "--package skreaver-http --features unstable-websocket,streaming"
+            test_args: ""
           
+          # Memory SQLite backend
+          - name: "Memory SQLite"
+            features: "--package skreaver-memory --features sqlite"
+            test_args: ""
+            
+          # Memory Redis backend
+          - name: "Memory Redis"
+            features: "--package skreaver-memory --features redis"
+            test_args: ""
+            use_redis: true
+            
+          # Memory PostgreSQL backend
+          - name: "Memory PostgreSQL"
+            features: "--package skreaver-memory --features postgres"
+            test_args: ""
+            use_postgres: true
+          
+          # Tools feature testing
+          - name: "Tools Network"
+            features: "--package skreaver-tools --features network"
+            test_args: ""
+            
+          # Tools data processing
+          - name: "Tools Data"
+            features: "--package skreaver-tools --features data"
+            test_args: ""
+          
+          # CLI testing
+          - name: "CLI Basic"
+            features: ""
+            test_args: "--package skreaver-cli"
+            
           # Full integration tests
           - name: "Integration"
-            features: "--features testing,auth,openapi,sqlite"
-            test_args: "--package skreaver-testing --package skreaver"
+            features: "--package skreaver --features testing,auth,openapi,sqlite"
+            test_args: ""
             
           # Documentation tests
           - name: "Doctests"
-            features: "--features auth,openapi,sqlite"
+            features: "--package skreaver --features auth,openapi,sqlite"
             test_args: "--doc"
 
-    services: ${{ fromJson(matrix.services || '{}') }}
+    services:
+      redis:
+        image: ${{ matrix.use_redis && 'redis:7-alpine' || '' }}
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - ${{ matrix.use_redis && '6379:6379' || '' }}
+      postgres:
+        image: ${{ matrix.use_postgres && 'postgres:15' || '' }}
+        env:
+          POSTGRES_PASSWORD: ${{ matrix.use_postgres && 'postgres' || '' }}
+          POSTGRES_DB: ${{ matrix.use_postgres && 'skreaver_test' || '' }}
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - ${{ matrix.use_postgres && '5432:5432' || '' }}
     
     steps:
       - uses: actions/checkout@v4
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.name || 'check' }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
         
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
@@ -110,11 +186,24 @@ jobs:
           echo "SKREAVER_TEST_DB_PATH=/tmp/skreaver-test/test.db" >> $GITHUB_ENV
           
       - name: Setup Redis connection
-        if: contains(matrix.features, 'redis')
+        if: matrix.use_redis == true
         run: echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
         
+      - name: Setup PostgreSQL connection
+        if: matrix.use_postgres == true
+        run: |
+          echo "DATABASE_URL=postgres://postgres:postgres@localhost:5432/skreaver_test" >> $GITHUB_ENV
+          echo "POSTGRES_USER=postgres" >> $GITHUB_ENV
+          echo "POSTGRES_PASSWORD=postgres" >> $GITHUB_ENV
+          echo "POSTGRES_DB=skreaver_test" >> $GITHUB_ENV
+        
       - name: Run tests (${{ matrix.name }})
-        run: cargo test ${{ matrix.features }} ${{ matrix.test_args }} --verbose
+        run: |
+          if [ -n "${{ matrix.features }}" ]; then
+            cargo test ${{ matrix.features }} ${{ matrix.test_args }} --verbose
+          else
+            cargo test ${{ matrix.test_args }} --verbose
+          fi
 
   # Benchmarks and performance validation
   bench:
@@ -126,6 +215,20 @@ jobs:
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.name || 'check' }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
         
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
@@ -155,6 +258,20 @@ jobs:
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.name || 'check' }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
         
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
