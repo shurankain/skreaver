@@ -8,36 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Comprehensive CI pipeline with matrix strategy testing all feature combinations
-- PostgreSQL memory backend support with `postgres` feature flag
-- WebSocket support through `unstable-websocket` feature flag
-- Conditional service startup in CI (Redis/PostgreSQL only when needed)
-- Cargo dependency caching for faster CI builds
-- sccache compilation caching support
-- mold linker optimization for Linux builds
-- Tools feature granularity: separate `network` and `data` features
-- CLI-specific testing in CI pipeline
-- Comprehensive HTTP feature combinations testing
 
 ### Changed
-- **BREAKING**: Redis API updated from deprecated `execute()` to `exec().unwrap()`
-- CI build time improved from 13 to 10 minutes (23% faster)
-- Matrix strategy now tests 12 parallel jobs instead of monolithic builds
-- All dependencies consolidated using `[workspace.dependencies]`
-- Improved build profiles for faster CI compilation
-- Enhanced error handling in Redis memory backend
 
 ### Fixed
-- Redis memory backend compilation errors with `InMemoryMemory` imports
-- GitHub Actions YAML validation errors with conditional services
-- Missing `ToSchema` derive for `AuthError` type (utoipa v5 compatibility)
-- Deprecated `rand::thread_rng()` usage replaced with `rand::rng()`
-- Circular dependency issues with workspace architecture
 
 ### Security
-- Added `ToSchema` derive to `AuthError` for secure OpenAPI documentation
 
-## [0.1.0-alpha] - 2024-09-05
+## [0.1.0] - 2024-09-05
 
 ### Added
 - **Workspace Architecture**: Multi-crate structure with clear separation of concerns
@@ -62,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - FileMemory: Persistent file-based storage
   - RedisMemory: Redis-backed distributed memory with connection pooling
   - NamespacedMemory: Isolated memory spaces for multi-tenancy
+  - PostgreSQL memory backend support with `postgres` feature flag
   - Feature flags: `redis`, `sqlite`, `postgres` for optional backends
 
 - **HTTP Runtime**
@@ -72,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rate limiting and request validation
   - Security headers and Content Security Policy
   - Streaming responses for long-running operations
+  - WebSocket support through `unstable-websocket` feature flag
   - Feature flags: `auth`, `openapi`, `openapi-ui`, `compression`, `streaming`
 
 - **Tool System**
@@ -82,7 +62,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Strongly-typed tool dispatch with compile-time validation
   - Zero-copy tool execution optimization
   - Tool registry for dynamic registration
+  - Tools feature granularity: separate `network` and `data` features
   - Feature flags: `io`, `network`, `data` for optional functionality
+
+- **CI/CD Infrastructure**
+  - Comprehensive CI pipeline with matrix strategy testing all feature combinations
+  - Conditional service startup in CI (Redis/PostgreSQL only when needed)
+  - Cargo dependency caching for faster CI builds
+  - sccache compilation caching support
+  - mold linker optimization for Linux builds
+  - CLI-specific testing in CI pipeline
+  - Comprehensive HTTP feature combinations testing
 
 - **Security Framework**
   - Input validation and sanitization
@@ -109,6 +99,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Type-safe APIs with helpful error messages
   - Hot-reload support for development
   - Structured logging with tracing
+
+### Changed
+- **BREAKING**: Redis API updated from deprecated `execute()` to `exec().unwrap()`
+- CI build time improved from 13 to 10 minutes (23% faster)
+- Matrix strategy now tests 12 parallel jobs instead of monolithic builds
+- All dependencies consolidated using `[workspace.dependencies]`
+- Improved build profiles for faster CI compilation
+- Enhanced error handling in Redis memory backend
+
+### Fixed
+- Redis memory backend compilation errors with `InMemoryMemory` imports
+- GitHub Actions YAML validation errors with conditional services
+- Missing `ToSchema` derive for `AuthError` type (utoipa v5 compatibility)
+- Deprecated `rand::thread_rng()` usage replaced with `rand::rng()`
+- Circular dependency issues with workspace architecture
+
+### Security
+- Added `ToSchema` derive to `AuthError` for secure OpenAPI documentation
 
 ### Performance Optimizations
 - **Zero-Copy Tool Dispatch**: Eliminated cloning in Coordinator hot paths
