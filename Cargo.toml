@@ -22,9 +22,9 @@ thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 # HTTP and web
-axum = { version = "0.7", features = ["macros"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "limit"] }
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "timeout", "limit"] }
 
 # Storage and cache
 redis = { version = "0.32.5", features = ["tokio-comp"] }
