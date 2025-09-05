@@ -243,10 +243,10 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             .route("/auth/token", post(create_token))
             // Protected endpoints (require authentication)
             .route("/agents", get(list_agents).post(create_agent))
-            .route("/agents/:agent_id/status", get(get_agent_status))
-            .route("/agents/:agent_id/observe", post(observe_agent))
-            .route("/agents/:agent_id/stream", get(stream_agent))
-            .route("/agents/:agent_id", axum::routing::delete(delete_agent))
+            .route("/agents/{agent_id}/status", get(get_agent_status))
+            .route("/agents/{agent_id}/observe", post(observe_agent))
+            .route("/agents/{agent_id}/stream", get(stream_agent))
+            .route("/agents/{agent_id}", axum::routing::delete(delete_agent))
             .with_state(self)
             .layer(TraceLayer::new_for_http());
 
@@ -962,7 +962,7 @@ mod tests {
             .unwrap();
         let json: Value = serde_json::from_slice(&body).unwrap();
 
-        assert_eq!(json["openapi"], "3.0.3");
+        assert_eq!(json["openapi"], "3.1.0");
         assert_eq!(json["info"]["title"], "Skreaver HTTP Runtime API");
         assert_eq!(json["info"]["version"], "0.1.0");
         assert!(json["paths"].is_object());

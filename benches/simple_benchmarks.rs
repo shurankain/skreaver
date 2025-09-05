@@ -3,7 +3,7 @@
 //! Basic benchmarks for core operations without async complexity.
 //! This gives us immediate baseline performance measurements.
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use skreaver::{
     InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool, ToolCall, ToolName,
 };
@@ -23,7 +23,7 @@ fn bench_memory_operations(c: &mut Criterion) {
         b.iter(|| {
             let mut memory = InMemoryMemory::new();
             let update = MemoryUpdate::new("benchmark_key", "benchmark_value").unwrap();
-            black_box(memory.store(black_box(update)))
+            std::hint::black_box(memory.store(std::hint::black_box(update)))
         })
     });
 
@@ -35,7 +35,7 @@ fn bench_memory_operations(c: &mut Criterion) {
                 memory.store(update).unwrap();
                 (memory, MemoryKey::new("benchmark_key").unwrap())
             },
-            |(memory, key)| black_box(memory.load(black_box(&key))),
+            |(memory, key)| std::hint::black_box(memory.load(std::hint::black_box(&key))),
             criterion::BatchSize::SmallInput,
         )
     });
@@ -70,7 +70,9 @@ fn bench_tool_operations(c: &mut Criterion) {
     let tool = MockTool::new("benchmark_tool").with_default_response("response");
 
     group.bench_function("direct_tool_call", |b| {
-        b.iter(|| black_box(tool.call(black_box("benchmark input".to_string()))))
+        b.iter(|| {
+            std::hint::black_box(tool.call(std::hint::black_box("benchmark input".to_string())))
+        })
     });
 
     // Registry dispatch
@@ -82,13 +84,13 @@ fn bench_tool_operations(c: &mut Criterion) {
     group.bench_function("registry_dispatch", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("tool1", "benchmark input").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)))
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)))
         })
     });
 
     // Tool name validation
     group.bench_function("tool_name_validation", |b| {
-        b.iter(|| black_box(ToolName::new(black_box("valid_tool_name"))))
+        b.iter(|| std::hint::black_box(ToolName::new(std::hint::black_box("valid_tool_name"))))
     });
 
     group.finish();
@@ -118,7 +120,7 @@ fn bench_payload_sizes(c: &mut Criterion) {
                 b.iter(|| {
                     let mut memory = InMemoryMemory::new();
                     let update = MemoryUpdate::new("key", payload).unwrap();
-                    black_box(memory.store(black_box(update)))
+                    std::hint::black_box(memory.store(std::hint::black_box(update)))
                 })
             },
         );
@@ -130,7 +132,7 @@ fn bench_payload_sizes(c: &mut Criterion) {
             |b, payload| {
                 b.iter(|| {
                     let tool = MockTool::new("test").with_default_response("processed");
-                    black_box(tool.call(black_box(payload.clone())))
+                    std::hint::black_box(tool.call(std::hint::black_box(payload.clone())))
                 })
             },
         );
@@ -165,7 +167,7 @@ fn bench_registry_scalability(c: &mut Criterion) {
                 b.iter(|| {
                     // Test lookup of first tool (best case) and middle tool
                     let tool_call = ToolCall::new("tool_0", "test").unwrap();
-                    black_box(registry.dispatch(black_box(tool_call)))
+                    std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)))
                 })
             },
         );
@@ -189,27 +191,27 @@ fn bench_error_handling(c: &mut Criterion) {
     group.bench_function("success_path", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("success_tool", "test").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)))
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)))
         })
     });
 
     group.bench_function("failure_path", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("failure_tool", "test").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)))
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)))
         })
     });
 
     group.bench_function("nonexistent_tool", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("nonexistent", "test").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)))
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)))
         })
     });
 
     // Invalid tool names
     group.bench_function("invalid_tool_name", |b| {
-        b.iter(|| black_box(ToolName::new(black_box(""))))
+        b.iter(|| std::hint::black_box(ToolName::new(std::hint::black_box(""))))
     });
 
     group.finish();

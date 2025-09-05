@@ -6,7 +6,7 @@
 //! - Concurrent access patterns
 //! - Memory usage under load
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use skreaver_core::InMemoryMemory;
 use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory,
@@ -29,7 +29,7 @@ fn bench_memory_basic_operations(c: &mut Criterion) {
         b.iter(|| {
             let mut memory = InMemoryMemory::new();
             let update = MemoryUpdate::new("benchmark_key", "benchmark_value").unwrap();
-            black_box(memory.store(black_box(update)))
+            std::hint::black_box(memory.store(std::hint::black_box(update)))
         })
     });
 
@@ -41,7 +41,7 @@ fn bench_memory_basic_operations(c: &mut Criterion) {
                 memory.store(update).unwrap();
                 (memory, MemoryKey::new("benchmark_key").unwrap())
             },
-            |(memory, key)| black_box(memory.load(black_box(&key))),
+            |(memory, key)| std::hint::black_box(memory.load(std::hint::black_box(&key))),
             criterion::BatchSize::SmallInput,
         )
     });
@@ -55,7 +55,7 @@ fn bench_memory_basic_operations(c: &mut Criterion) {
             },
             |mut memory| {
                 let update = MemoryUpdate::new("benchmark_key", "benchmark_value").unwrap();
-                black_box(memory.store(black_box(update)))
+                std::hint::black_box(memory.store(std::hint::black_box(update)))
             },
             criterion::BatchSize::SmallInput,
         )
@@ -70,7 +70,7 @@ fn bench_memory_basic_operations(c: &mut Criterion) {
                 memory.store(update).unwrap();
                 (memory, MemoryKey::new("benchmark_key").unwrap())
             },
-            |(memory, key)| black_box(memory.load(black_box(&key))),
+            |(memory, key)| std::hint::black_box(memory.load(std::hint::black_box(&key))),
             criterion::BatchSize::SmallInput,
         )
     });
@@ -98,7 +98,7 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
                         let key = format!("key_{}", i);
                         let value = format!("value_{}", i);
                         let update = MemoryUpdate::new(&key, &value).unwrap();
-                        let _ = black_box(memory.store(update));
+                        let _ = std::hint::black_box(memory.store(update));
                     }
                 })
             },
@@ -122,7 +122,7 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
                     |memory| {
                         for i in 0..count {
                             let key = MemoryKey::new(&format!("key_{}", i)).unwrap();
-                            let _ = black_box(memory.load(&key));
+                            let _ = std::hint::black_box(memory.load(&key));
                         }
                     },
                     criterion::BatchSize::SmallInput,
@@ -144,7 +144,7 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
                             let key = format!("key_{}", i);
                             let value = format!("value_{}", i);
                             let update = MemoryUpdate::new(&key, &value).unwrap();
-                            let _ = black_box(memory.store(update));
+                            let _ = std::hint::black_box(memory.store(update));
                         }
                     },
                     criterion::BatchSize::SmallInput,
@@ -181,7 +181,7 @@ fn bench_memory_concurrent_access(c: &mut Criterion) {
                                 let key = format!("task_{}_key_{}", task_id, i);
                                 let value = format!("task_{}_value_{}", task_id, i);
                                 let update = MemoryUpdate::new(&key, &value).unwrap();
-                                let _ = black_box(memory.store(update));
+                                let _ = std::hint::black_box(memory.store(update));
                             }
                         });
                         handles.push(handle);
@@ -189,7 +189,7 @@ fn bench_memory_concurrent_access(c: &mut Criterion) {
 
                     for handle in handles {
                         handle.await.unwrap();
-                        black_box(());
+                        std::hint::black_box(());
                     }
                 })
             },
@@ -224,7 +224,7 @@ fn bench_memory_snapshots(c: &mut Criterion) {
                         }
                         memory
                     },
-                    |mut memory| black_box(memory.snapshot()),
+                    |mut memory| std::hint::black_box(memory.snapshot()),
                     criterion::BatchSize::SmallInput,
                 )
             },
@@ -251,9 +251,9 @@ fn bench_memory_snapshots(c: &mut Criterion) {
                     },
                     |(mut memory, snapshot)| {
                         if let Some(snap) = snapshot {
-                            black_box(memory.restore(&snap))
+                            std::hint::black_box(memory.restore(&snap))
                         } else {
-                            black_box(Ok(()))
+                            std::hint::black_box(Ok(()))
                         }
                     },
                     criterion::BatchSize::SmallInput,
@@ -279,7 +279,7 @@ fn bench_memory_snapshots(c: &mut Criterion) {
                         }
                         memory
                     },
-                    |mut memory| black_box(memory.snapshot()),
+                    |mut memory| std::hint::black_box(memory.snapshot()),
                     criterion::BatchSize::SmallInput,
                 )
             },
@@ -307,9 +307,9 @@ fn bench_memory_snapshots(c: &mut Criterion) {
                     },
                     |(mut memory, snapshot)| {
                         if let Some(snap) = snapshot {
-                            black_box(memory.restore(&snap))
+                            std::hint::black_box(memory.restore(&snap))
                         } else {
-                            black_box(Ok(()))
+                            std::hint::black_box(Ok(()))
                         }
                     },
                     criterion::BatchSize::SmallInput,
@@ -344,7 +344,7 @@ fn bench_memory_value_sizes(c: &mut Criterion) {
                 b.iter(|| {
                     let mut memory = InMemoryMemory::new();
                     let update = MemoryUpdate::new("benchmark_key", value).unwrap();
-                    black_box(memory.store(black_box(update)))
+                    std::hint::black_box(memory.store(std::hint::black_box(update)))
                 })
             },
         );
@@ -360,7 +360,7 @@ fn bench_memory_value_sizes(c: &mut Criterion) {
                     },
                     |mut memory| {
                         let update = MemoryUpdate::new("benchmark_key", value).unwrap();
-                        black_box(memory.store(black_box(update)))
+                        std::hint::black_box(memory.store(std::hint::black_box(update)))
                     },
                     criterion::BatchSize::SmallInput,
                 )

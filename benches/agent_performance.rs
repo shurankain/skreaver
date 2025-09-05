@@ -5,7 +5,7 @@
 //! - Memory: RSS ≤ 128MB with N=32 concurrent sessions
 //! - Tool loop scenario: HTTP GET → JSON parse → Text transform → File write
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use skreaver::{
     Agent, ExecutionResult, InMemoryMemory, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
 };
@@ -118,7 +118,9 @@ fn bench_single_agent_step(c: &mut Criterion) {
             let registry = MockToolRegistry::new();
             let mut coordinator = Coordinator::new(agent, registry);
 
-            black_box(coordinator.step(black_box("benchmark input".to_string())))
+            std::hint::black_box(
+                coordinator.step(std::hint::black_box("benchmark input".to_string())),
+            )
         })
     });
 
@@ -140,7 +142,9 @@ fn bench_agent_tool_loop(c: &mut Criterion) {
             let registry = create_benchmark_registry();
             let mut coordinator = Coordinator::new(agent, registry);
 
-            black_box(coordinator.step(black_box("benchmark input with tools".to_string())))
+            std::hint::black_box(coordinator.step(std::hint::black_box(
+                "benchmark input with tools".to_string(),
+            )))
         })
     });
 
@@ -178,7 +182,7 @@ fn bench_concurrent_sessions(c: &mut Criterion) {
 
                     // Wait for all tasks to complete
                     for handle in handles {
-                        black_box(handle.await.unwrap());
+                        std::hint::black_box(handle.await.unwrap());
                     }
                 })
             },
@@ -206,7 +210,7 @@ fn bench_memory_operations(c: &mut Criterion) {
                 let value = format!("bench_value_{}", i);
 
                 if let Ok(update) = MemoryUpdate::new(&key, &value) {
-                    let _ = black_box(agent.memory.store(update));
+                    let _ = std::hint::black_box(agent.memory.store(update));
                 }
             }
 
@@ -214,7 +218,7 @@ fn bench_memory_operations(c: &mut Criterion) {
             for i in 0..10 {
                 let key = format!("bench_key_{}", i);
                 if let Ok(key_obj) = skreaver_core::MemoryKey::new(&key) {
-                    let _ = black_box(agent.memory.load(&key_obj));
+                    let _ = std::hint::black_box(agent.memory.load(&key_obj));
                 }
             }
         })
@@ -242,7 +246,7 @@ fn bench_sustained_throughput(c: &mut Criterion) {
 
             // Run for approximately 1 second in benchmark context
             while start.elapsed() < Duration::from_millis(100) {
-                black_box(coordinator.step(format!("sustained input {}", operations)));
+                std::hint::black_box(coordinator.step(format!("sustained input {}", operations)));
                 operations += 1;
             }
 

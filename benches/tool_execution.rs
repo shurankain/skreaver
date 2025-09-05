@@ -3,7 +3,7 @@
 //! Benchmarks individual tool execution performance and tool registry operations.
 //! Focuses on the overhead of tool dispatch and execution.
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use skreaver::ToolName;
 use skreaver_core::{Tool, ToolCall};
 use skreaver_testing::{MockTool, MockToolRegistry};
@@ -40,7 +40,9 @@ fn bench_tool_execution(c: &mut Criterion) {
 
     for (name, tool) in tools {
         group.bench_with_input(BenchmarkId::new("direct_call", name), &tool, |b, tool| {
-            b.iter(|| black_box(tool.call(black_box("benchmark input".to_string()))))
+            b.iter(|| {
+                std::hint::black_box(tool.call(std::hint::black_box("benchmark input".to_string())))
+            })
         });
     }
 
@@ -86,7 +88,9 @@ fn bench_tool_registry(c: &mut Criterion) {
             |b, registry| {
                 b.iter(|| {
                     let tool_call = ToolCall::new("tool1", "benchmark input").unwrap();
-                    black_box(registry.dispatch(black_box(tool_call)).unwrap())
+                    std::hint::black_box(
+                        registry.dispatch(std::hint::black_box(tool_call)).unwrap(),
+                    )
                 })
             },
         );
@@ -127,7 +131,9 @@ fn bench_batch_tool_execution(c: &mut Criterion) {
                         let tool_call =
                             ToolCall::new(tool_name, &format!("batch input {}", i)).unwrap();
 
-                        black_box(registry.dispatch(black_box(tool_call)).unwrap());
+                        std::hint::black_box(
+                            registry.dispatch(std::hint::black_box(tool_call)).unwrap(),
+                        );
                     }
                 })
             },
@@ -152,21 +158,21 @@ fn bench_tool_error_handling(c: &mut Criterion) {
     group.bench_function("successful_execution", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("success_tool", "test input").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)).unwrap())
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)).unwrap())
         })
     });
 
     group.bench_function("failed_execution", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("failure_tool", "input").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)).unwrap())
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)).unwrap())
         })
     });
 
     group.bench_function("nonexistent_tool", |b| {
         b.iter(|| {
             let tool_call = ToolCall::new("nonexistent", "test input").unwrap();
-            black_box(registry.dispatch(black_box(tool_call)).unwrap())
+            std::hint::black_box(registry.dispatch(std::hint::black_box(tool_call)).unwrap())
         })
     });
 
@@ -199,7 +205,7 @@ fn bench_tool_name_operations(c: &mut Criterion) {
     group.bench_function("valid_tool_names", |b| {
         b.iter(|| {
             for name in &valid_names {
-                let _ = black_box(ToolName::new(black_box(name)));
+                let _ = std::hint::black_box(ToolName::new(std::hint::black_box(name)));
             }
         })
     });
@@ -207,7 +213,7 @@ fn bench_tool_name_operations(c: &mut Criterion) {
     group.bench_function("invalid_tool_names", |b| {
         b.iter(|| {
             for name in &invalid_names {
-                let _ = black_box(ToolName::new(black_box(name)));
+                let _ = std::hint::black_box(ToolName::new(std::hint::black_box(name)));
             }
         })
     });

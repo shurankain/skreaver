@@ -3,7 +3,7 @@
 //! Tests real-world scenarios with actual I/O, networking, and data processing.
 //! No mocking - only real operations that would happen in production.
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use skreaver::{InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool};
 use skreaver_tools::standard::data::json::JsonParseTool;
 use skreaver_tools::standard::io::file::{FileReadTool, FileWriteTool};
@@ -43,7 +43,7 @@ fn bench_realistic_memory(c: &mut Criterion) {
             },
             |(key, value)| {
                 let update = MemoryUpdate::new(&key, &value).unwrap();
-                let _ = black_box(memory.store(black_box(update)));
+                let _ = std::hint::black_box(memory.store(std::hint::black_box(update)));
             },
             criterion::BatchSize::SmallInput,
         )
@@ -53,7 +53,7 @@ fn bench_realistic_memory(c: &mut Criterion) {
         b.iter(|| {
             let session_id = rand::random::<u32>() % 1000;
             let key = MemoryKey::new(&format!("session_{}", session_id)).unwrap();
-            black_box(memory.load(black_box(&key)))
+            std::hint::black_box(memory.load(std::hint::black_box(&key)))
         })
     });
 
@@ -89,7 +89,7 @@ fn bench_realistic_file_operations(c: &mut Criterion) {
                 })
                 .to_string()
             },
-            |input| black_box(file_write_tool.call(black_box(input))),
+            |input| std::hint::black_box(file_write_tool.call(std::hint::black_box(input))),
             criterion::BatchSize::SmallInput,
         )
     });
@@ -102,7 +102,7 @@ fn bench_realistic_file_operations(c: &mut Criterion) {
                 "path": file_path.to_string_lossy()
             })
             .to_string();
-            black_box(file_read_tool.call(black_box(input)))
+            std::hint::black_box(file_read_tool.call(std::hint::black_box(input)))
         })
     });
 
@@ -149,7 +149,7 @@ fn bench_realistic_json_processing(c: &mut Criterion) {
                 "path": "$.users[*].profile.age"
             })
             .to_string();
-            black_box(json_tool.call(black_box(input)))
+            std::hint::black_box(json_tool.call(std::hint::black_box(input)))
         })
     });
 
@@ -179,7 +179,7 @@ fn bench_realistic_json_processing(c: &mut Criterion) {
                         "path": "$.items[*].id"
                     })
                     .to_string();
-                    black_box(json_tool.call(black_box(input)))
+                    std::hint::black_box(json_tool.call(std::hint::black_box(input)))
                 })
             },
         );
@@ -243,7 +243,7 @@ fn bench_realistic_tool_chain(c: &mut Criterion) {
                 .to_string();
                 let read_result = file_read_tool.call(read_input);
 
-                black_box((parse_result, write_result, read_result))
+                std::hint::black_box((parse_result, write_result, read_result))
             },
             criterion::BatchSize::SmallInput,
         )

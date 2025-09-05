@@ -69,7 +69,7 @@ pub enum AuthMethod {
 }
 
 /// Error response for authentication failures
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AuthError {
     pub error: String,
     pub message: String,

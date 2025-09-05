@@ -3,11 +3,11 @@ use redis::{Client, Commands, Connection, RedisResult};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use skreaver_core::InMemoryMemory;
 use skreaver_core::error::{MemoryError, TransactionError};
 use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
-use skreaver_core::InMemoryMemory;
 
 /// Redis-based memory backend with connection sharing for concurrent access.
 #[cfg(feature = "redis")]

@@ -2,7 +2,7 @@
 //!
 //! Minimal benchmarks designed to complete in under 30 seconds total.
 
-use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use skreaver::{InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool};
 use skreaver_core::memory::SnapshotableMemory;
 use skreaver_tools::standard::data::json::JsonParseTool;
@@ -32,7 +32,7 @@ fn bench_memory_quick(c: &mut Criterion) {
             let key = format!("test_{}", rand::random::<u16>());
             let value = "test_value".to_string();
             let update = MemoryUpdate::new(&key, &value).unwrap();
-            let _ = black_box(memory.store(black_box(update)));
+            let _ = std::hint::black_box(memory.store(std::hint::black_box(update)));
         })
     });
 
@@ -40,7 +40,7 @@ fn bench_memory_quick(c: &mut Criterion) {
         b.iter(|| {
             let session_id = rand::random::<u32>() % 100;
             let key = MemoryKey::new(&format!("session_{}", session_id)).unwrap();
-            black_box(memory.load(black_box(&key)))
+            std::hint::black_box(memory.load(std::hint::black_box(&key)))
         })
     });
 
@@ -55,7 +55,7 @@ fn bench_memory_quick(c: &mut Criterion) {
                 let update = MemoryUpdate::new(&key, &value).unwrap();
                 snapshot_memory.store(update).unwrap();
             }
-            black_box(snapshot_memory.snapshot())
+            std::hint::black_box(snapshot_memory.snapshot())
         })
     });
 
@@ -88,7 +88,7 @@ fn bench_file_quick(c: &mut Criterion) {
                 "content": test_data
             })
             .to_string();
-            black_box(file_write_tool.call(black_box(input)))
+            std::hint::black_box(file_write_tool.call(std::hint::black_box(input)))
         })
     });
 
@@ -102,7 +102,7 @@ fn bench_file_quick(c: &mut Criterion) {
                 "path": read_file.to_string_lossy()
             })
             .to_string();
-            black_box(file_read_tool.call(black_box(input)))
+            std::hint::black_box(file_read_tool.call(std::hint::black_box(input)))
         })
     });
 
@@ -137,7 +137,7 @@ fn bench_json_quick(c: &mut Criterion) {
                 "format": "pretty"
             })
             .to_string();
-            black_box(json_tool.call(black_box(input)))
+            std::hint::black_box(json_tool.call(std::hint::black_box(input)))
         })
     });
 
@@ -150,7 +150,7 @@ fn bench_json_quick(c: &mut Criterion) {
                 "format": "pretty"
             })
             .to_string();
-            black_box(json_tool.call(black_box(input)))
+            std::hint::black_box(json_tool.call(std::hint::black_box(input)))
         })
     });
 
