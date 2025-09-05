@@ -30,7 +30,7 @@ uuid = { workspace = true }
 # Testing utilities
 criterion = { workspace = true, optional = true }
 tempfile = { workspace = true }
-wiremock = "0.5"
+wiremock = { workspace = true }
 
 # Async utilities
 futures = { workspace = true }

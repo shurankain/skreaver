@@ -76,7 +76,7 @@ impl SecretKey {
     /// Generate a cryptographically secure random key
     pub fn generate_random() -> Self {
         use rand::RngCore;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut random_bytes = [0u8; 64];
         rng.fill_bytes(&mut random_bytes);
         let key = base64::engine::general_purpose::STANDARD.encode(random_bytes);

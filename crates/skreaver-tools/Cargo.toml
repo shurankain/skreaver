@@ -27,7 +27,7 @@ thiserror = { workspace = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
 
 # Data processing tools
-quick-xml = { version = "0.36", features = ["serialize"], optional = true }
+quick-xml = { version = "0.38", features = ["serialize"], optional = true }
 regex = { workspace = true }
 
 # I/O tools
