@@ -139,3 +139,7 @@ harness = false
 [[bench]]
 name = "quick_benchmark"
 harness = false
+
+[[bench]]
+name = "production_benchmark"
+harness = false

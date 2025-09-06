@@ -1,0 +1,214 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-benchmark-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-benchmark-
+          ${{ runner.os }}-cargo-
+
+    - name: Create benchmark baseline directory
+      run: mkdir -p target/baselines
+
+    - name: Download previous benchmarks baseline
+      uses: actions/cache@v4
+      with:
+        path: target/baselines
+        key: benchmark-baselines-${{ github.repository }}-${{ github.ref_name }}
+        restore-keys: |
+          benchmark-baselines-${{ github.repository }}-main
+          benchmark-baselines-${{ github.repository }}-
+
+    - name: Run production benchmarks
+      run: |
+        cargo bench --bench production_benchmark -- --output-format json > target/benchmark-results.json
+        echo "Benchmark completed successfully"
+
+    - name: Generate benchmark report
+      id: benchmark_report
+      run: |
+        # Create a simple benchmark analysis script
+        cat > analyze_benchmarks.py << 'EOF'
+        import json
+        import sys
+        import os
+
+        def analyze_benchmarks():
+            try:
+                with open('target/benchmark-results.json', 'r') as f:
+                    content = f.read().strip()
+                    if not content:
+                        print("No benchmark data available")
+                        return
+                    
+                    # Parse criterion JSON output (simplified)
+                    lines = content.split('\n')
+                    for line in lines:
+                        if line.strip() and line.startswith('{'):
+                            try:
+                                data = json.loads(line)
+                                if 'id' in data and 'mean' in data:
+                                    benchmark_name = data['id']
+                                    mean_time = data['mean']['estimate']
+                                    
+                                    # Convert to milliseconds
+                                    mean_ms = mean_time / 1_000_000
+                                    
+                                    print(f"Benchmark: {benchmark_name}")
+                                    print(f"  Mean time: {mean_ms:.2f}ms")
+                                    
+                                    # Check against development plan thresholds
+                                    if mean_ms > 200:  # p95 threshold
+                                        print(f"  ⚠️  WARNING: Exceeds 200ms threshold")
+                                        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                                            f.write(f"performance_warning=true\n")
+                                    elif mean_ms > 30:  # p50 threshold
+                                        print(f"  ℹ️  INFO: Above 30ms p50 target")
+                                    else:
+                                        print(f"  ✅ Within performance targets")
+                            except json.JSONDecodeError:
+                                continue
+                                
+            except FileNotFoundError:
+                print("Benchmark results file not found")
+
+        if __name__ == "__main__":
+            analyze_benchmarks()
+        EOF
+
+        python3 analyze_benchmarks.py
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: |
+          target/benchmark-results.json
+          target/benchmark_report.json
+          target/benchmark_report.md
+        retention-days: 30
+
+    - name: Comment benchmark results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'target/benchmark_report.md';
+          
+          if (fs.existsSync(path)) {
+            const report = fs.readFileSync(path, 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 📊 Benchmark Results\n\n${report}`
+            });
+          } else {
+            console.log('No benchmark report found to comment');
+          }
+
+    - name: Fail on performance regression
+      if: steps.benchmark_report.outputs.performance_warning == 'true'
+      run: |
+        echo "⚠️ Performance regression detected!"
+        echo "Some benchmarks exceeded the 200ms p95 latency threshold."
+        echo "Please review the benchmark results and optimize performance."
+        exit 1
+
+  # Memory usage benchmark (Linux-specific)
+  memory_benchmark:
+    name: Memory Usage Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install memory monitoring tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y valgrind time
+
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-memory-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build release binary for memory testing
+      run: cargo build --release --bin skreaver-cli
+
+    - name: Run memory usage test
+      run: |
+        echo "Testing memory usage with /usr/bin/time:"
+        /usr/bin/time -v ./target/release/skreaver-cli --help 2>&1 | tee memory_report.txt
+        
+        # Extract memory usage
+        MAX_RSS=$(grep "Maximum resident set size" memory_report.txt | awk '{print $6}')
+        MAX_RSS_MB=$((MAX_RSS / 1024))
+        
+        echo "Maximum RSS: ${MAX_RSS_MB}MB"
+        
+        # Check against development plan threshold (128MB for N=32 sessions)
+        # For CLI help, we expect much lower usage
+        if [ "$MAX_RSS_MB" -gt 64 ]; then
+          echo "⚠️ WARNING: High memory usage for CLI: ${MAX_RSS_MB}MB > 64MB"
+          echo "::warning::High memory usage detected: ${MAX_RSS_MB}MB"
+        else
+          echo "✅ Memory usage within expected limits: ${MAX_RSS_MB}MB ≤ 64MB"
+        fi
+
+    - name: Upload memory report
+      uses: actions/upload-artifact@v4
+      with:
+        name: memory-report
+        path: memory_report.txt
