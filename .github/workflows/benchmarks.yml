@@ -209,7 +209,7 @@ jobs:
         key: ${{ runner.os }}-cargo-memory-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build release binary for memory testing
-      run: cargo build --release --bin skreaver-cli
+      run: cargo build --release -p skreaver-cli
 
     - name: Run memory usage test
       run: |
