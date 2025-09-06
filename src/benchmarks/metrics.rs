@@ -352,10 +352,22 @@ fn get_memory_usage() -> Result<(u64, u64), MetricsError> {
         if result == 0 {
             Ok((info.resident_size, info.virtual_size))
         } else {
-            Err(MetricsError::SystemCall(format!(
-                "task_info failed with code: {}",
-                result
-            )))
+            // Fall back to rusage if mach task_info fails
+            // This can happen in some virtualized environments or with restricted permissions
+            use libc::{getrusage, rusage, RUSAGE_SELF};
+            let mut usage: rusage = unsafe { mem::zeroed() };
+            let rusage_result = unsafe { getrusage(RUSAGE_SELF, &mut usage) };
+            
+            if rusage_result == 0 {
+                // Convert from KB to bytes (ru_maxrss is in KB on macOS)
+                let rss_bytes = usage.ru_maxrss as u64 * 1024;
+                Ok((rss_bytes, rss_bytes)) // Use RSS for both resident and virtual as fallback
+            } else {
+                Err(MetricsError::SystemCall(format!(
+                    "Both task_info (code: {}) and getrusage (code: {}) failed",
+                    result, rusage_result
+                )))
+            }
         }
     }
 
