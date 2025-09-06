@@ -15,7 +15,7 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - File-backed memory support via `FileMemory`
 - **HTTP runtime with RESTful API endpoints**
 - **Standard tool library (HTTP, File, JSON, Text processing)**
-- **Comprehensive performance benchmarking suite**
+- **Production-grade benchmarking framework with CI integration**
 - Designed for performance and modularity
 
 ---
@@ -66,7 +66,7 @@ Core components implemented:
 * `FileMemory` (persistent key-value storage)
 * **Axum-based HTTP runtime with RESTful endpoints**
 * **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
-* **Comprehensive performance benchmarking framework**
+* **Production benchmarking framework with resource monitoring and CI integration**
 * Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`)
 * Self-hosted CI pipeline
 
@@ -132,21 +132,28 @@ The HTTP runtime supports all standard tools and provides full agent lifecycle m
 
 ## ⚡ Performance Benchmarks
 
-Skreaver includes comprehensive performance benchmarks to validate its efficiency:
+Skreaver includes a comprehensive performance benchmarking framework designed for production environments:
 
 ```bash
 # Quick benchmarks (completes in ~30 seconds)
 cargo bench --bench quick_benchmark
 
-# Optimized benchmarks with detailed metrics
-cargo bench --bench optimized_benchmark
+# Production benchmark with resource monitoring
+cargo bench --bench production_benchmark
 
-# Memory-focused benchmarks
+# Memory and CPU profiling benchmarks
 cargo bench --bench memory_operations
 
-# Realistic I/O benchmarks
+# Realistic agent workload benchmarks
 cargo bench --bench realistic_benchmarks
 ```
+
+**Production Benchmark Framework Features:**
+- **Resource Monitoring**: Real-time memory and CPU tracking during benchmarks
+- **Performance Thresholds**: Automated pass/fail based on latency targets (p50<30ms, p95<200ms, p99<400ms)
+- **Baseline Management**: Historical performance tracking with regression detection
+- **Multi-format Reports**: JSON, Markdown, GitHub Actions, and JUnit XML outputs
+- **CI Integration**: Automated performance gates in GitHub Actions workflow
 
 **Performance Highlights:**
 - Memory operations: ~350ns store, ~130ns load
@@ -170,6 +177,7 @@ cargo run --example http_server
 
 # Performance benchmarks
 cargo bench --bench quick_benchmark
+cargo bench --bench production_benchmark
 ```
 
 ---
