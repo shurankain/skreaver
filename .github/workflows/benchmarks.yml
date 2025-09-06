@@ -59,7 +59,7 @@ jobs:
 
     - name: Run production benchmarks
       run: |
-        cargo bench --bench production_benchmark -- --output-format json > target/benchmark-results.json
+        cargo bench --bench production_benchmark 2>&1 | tee target/benchmark-output.txt
         echo "Benchmark completed successfully"
 
     - name: Generate benchmark report
@@ -73,42 +73,66 @@ jobs:
 
         def analyze_benchmarks():
             try:
-                with open('target/benchmark-results.json', 'r') as f:
-                    content = f.read().strip()
+                with open('target/benchmark-output.txt', 'r') as f:
+                    content = f.read()
                     if not content:
                         print("No benchmark data available")
                         return
                     
-                    # Parse criterion JSON output (simplified)
-                    lines = content.split('\n')
-                    for line in lines:
-                        if line.strip() and line.startswith('{'):
-                            try:
-                                data = json.loads(line)
-                                if 'id' in data and 'mean' in data:
-                                    benchmark_name = data['id']
-                                    mean_time = data['mean']['estimate']
-                                    
-                                    # Convert to milliseconds
-                                    mean_ms = mean_time / 1_000_000
-                                    
-                                    print(f"Benchmark: {benchmark_name}")
-                                    print(f"  Mean time: {mean_ms:.2f}ms")
-                                    
-                                    # Check against development plan thresholds
-                                    if mean_ms > 200:  # p95 threshold
-                                        print(f"  ⚠️  WARNING: Exceeds 200ms threshold")
-                                        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                                            f.write(f"performance_warning=true\n")
-                                    elif mean_ms > 30:  # p50 threshold
-                                        print(f"  ℹ️  INFO: Above 30ms p50 target")
-                                    else:
-                                        print(f"  ✅ Within performance targets")
-                            except json.JSONDecodeError:
-                                continue
+                    print("Raw benchmark output:")
+                    print(content)
+                    
+                    # Parse criterion text output for timing information
+                    import re
+                    performance_warning = False
+                    
+                    # Look for benchmark timing patterns in criterion output
+                    # Pattern: benchmark_name    time:   [X.X ms Y.Y ms Z.Z ms]
+                    pattern = r'(\w+)\s+time:\s+\[([0-9.]+)\s+([a-zA-Z]+)\s+([0-9.]+)\s+([a-zA-Z]+)\s+([0-9.]+)\s+([a-zA-Z]+)\]'
+                    
+                    matches = re.findall(pattern, content)
+                    for match in matches:
+                        name, lower_val, lower_unit, est_val, est_unit, upper_val, upper_unit = match
+                        
+                        # Convert to milliseconds for comparison
+                        def to_ms(val, unit):
+                            val = float(val)
+                            if unit == 'ns':
+                                return val / 1_000_000
+                            elif unit in ['μs', 'us']:
+                                return val / 1_000
+                            elif unit == 'ms':
+                                return val
+                            elif unit == 's':
+                                return val * 1_000
+                            return val
+                        
+                        est_ms = to_ms(est_val, est_unit)
+                        
+                        print(f"Benchmark: {name}")
+                        print(f"  Estimated time: {est_ms:.2f}ms")
+                        
+                        # Check against development plan thresholds
+                        if est_ms > 200:  # p95 threshold
+                            print(f"  ⚠️  WARNING: Exceeds 200ms threshold")
+                            performance_warning = True
+                        elif est_ms > 30:  # p50 threshold
+                            print(f"  ℹ️  INFO: Above 30ms p50 target")
+                        else:
+                            print(f"  ✅ Within performance targets")
+                    
+                    # Set GitHub Actions output
+                    if performance_warning:
+                        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                            f.write("performance_warning=true\n")
+                    
+                    # Check for report files generated by our framework
+                    if os.path.exists('target/benchmark_report.json'):
+                        print("✅ Benchmark report generated successfully")
                                 
             except FileNotFoundError:
-                print("Benchmark results file not found")
+                print("Benchmark output file not found")
+                # Still continue - don't fail the build
 
         if __name__ == "__main__":
             analyze_benchmarks()
@@ -121,7 +145,7 @@ jobs:
       with:
         name: benchmark-results
         path: |
-          target/benchmark-results.json
+          target/benchmark-output.txt
           target/benchmark_report.json
           target/benchmark_report.md
         retention-days: 30
