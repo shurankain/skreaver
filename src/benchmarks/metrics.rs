@@ -354,10 +354,10 @@ fn get_memory_usage() -> Result<(u64, u64), MetricsError> {
         } else {
             // Fall back to rusage if mach task_info fails
             // This can happen in some virtualized environments or with restricted permissions
-            use libc::{getrusage, rusage, RUSAGE_SELF};
+            use libc::{RUSAGE_SELF, getrusage, rusage};
             let mut usage: rusage = unsafe { mem::zeroed() };
             let rusage_result = unsafe { getrusage(RUSAGE_SELF, &mut usage) };
-            
+
             if rusage_result == 0 {
                 // Convert from KB to bytes (ru_maxrss is in KB on macOS)
                 let rss_bytes = usage.ru_maxrss as u64 * 1024;
