@@ -12,10 +12,11 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - Decoupled `Agent` / `Memory` / `Tool` model
 - Multi-tool execution with result aggregation
 - Built-in tool registry system
-- File-backed memory support via `FileMemory`
+- Multiple memory backends (File, Redis, SQLite, PostgreSQL)
 - **HTTP runtime with RESTful API endpoints**
 - **Standard tool library (HTTP, File, JSON, Text processing)**
 - **Production-grade benchmarking framework with CI integration**
+- **Comprehensive observability framework (metrics, tracing, health checks)**
 - Designed for performance and modularity
 
 ---
@@ -63,19 +64,20 @@ Core components implemented:
 * Modular `Coordinator` runtime
 * `ToolRegistry` with dispatch and test coverage
 * Support for multiple tool calls per step
-* `FileMemory` (persistent key-value storage)
+* Multiple memory backends (`FileMemory`, `RedisMemory`, SQLite, PostgreSQL)
 * **Axum-based HTTP runtime with RESTful endpoints**
 * **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
 * **Production benchmarking framework with resource monitoring and CI integration**
+* **Comprehensive observability framework with Prometheus metrics, distributed tracing, and health checks**
 * Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`)
 * Self-hosted CI pipeline
 
 Next steps:
 
-* Pluggable DB-backed memory modules (PostgreSQL, SQLite)
-* Agent test harness and mock tools
+* Agent test harness and mock tools (✅ `skreaver-testing` implemented)
 * Authentication and rate limiting
-* Playground & live examples
+* OpenTelemetry integration for distributed tracing
+* Playground & live examples  
 * Developer docs (powered by skreaver-docs-starter)
 
 ---
@@ -127,6 +129,54 @@ curl -X POST http://localhost:3000/agents/demo-agent-1/observe \
 ```
 
 The HTTP runtime supports all standard tools and provides full agent lifecycle management.
+
+---
+
+## 📊 Observability Framework
+
+Skreaver includes a production-ready observability framework for monitoring agent infrastructure:
+
+**Features:**
+- **Prometheus Metrics**: Core metrics with strict cardinality controls (≤20 tools, ≤30 HTTP routes)
+- **Distributed Tracing**: Session correlation and tool execution tracking
+- **Health Checks**: Component monitoring with degradation detection
+- **OpenTelemetry**: OTLP endpoint support for external monitoring systems
+
+**Metrics Collected:**
+```bash
+# Agent metrics
+agent_sessions_active
+agent_errors_total{kind}
+
+# Tool execution metrics  
+tool_exec_total{tool}
+tool_exec_duration_seconds{tool}
+
+# Memory operation metrics
+memory_ops_total{op}
+
+# HTTP runtime metrics
+http_requests_total{route,method}
+http_request_duration_seconds{route,method}
+```
+
+**Usage:**
+```rust
+use skreaver_observability::{init_observability, ObservabilityConfig, MetricsCollector};
+
+// Initialize observability
+let config = ObservabilityConfig::default();
+init_observability(config)?;
+
+// Collect metrics
+let collector = MetricsCollector::new(registry);
+let _timer = collector.start_tool_timer(tool_name);
+```
+
+**Performance Targets:**
+- p50 < 30ms, p95 < 200ms, p99 < 400ms for tool execution
+- Cardinality limits prevent metrics explosion
+- Production-grade sampling for log volume control
 
 ---
 
