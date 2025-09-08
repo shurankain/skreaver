@@ -390,17 +390,17 @@ impl BenchmarkFramework {
         }
 
         // Check memory threshold if available
-        if let Some(metrics) = resources {
-            if let Some(ref memory) = metrics.memory {
-                let rss_mb = memory.peak_rss_bytes as f64 / 1_048_576.0; // Convert bytes to MB
-                if rss_mb > thresholds.max_rss_mb {
-                    violations.push(ThresholdViolation {
-                        metric: "rss_memory_mb".to_string(),
-                        expected: thresholds.max_rss_mb,
-                        actual: rss_mb,
-                        severity: ViolationSeverity::Error,
-                    });
-                }
+        if let Some(metrics) = resources
+            && let Some(ref memory) = metrics.memory
+        {
+            let rss_mb = memory.peak_rss_bytes as f64 / 1_048_576.0; // Convert bytes to MB
+            if rss_mb > thresholds.max_rss_mb {
+                violations.push(ThresholdViolation {
+                    metric: "rss_memory_mb".to_string(),
+                    expected: thresholds.max_rss_mb,
+                    actual: rss_mb,
+                    severity: ViolationSeverity::Error,
+                });
             }
         }
 

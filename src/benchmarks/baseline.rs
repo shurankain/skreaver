@@ -249,10 +249,10 @@ impl BaselineManager {
             p95_values.push(result.stats.percentiles.p95.as_millis() as f64);
             p99_values.push(result.stats.percentiles.p99.as_millis() as f64);
 
-            if let Some(ref resources) = result.resources {
-                if let Some(ref memory) = resources.memory {
-                    memory_values.push(memory.peak_rss_bytes as f64 / 1_048_576.0);
-                }
+            if let Some(ref resources) = result.resources
+                && let Some(ref memory) = resources.memory
+            {
+                memory_values.push(memory.peak_rss_bytes as f64 / 1_048_576.0);
             }
         }
 
