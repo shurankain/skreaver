@@ -109,6 +109,11 @@ jobs:
             features: "--package skreaver-tools --features data"
             test_args: ""
           
+          # Observability features
+          - name: "Observability"
+            features: "--package skreaver-observability --features metrics,health,tracing,openapi"
+            test_args: ""
+          
           # CLI testing
           - name: "CLI Basic"
             features: ""
