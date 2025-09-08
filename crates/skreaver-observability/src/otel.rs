@@ -44,9 +44,47 @@ impl OtelConfig {
 
 /// Initialize OpenTelemetry exporter
 #[cfg(feature = "opentelemetry")]
-pub fn init_otel_exporter(_config: &OtelConfig) -> Result<(), ObservabilityError> {
-    // TODO: Implement OpenTelemetry initialization
-    // This would set up OTLP exporter for metrics and traces
+pub fn init_otel_exporter(config: &OtelConfig) -> Result<(), ObservabilityError> {
+    use opentelemetry::KeyValue;
+    use opentelemetry_otlp::WithExportConfig;
+    use tracing_opentelemetry::OpenTelemetryLayer;
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    // Create resource with service attributes
+    let resource = opentelemetry::Resource::new(
+        config
+            .resource_attributes
+            .iter()
+            .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
+            .collect::<Vec<_>>(),
+    );
+
+    // Initialize tracer provider
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(&config.endpoint),
+        )
+        .with_trace_config(opentelemetry::trace::Config::default().with_resource(resource.clone()))
+        .install_batch(opentelemetry::runtime::Tokio)
+        .map_err(|e| {
+            ObservabilityError::OpenTelemetryInit(format!("Failed to initialize tracer: {}", e))
+        })?;
+
+    // Set up tracing subscriber with OpenTelemetry layer
+    let telemetry_layer = OpenTelemetryLayer::new(tracer);
+
+    tracing_subscriber::registry().with(telemetry_layer).init();
+
+    tracing::info!(
+        endpoint = config.endpoint,
+        service = config.service_name,
+        version = config.service_version,
+        "OpenTelemetry exporter initialized"
+    );
+
     Ok(())
 }
 

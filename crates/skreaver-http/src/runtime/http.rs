@@ -10,6 +10,7 @@ use crate::runtime::{
     rate_limit::{RateLimitConfig, RateLimitState},
     streaming::{self, StreamingAgentExecutor},
 };
+use async_trait::async_trait;
 use axum::response::Html;
 use axum::{
     Router,
@@ -21,6 +22,12 @@ use axum::{
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use skreaver_core::Agent;
+use skreaver_observability::health::{HealthCheck, SystemHealth};
+use skreaver_observability::metrics::get_metrics_registry;
+use skreaver_observability::{
+    AgentId as ObsAgentId, ErrorKind, HealthChecker, ObservabilityConfig, SessionId,
+    init_observability,
+};
 use skreaver_tools::ToolRegistry;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
@@ -51,6 +58,8 @@ pub struct HttpRuntimeConfig {
     pub enable_cors: bool,
     /// Enable OpenAPI documentation endpoint
     pub enable_openapi: bool,
+    /// Observability configuration
+    pub observability: ObservabilityConfig,
 }
 
 impl Default for HttpRuntimeConfig {
@@ -61,6 +70,7 @@ impl Default for HttpRuntimeConfig {
             max_body_size: 16 * 1024 * 1024, // 16MB
             enable_cors: true,
             enable_openapi: true,
+            observability: ObservabilityConfig::default(),
         }
     }
 }
@@ -223,6 +233,11 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
 
     /// Create a new HTTP agent runtime with custom configuration
     pub fn with_config(tool_registry: T, config: HttpRuntimeConfig) -> Self {
+        // Initialize observability framework
+        if let Err(e) = init_observability(config.observability.clone()) {
+            tracing::warn!("Failed to initialize observability: {}", e);
+        }
+
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             tool_registry: Arc::new(tool_registry),
@@ -240,6 +255,8 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         let mut router = Router::new()
             // Public endpoints (no auth required)
             .route("/health", get(health_check))
+            .route("/ready", get(readiness_check))
+            .route("/metrics", get(metrics_endpoint))
             .route("/auth/token", post(create_token))
             // Protected endpoints (require authentication)
             .route("/agents", get(list_agents).post(create_agent))
@@ -412,11 +429,44 @@ async fn observe_agent<T: ToolRegistry + Clone + Send + Sync>(
     Path(agent_id): Path<String>,
     Json(request): Json<ObserveRequest>,
 ) -> Result<Json<ObserveResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let start_time = std::time::Instant::now();
+
+    // Record HTTP request metrics
+    if let Some(registry) = get_metrics_registry() {
+        let route = format!("/agents/{}/observe", "{agent_id}");
+        let _ = registry.record_http_request(&route, "POST", start_time.elapsed());
+    }
+
     let mut agents = runtime.agents.write().await;
 
     match agents.get_mut(&agent_id) {
         Some(instance) => {
+            // Create agent session for observability
+            let session_id = SessionId::generate();
+
+            // Record agent session start
+            if let Some(registry) = get_metrics_registry() {
+                let obs_agent_id = ObsAgentId::new(agent_id.clone())
+                    .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
+                let tags = skreaver_observability::CardinalTags::for_agent_session(
+                    obs_agent_id.clone(),
+                    session_id.clone(),
+                );
+                let _ = registry.record_agent_session_start(&tags);
+            }
+
             let response = instance.coordinator.step(request.input);
+
+            // Record agent session end
+            if let Some(registry) = get_metrics_registry() {
+                let obs_agent_id = ObsAgentId::new(agent_id.clone())
+                    .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
+                let tags = skreaver_observability::CardinalTags::for_agent_session(
+                    obs_agent_id,
+                    session_id,
+                );
+                let _ = registry.record_agent_session_end(&tags);
+            }
 
             Ok(Json(ObserveResponse {
                 agent_id: agent_id.clone(),
@@ -424,14 +474,21 @@ async fn observe_agent<T: ToolRegistry + Clone + Send + Sync>(
                 timestamp: chrono::Utc::now(),
             }))
         }
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "agent_not_found".to_string(),
-                message: format!("Agent with ID '{}' not found", agent_id),
-                details: None,
-            }),
-        )),
+        None => {
+            // Record error metric
+            if let Some(registry) = get_metrics_registry() {
+                let _ = registry.record_agent_error(&ErrorKind::Internal);
+            }
+
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "agent_not_found".to_string(),
+                    message: format!("Agent with ID '{}' not found", agent_id),
+                    details: None,
+                }),
+            ))
+        }
     }
 }
 
@@ -471,7 +528,7 @@ async fn delete_agent<T: ToolRegistry + Clone + Send + Sync>(
     }
 }
 
-/// GET /health - Health check endpoint
+/// GET /health - Basic health check endpoint
 #[utoipa::path(
     get,
     path = "/health",
@@ -486,6 +543,88 @@ async fn health_check() -> Json<serde_json::Value> {
         "timestamp": chrono::Utc::now(),
         "version": env!("CARGO_PKG_VERSION")
     }))
+}
+
+/// GET /ready - Kubernetes readiness check with detailed component health
+#[utoipa::path(
+    get,
+    path = "/ready",
+    responses(
+        (status = 200, description = "Service is ready", body = SystemHealth),
+        (status = 503, description = "Service not ready", body = SystemHealth)
+    )
+)]
+async fn readiness_check<T: ToolRegistry + Clone + Send + Sync>(
+    State(_runtime): State<HttpAgentRuntime<T>>,
+) -> Result<Json<SystemHealth>, (StatusCode, Json<SystemHealth>)> {
+    // Create health checker with basic components
+    let mut health_checker = HealthChecker::new();
+
+    // Add basic health checks
+    health_checker.register("metrics_registry".to_string(), MetricsHealthCheck::new());
+
+    // Perform all health checks
+    let system_health = health_checker.check_all().await;
+
+    // Return appropriate HTTP status based on health
+    let status_code = StatusCode::from_u16(system_health.status.as_http_status())
+        .unwrap_or(StatusCode::SERVICE_UNAVAILABLE);
+
+    if system_health.status.is_healthy() {
+        Ok(Json(system_health))
+    } else {
+        Err((status_code, Json(system_health)))
+    }
+}
+
+/// GET /metrics - Prometheus metrics endpoint
+#[utoipa::path(
+    get,
+    path = "/metrics",
+    responses(
+        (status = 200, description = "Prometheus metrics", content_type = "text/plain"),
+        (status = 500, description = "Metrics collection failed")
+    )
+)]
+async fn metrics_endpoint() -> Result<String, (StatusCode, String)> {
+    match get_metrics_registry() {
+        Some(registry) => {
+            let prometheus_registry = registry.prometheus_registry();
+            let encoder = prometheus::TextEncoder::new();
+            let metric_families = prometheus_registry.gather();
+
+            match encoder.encode_to_string(&metric_families) {
+                Ok(metrics) => Ok(metrics),
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to encode metrics: {}", e),
+                )),
+            }
+        }
+        None => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Metrics registry not initialized".to_string(),
+        )),
+    }
+}
+
+/// Health check for metrics registry
+struct MetricsHealthCheck;
+
+impl MetricsHealthCheck {
+    fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl HealthCheck for MetricsHealthCheck {
+    async fn check(&self) -> Result<(), String> {
+        match get_metrics_registry() {
+            Some(_) => Ok(()),
+            None => Err("Metrics registry not initialized".to_string()),
+        }
+    }
 }
 
 /// POST /auth/token - Create JWT token for testing
@@ -625,6 +764,8 @@ async fn openapi_spec() -> Json<utoipa::openapi::OpenApi> {
     #[openapi(
         paths(
             health_check,
+            readiness_check,
+            metrics_endpoint,
             create_token,
             list_agents,
             create_agent,

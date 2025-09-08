@@ -246,6 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_body_size: 16 * 1024 * 1024, // 16MB
         enable_cors: true,
         enable_openapi: true,
+        observability: Default::default(),
     };
 
     // Create HTTP runtime with configuration

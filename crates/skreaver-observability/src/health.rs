@@ -6,10 +6,10 @@
 use crate::ObservabilityError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
 
 /// Health check status levels
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum HealthStatus {
     /// System is healthy
     Healthy,
@@ -46,15 +46,16 @@ impl HealthStatus {
 
 /// Individual component health information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ComponentHealth {
     /// Component name
     pub name: String,
     /// Current health status
     pub status: HealthStatus,
     /// Last check timestamp
-    pub last_check: SystemTime,
-    /// Response time for the health check
-    pub response_time: Duration,
+    pub last_check: chrono::DateTime<chrono::Utc>,
+    /// Response time for the health check in milliseconds
+    pub response_time_ms: u64,
     /// Additional metadata
     pub metadata: HashMap<String, String>,
 }
@@ -65,8 +66,8 @@ impl ComponentHealth {
         Self {
             name,
             status: HealthStatus::Healthy,
-            last_check: SystemTime::now(),
-            response_time: Duration::from_millis(0),
+            last_check: chrono::Utc::now(),
+            response_time_ms: 0,
             metadata: HashMap::new(),
         }
     }
@@ -76,8 +77,8 @@ impl ComponentHealth {
         Self {
             name,
             status: HealthStatus::Degraded { reason },
-            last_check: SystemTime::now(),
-            response_time: Duration::from_millis(0),
+            last_check: chrono::Utc::now(),
+            response_time_ms: 0,
             metadata: HashMap::new(),
         }
     }
@@ -87,8 +88,8 @@ impl ComponentHealth {
         Self {
             name,
             status: HealthStatus::Unhealthy { reason },
-            last_check: SystemTime::now(),
-            response_time: Duration::from_millis(0),
+            last_check: chrono::Utc::now(),
+            response_time_ms: 0,
             metadata: HashMap::new(),
         }
     }
@@ -102,15 +103,16 @@ impl ComponentHealth {
 
 /// Overall system health information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SystemHealth {
     /// Overall system status
     pub status: HealthStatus,
     /// Individual component health
     pub components: HashMap<String, ComponentHealth>,
     /// Overall check timestamp
-    pub timestamp: SystemTime,
-    /// System uptime
-    pub uptime: Duration,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// System uptime in seconds
+    pub uptime_seconds: u64,
 }
 
 impl SystemHealth {
@@ -121,8 +123,8 @@ impl SystemHealth {
         Self {
             status,
             components,
-            timestamp: SystemTime::now(),
-            uptime: Duration::from_secs(0), // TODO: Calculate actual uptime
+            timestamp: chrono::Utc::now(),
+            uptime_seconds: 0, // TODO: Calculate actual uptime
         }
     }
 
@@ -198,7 +200,7 @@ impl HealthChecker {
                 Ok(()) => ComponentHealth::healthy(name.clone()),
                 Err(reason) => ComponentHealth::unhealthy(name.clone(), reason),
             };
-            component.response_time = response_time;
+            component.response_time_ms = response_time.as_millis() as u64;
             components.insert(name.clone(), component);
         }
 
@@ -216,7 +218,7 @@ impl HealthChecker {
             Ok(()) => ComponentHealth::healthy(name.to_string()),
             Err(reason) => ComponentHealth::unhealthy(name.to_string(), reason),
         };
-        component.response_time = response_time;
+        component.response_time_ms = response_time.as_millis() as u64;
         Some(component)
     }
 }

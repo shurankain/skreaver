@@ -23,6 +23,13 @@ unstable-websocket = ["streaming"]
 # Core dependencies
 skreaver-core = { path = "../skreaver-core", version = "0.1.0" }
 skreaver-tools = { path = "../skreaver-tools", version = "0.1.0" }
+skreaver-observability = { path = "../skreaver-observability", version = "0.2.0", features = ["metrics", "health", "tracing", "openapi"] }
+
+# Prometheus for metrics endpoint
+prometheus = { workspace = true }
+
+# Async traits
+async-trait = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

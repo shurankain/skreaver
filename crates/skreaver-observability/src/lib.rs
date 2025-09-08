@@ -118,6 +118,16 @@ pub fn init_observability(config: ObservabilityConfig) -> Result<(), Observabili
         health::init_health_checks()?;
     }
 
+    // Initialize OpenTelemetry if endpoint is configured
+    #[cfg(feature = "opentelemetry")]
+    if let Some(endpoint) = &config.otel_endpoint {
+        let otel_config =
+            otel::OtelConfig::new(endpoint.clone(), format!("{}-http", config.namespace))
+                .with_attribute("service.namespace".to_string(), config.namespace.clone());
+
+        otel::init_otel_exporter(&otel_config)?;
+    }
+
     Ok(())
 }
 
