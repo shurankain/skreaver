@@ -75,8 +75,9 @@ Core components implemented:
 Next steps:
 
 * Agent test harness and mock tools (✅ `skreaver-testing` implemented)
-* Authentication and rate limiting
-* OpenTelemetry integration for distributed tracing
+* OpenTelemetry integration for distributed tracing (✅ Phase 0.3 implemented)
+* Authentication and rate limiting (🚧 In progress - Phase 1.1)
+* Enhanced memory backends (SQLite, PostgreSQL) (🚧 Planned - Phase 1.1)
 * Playground & live examples  
 * Developer docs (powered by skreaver-docs-starter)
 
@@ -112,6 +113,8 @@ cargo run --example http_server
 
 **Available endpoints:**
 - `GET /health` - Health check
+- `GET /ready` - Kubernetes readiness check with component health
+- `GET /metrics` - Prometheus metrics endpoint
 - `GET /agents` - List all agents  
 - `GET /agents/{id}/status` - Get agent status
 - `POST /agents/{id}/observe` - Send observation to agent
@@ -119,6 +122,13 @@ cargo run --example http_server
 
 **Example requests:**
 ```bash
+# Health checks
+curl http://localhost:3000/health
+curl http://localhost:3000/ready
+
+# Metrics (Prometheus format)
+curl http://localhost:3000/metrics
+
 # List agents
 curl http://localhost:3000/agents
 
