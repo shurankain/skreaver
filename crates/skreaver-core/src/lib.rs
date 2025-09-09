@@ -7,6 +7,7 @@ pub mod agent;
 pub mod error;
 pub mod in_memory;
 pub mod memory;
+pub mod security;
 pub mod tool;
 
 pub use agent::Agent;
@@ -14,6 +15,10 @@ pub use error::{SkreverError, SkreverResult};
 pub use in_memory::InMemoryMemory;
 pub use memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
+};
+pub use security::{
+    DomainValidator, InputValidator, PathValidator, ResourceLimits, ResourceTracker,
+    SecurityConfig, SecurityContext, SecurityError, SecurityManager, SecurityPolicy,
 };
 pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 

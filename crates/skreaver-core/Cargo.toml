@@ -19,4 +19,11 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 dashmap = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+regex = "1.11"
+sha2 = "0.10"
+toml = "0.8"
+url = "2.5"
 
