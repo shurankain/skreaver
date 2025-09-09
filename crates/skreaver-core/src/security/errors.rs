@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use time::OffsetDateTime;
 
 /// Security-related errors
 #[derive(Debug, Error, Clone, Serialize, Deserialize)]
@@ -82,7 +83,7 @@ pub struct SecurityViolation {
     pub agent_id: String,
     pub tool_name: String,
     pub input_hash: Option<String>,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub timestamp: OffsetDateTime,
     pub remediation: Option<String>,
 }
 
@@ -141,7 +142,7 @@ impl From<SecurityError> for SecurityViolation {
             agent_id: "unknown".to_string(),  // Will be set by caller
             tool_name: "unknown".to_string(), // Will be set by caller
             input_hash: None,
-            timestamp: chrono::Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             remediation: None,
         }
     }

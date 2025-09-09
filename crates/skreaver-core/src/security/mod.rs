@@ -3,20 +3,26 @@
 //! This module provides security controls, policy enforcement, and audit logging
 //! to enable secure deployment of AI agents in production environments.
 
+#[cfg(feature = "security-audit")]
 pub mod audit;
 pub mod config;
 pub mod errors;
 pub mod limits;
 pub mod policy;
+#[cfg(feature = "security-basic")]
 pub mod secure_tool;
+#[cfg(feature = "security-basic")]
 pub mod validation;
 
-pub use audit::{SecurityAuditLog, SecurityEvent, SecurityResult};
+#[cfg(feature = "security-audit")]
+pub use audit::{AuditLogger, SecurityAuditLog, SecurityEvent, SecurityResult};
 pub use config::SecurityConfig;
 pub use errors::{SecurityError, SecurityViolation};
 pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{SecurityPolicy, ToolPolicy};
+#[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
+#[cfg(feature = "security-basic")]
 pub use validation::{DomainValidator, InputValidator, PathValidator};
 
 use serde::{Deserialize, Serialize};
@@ -65,17 +71,20 @@ impl SecurityContext {
 /// Security manager for coordinating security operations
 pub struct SecurityManager {
     config: SecurityConfig,
+    #[cfg(feature = "security-audit")]
     audit_log: audit::AuditLogger,
     resource_tracker: limits::ResourceTracker,
 }
 
 impl SecurityManager {
     pub fn new(config: SecurityConfig) -> Self {
+        #[cfg(feature = "security-audit")]
         let audit_log = audit::AuditLogger::new(&config.audit);
         let resource_tracker = limits::ResourceTracker::new(&config.resources);
 
         Self {
             config,
+            #[cfg(feature = "security-audit")]
             audit_log,
             resource_tracker,
         }
@@ -97,16 +106,22 @@ impl SecurityManager {
         self.resource_tracker.check_limits(context)?;
 
         // Input validation
-        let validator = InputValidator::new(&context.policy);
-        validator.validate(input)?;
+        #[cfg(feature = "security-basic")]
+        {
+            let validator = validation::InputValidator::new(&context.policy);
+            validator.validate(input)?;
+        }
 
         // Log the validation attempt
-        let event = SecurityEvent::ValidationAttempt {
-            context: context.clone(),
-            input_hash: self.hash_input(input),
-            result: SecurityResult::Allowed,
-        };
-        self.audit_log.log_event(event);
+        #[cfg(feature = "security-audit")]
+        {
+            let event = audit::SecurityEvent::ValidationAttempt {
+                context: context.clone(),
+                input_hash: self.hash_input(input),
+                result: audit::SecurityResult::Allowed,
+            };
+            self.audit_log.log_event(event);
+        }
 
         Ok(())
     }
@@ -126,6 +141,7 @@ impl SecurityManager {
         }
     }
 
+    #[cfg(feature = "security-audit")]
     fn hash_input(&self, input: &str) -> String {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();

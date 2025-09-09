@@ -98,7 +98,7 @@ impl SecurityConfig {
         Self {
             metadata: ConfigMetadata {
                 version: "0.1.0".to_string(),
-                created: chrono::Utc::now().to_rfc3339(),
+                created: time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap(),
                 description: "Default Skreaver security configuration".to_string(),
             },
             fs: FileSystemPolicy::default(),

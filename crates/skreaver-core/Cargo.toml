@@ -11,7 +11,13 @@ keywords = ["agent", "infrastructure", "ai", "rust", "core"]
 categories = ["development-tools", "ai"]
 
 [features]
-default = []
+default = ["security-basic"]
+
+# Security feature gates
+security-basic = ["regex", "sha2", "once_cell"]
+security-full = ["security-basic", "security-audit", "security-content-scanning"]  
+security-audit = ["chrono"]
+security-content-scanning = ["regex/perf"]
 
 [dependencies]
 serde = { workspace = true }
@@ -19,11 +25,13 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 dashmap = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, optional = true }
+time = { version = "0.3", features = ["std", "macros", "formatting", "serde"] }
 tracing = { workspace = true }
 tokio = { workspace = true }
-regex = "1.11"
-sha2 = "0.10"
+regex = { version = "1.11", optional = true }
+sha2 = { version = "0.10", optional = true }
 toml = "0.8"
 url = "2.5"
+once_cell = { version = "1.19", optional = true }
 

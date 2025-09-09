@@ -2,8 +2,11 @@
 
 use super::SecurityContext;
 use super::errors::{SecurityViolation, ViolationSeverity};
-use chrono::{DateTime, Utc};
+#[cfg(feature = "security-audit")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "security-audit")]
+use time::{Duration, OffsetDateTime};
+use time::format_description::well_known::Rfc3339;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -34,7 +37,7 @@ pub enum SecurityEvent {
         method: String,
         source_ip: Option<String>,
         result: SecurityResult,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
     },
     AuthorizationCheck {
         context: SecurityContext,
@@ -52,7 +55,7 @@ pub enum SecurityEvent {
         trigger: String,
         action: String,
         affected_agents: Vec<String>,
-        timestamp: DateTime<Utc>,
+        timestamp: OffsetDateTime,
     },
 }
 
@@ -79,7 +82,7 @@ pub enum SecurityResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityAuditLog {
     pub id: Uuid,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: OffsetDateTime,
     pub event: SecurityEvent,
     pub severity: LogSeverity,
     pub session_id: Option<Uuid>,
@@ -195,7 +198,7 @@ impl AuditLogger {
 
         let mut audit_log = SecurityAuditLog {
             id: Uuid::new_v4(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             event: event.clone(),
             severity,
             session_id: self.extract_session_id(&event),
@@ -423,7 +426,7 @@ impl AuditLogger {
             LogFormat::Text => {
                 let message = format!(
                     "[{}] {} - Agent: {} Tool: {} - {:?}",
-                    audit_log.timestamp.format("%Y-%m-%d %H:%M:%S UTC"),
+                    audit_log.timestamp.format(&Rfc3339).unwrap(),
                     match audit_log.severity {
                         LogSeverity::Critical => "CRITICAL",
                         LogSeverity::Error => "ERROR",
@@ -507,7 +510,7 @@ impl ViolationTracker {
         *self.patterns.entry(pattern_key).or_insert(0) += 1;
 
         // Keep only recent violations (sliding window)
-        let cutoff = Utc::now() - chrono::Duration::hours(24);
+        let cutoff = OffsetDateTime::now_utc() - Duration::hours(24);
         self.violations.retain(|v| v.timestamp > cutoff);
 
         self.violations.push(violation);
@@ -598,7 +601,7 @@ mod tests {
             agent_id: "test_agent".to_string(),
             tool_name: "test_tool".to_string(),
             input_hash: None,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             remediation: None,
         };
 

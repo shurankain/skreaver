@@ -553,6 +553,8 @@ auto_lockdown_triggers = ["repeated_violations"]
 }
 
 #[cfg(test)]
+#[allow(unexpected_cfgs)]
+#[cfg(feature = "security-audit")]
 mod audit_logging_tests {
     use super::*;
 
@@ -568,7 +570,7 @@ mod audit_logging_tests {
             log_format: "structured".to_string(),
         };
 
-        let _logger = audit::AuditLogger::new(&audit_config);
+        let _logger = AuditLogger::new(&audit_config);
         // Logger creation should succeed
     }
 
@@ -584,7 +586,7 @@ mod audit_logging_tests {
             log_format: "structured".to_string(),
         };
 
-        let logger = audit::AuditLogger::new(&audit_config);
+        let logger = AuditLogger::new(&audit_config);
 
         let context = SecurityContext::new(
             "test_agent".to_string(),
@@ -597,10 +599,10 @@ mod audit_logging_tests {
         );
 
         // Test validation event
-        logger.log_access_attempt(&context, audit::SecurityResult::Allowed);
+        logger.log_access_attempt(&context, SecurityResult::Allowed);
         logger.log_access_attempt(
             &context,
-            audit::SecurityResult::Denied {
+            SecurityResult::Denied {
                 reason: "Path not allowed".to_string(),
             },
         );
@@ -611,7 +613,7 @@ mod audit_logging_tests {
             "memory".to_string(),
             150,
             128,
-            audit::SecurityResult::LimitExceeded {
+            SecurityResult::LimitExceeded {
                 limit_type: "memory".to_string(),
                 requested: 150,
                 limit: 128,

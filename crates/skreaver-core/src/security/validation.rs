@@ -2,28 +2,72 @@
 
 use super::errors::SecurityError;
 use super::policy::{FileSystemPolicy, HttpPolicy, SecurityPolicy};
+#[cfg(feature = "security-basic")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "security-basic")]
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use url::Url;
 
+/// Lazy-compiled secret detection patterns for optimal performance
+#[cfg(feature = "security-basic")]
+static SECRET_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+    let patterns = [
+        // API keys and tokens
+        r"(?i)(api[_-]?key|apikey|token)\s*[:=]\s*[\x27\x22]?([a-zA-Z0-9_-]{16,})",
+        // Passwords
+        r"(?i)(password|pwd|pass)\s*[:=]\s*[\x27\x22]?([^\s\x27\x22]{8,})",
+        // JWT tokens
+        r"eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*",
+        // AWS keys
+        r"AKIA[0-9A-Z]{16}",
+        // Private keys
+        r"-----BEGIN [A-Z ]+PRIVATE KEY-----",
+        // Database connection strings
+        r"(?i)(mongodb|mysql|postgresql)://[^\s]+",
+    ];
+
+    patterns
+        .into_iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect()
+});
+
+/// Lazy-compiled suspicious pattern detection for optimal performance
+#[cfg(feature = "security-basic")]
+static SUSPICIOUS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
+    let patterns = [
+        // Command injection attempts
+        r"[;&|`$]",
+        // Path traversal
+        r"\.\./",
+        // SQL injection patterns
+        r"(?i)(union|select|drop|delete|insert|update)\s+.*(from|into|set)",
+        // Script injection
+        r"<script[^>]*>",
+        // XXE patterns
+        r"<!ENTITY",
+        // LDAP injection
+        r"[()=*]",
+    ];
+
+    patterns
+        .into_iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect()
+});
+
 /// Input validator for security checks
 pub struct InputValidator {
     #[allow(dead_code)]
     policy: SecurityPolicy,
-    secret_patterns: Vec<Regex>,
-    suspicious_patterns: Vec<Regex>,
 }
 
 impl InputValidator {
     pub fn new(policy: &SecurityPolicy) -> Self {
-        let secret_patterns = Self::compile_secret_patterns();
-        let suspicious_patterns = Self::compile_suspicious_patterns();
-
         Self {
             policy: policy.clone(),
-            secret_patterns,
-            suspicious_patterns,
         }
     }
 
@@ -44,7 +88,7 @@ impl InputValidator {
         let mut sanitized = input;
 
         // Remove or mask potential secrets
-        for pattern in &self.secret_patterns {
+        for pattern in SECRET_PATTERNS.iter() {
             sanitized = pattern.replace_all(&sanitized, "[REDACTED]").to_string();
         }
 
@@ -64,7 +108,7 @@ impl InputValidator {
     }
 
     fn check_for_secrets(&self, input: &str) -> Result<(), SecurityError> {
-        for pattern in &self.secret_patterns {
+        for pattern in SECRET_PATTERNS.iter() {
             if pattern.is_match(input) {
                 return Err(SecurityError::SecretInInput);
             }
@@ -73,7 +117,7 @@ impl InputValidator {
     }
 
     fn check_for_suspicious_patterns(&self, input: &str) -> Result<(), SecurityError> {
-        for pattern in &self.suspicious_patterns {
+        for pattern in SUSPICIOUS_PATTERNS.iter() {
             if pattern.is_match(input) {
                 return Err(SecurityError::SuspiciousActivity {
                     description: format!(
@@ -100,50 +144,6 @@ impl InputValidator {
         }
 
         Ok(())
-    }
-
-    fn compile_secret_patterns() -> Vec<Regex> {
-        let patterns = [
-            // API keys and tokens
-            r"(?i)(api[_-]?key|apikey|token)\s*[:=]\s*[\x27\x22]?([a-zA-Z0-9_-]{16,})",
-            // Passwords
-            r"(?i)(password|pwd|pass)\s*[:=]\s*[\x27\x22]?([^\s\x27\x22]{8,})",
-            // JWT tokens
-            r"eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*",
-            // AWS keys
-            r"AKIA[0-9A-Z]{16}",
-            // Private keys
-            r"-----BEGIN [A-Z ]+PRIVATE KEY-----",
-            // Database connection strings
-            r"(?i)(mongodb|mysql|postgresql)://[^\s]+",
-        ];
-
-        patterns
-            .into_iter()
-            .filter_map(|p| Regex::new(p).ok())
-            .collect()
-    }
-
-    fn compile_suspicious_patterns() -> Vec<Regex> {
-        let patterns = [
-            // Command injection attempts
-            r"[;&|`$]",
-            // Path traversal
-            r"\.\./",
-            // SQL injection patterns
-            r"(?i)(union|select|drop|delete|insert|update)\s+.*(from|into|set)",
-            // Script injection
-            r"<script[^>]*>",
-            // XXE patterns
-            r"<!ENTITY",
-            // LDAP injection
-            r"[()=*]",
-        ];
-
-        patterns
-            .into_iter()
-            .filter_map(|p| Regex::new(p).ok())
-            .collect()
     }
 }
 
@@ -328,7 +328,6 @@ impl DomainValidator {
 
 /// Content scanner for detecting sensitive data in file contents
 pub struct ContentScanner {
-    secret_patterns: Vec<Regex>,
     #[allow(dead_code)]
     binary_patterns: Vec<Regex>,
 }
@@ -341,13 +340,11 @@ impl Default for ContentScanner {
 
 impl ContentScanner {
     pub fn new() -> Self {
-        let secret_patterns = InputValidator::compile_secret_patterns();
         let binary_patterns = vec![
             Regex::new(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]").unwrap(), // Control characters
         ];
 
         Self {
-            secret_patterns,
             binary_patterns,
         }
     }
@@ -368,8 +365,8 @@ impl ContentScanner {
         let text = String::from_utf8_lossy(content);
         let mut issues = Vec::new();
 
-        // Check for secrets
-        for pattern in &self.secret_patterns {
+        // Check for secrets using global patterns
+        for pattern in SECRET_PATTERNS.iter() {
             if pattern.is_match(&text) {
                 issues.push("Potential secret detected".to_string());
                 break;
@@ -378,7 +375,7 @@ impl ContentScanner {
 
         // Create redacted version
         let mut redacted = text.to_string();
-        for pattern in &self.secret_patterns {
+        for pattern in SECRET_PATTERNS.iter() {
             redacted = pattern.replace_all(&redacted, "[REDACTED]").to_string();
         }
 

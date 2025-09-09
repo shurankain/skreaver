@@ -10,6 +10,13 @@ homepage = "https://ohusiev.com"
 keywords = ["agent", "infrastructure", "ai", "rust"]
 categories = ["development-tools", "ai"]
 
+[features]
+default = ["security-basic"]
+security-basic = ["skreaver-core/security-basic"]
+security-full = ["skreaver-core/security-full"]
+security-audit = ["skreaver-core/security-audit"]
+security-content-scanning = ["skreaver-core/security-content-scanning"]
+
 [workspace.dependencies]
 # Core dependencies
 serde = { version = "1.0.219", features = ["derive"] }
