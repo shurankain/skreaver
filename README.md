@@ -17,6 +17,7 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - **Standard tool library (HTTP, File, JSON, Text processing)**
 - **Production-grade benchmarking framework with CI integration**
 - **Comprehensive observability framework (metrics, tracing, health checks)**
+- **Enterprise-grade security framework with threat modeling and audit logging**
 - Designed for performance and modularity
 
 ---
@@ -69,6 +70,7 @@ Core components implemented:
 * **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
 * **Production benchmarking framework with resource monitoring and CI integration**
 * **Comprehensive observability framework with Prometheus metrics, distributed tracing, and health checks**
+* **Enterprise security framework with threat modeling, input validation, and audit logging**
 * Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`)
 * Self-hosted CI pipeline
 
@@ -76,6 +78,7 @@ Next steps:
 
 * Agent test harness and mock tools (✅ `skreaver-testing` implemented)
 * OpenTelemetry integration for distributed tracing (✅ Phase 0.3 implemented)
+* Enterprise security framework (✅ Phase 0.4 implemented)
 * Authentication and rate limiting (🚧 In progress - Phase 1.1)
 * Enhanced memory backends (SQLite, PostgreSQL) (🚧 Planned - Phase 1.1)
 * Playground & live examples  
@@ -187,6 +190,56 @@ let _timer = collector.start_tool_timer(tool_name);
 - p50 < 30ms, p95 < 200ms, p99 < 400ms for tool execution
 - Cardinality limits prevent metrics explosion
 - Production-grade sampling for log volume control
+
+---
+
+## 🔒 Security Framework
+
+Skreaver includes an enterprise-grade security framework designed for production agent deployments:
+
+**Features:**
+- **Threat Model**: Comprehensive threat analysis with documented attack scenarios and mitigations
+- **Input Validation**: Automatic detection of secrets, suspicious patterns, and malicious content
+- **Path Traversal Protection**: Directory allowlists and canonicalization to prevent file system attacks
+- **SSRF Prevention**: Domain filtering and private network blocking for HTTP tools
+- **Resource Limits**: Memory, CPU, and concurrency controls with enforcement
+- **Audit Logging**: Structured security event logging with secret redaction
+
+**Security Policies:**
+```rust
+use skreaver_core::security::{SecurityConfig, SecurityManager};
+
+// Load security configuration
+let config = SecurityConfig::load_from_file("security.toml")?;
+let security_manager = SecurityManager::new(config);
+
+// All tools can be wrapped with security enforcement
+let secure_tool = security_manager.secure_tool(my_tool);
+```
+
+**Protection Against:**
+- Path traversal attacks (`../../../etc/passwd`)
+- SSRF attacks to internal networks (localhost, 169.254.169.254)
+- Resource exhaustion (memory bombs, CPU loops)
+- Secret leakage in inputs and outputs
+- Command injection attempts
+
+**Configuration Example:**
+```toml
+[fs]
+allow_paths = ["/var/app/data"]
+deny_patterns = ["..", "/etc", "*.key"]
+
+[http]
+allow_domains = ["api.example.com"]
+deny_domains = ["localhost", "169.254.169.254"]
+
+[resources]
+max_memory_mb = 128
+max_concurrent_operations = 10
+```
+
+**Security Testing**: 48 comprehensive tests covering threat scenarios, policy enforcement, and audit logging.
 
 ---
 
