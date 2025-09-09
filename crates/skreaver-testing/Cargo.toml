@@ -1,6 +1,6 @@
 [package]
 name = "skreaver-testing"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
 license = "MIT"
@@ -17,10 +17,10 @@ integration = ["tokio/test-util"]
 
 [dependencies]
 # Core dependencies
-skreaver-core = { path = "../skreaver-core", version = "0.1.0" }
-skreaver-memory = { path = "../skreaver-memory", version = "0.1.0" }
-skreaver-tools = { path = "../skreaver-tools", version = "0.1.0" }
-skreaver-http = { path = "../skreaver-http", version = "0.1.0" }
+skreaver-core = { path = "../skreaver-core", version = "0.3.0" }
+skreaver-memory = { path = "../skreaver-memory", version = "0.3.0" }
+skreaver-tools = { path = "../skreaver-tools", version = "0.3.0" }
+skreaver-http = { path = "../skreaver-http", version = "0.3.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
