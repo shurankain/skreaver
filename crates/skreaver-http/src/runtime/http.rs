@@ -921,7 +921,7 @@ mod tests {
         assert_eq!(json["status"], "healthy");
         assert_eq!(json["service"], "skreaver-http-runtime");
         assert!(json["timestamp"].is_string());
-        assert_eq!(json["version"], "0.1.0");
+        assert_eq!(json["version"], "0.3.0");
     }
 
     #[tokio::test]
