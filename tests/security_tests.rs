@@ -16,8 +16,8 @@ mod path_traversal_tests {
             enabled: true,
             allow_paths: vec![std::path::PathBuf::from("./test_data")],
             deny_patterns: vec!["..".to_string(), "/etc".to_string()],
-            max_file_size_bytes: 1024,
-            max_files_per_operation: 10,
+            max_file_size: policy::FileSizeLimit::new(1024).expect("Valid file size"),
+            max_files_per_operation: policy::FileCountLimit::new(10).expect("Valid file count"),
             follow_symlinks: false,
             scan_content: true,
         };
@@ -260,7 +260,7 @@ mod resource_exhaustion_tests {
     #[test]
     fn test_file_size_limits() {
         let policy = policy::FileSystemPolicy {
-            max_file_size_bytes: 100, // 100 bytes limit
+            max_file_size: policy::FileSizeLimit::new(100).expect("Valid file size"), // 100 bytes limit
             ..Default::default()
         };
 
@@ -428,7 +428,7 @@ description = "Test security configuration"
 enabled = true
 allow_paths = ["./data", "./tmp"]
 deny_patterns = ["..", "/etc"]
-max_file_size_bytes = 1048576
+max_file_size = 1048576
 max_files_per_operation = 50
 follow_symlinks = false
 scan_content = true
@@ -438,8 +438,8 @@ enabled = true
 allow_domains = ["api.example.com"]
 deny_domains = ["localhost"]
 allow_methods = ["GET", "POST"]
-timeout_seconds = 30
-max_response_bytes = 10485760
+timeout = 30
+max_response_size = 10485760
 max_redirects = 3
 user_agent = "test-agent"
 allow_local = false
@@ -449,7 +449,7 @@ default_headers = [["X-Test", "true"]]
 enabled = false
 allow_ports = []
 deny_ports = [22, 23]
-ttl_seconds = 300
+ttl = 300
 allow_private_networks = false
 
 [resources]
@@ -506,7 +506,7 @@ auto_lockdown_triggers = ["repeated_violations"]
         assert_eq!(config.metadata.version, "0.1.0");
         assert!(config.fs.enabled);
         assert_eq!(config.fs.allow_paths.len(), 2);
-        assert_eq!(config.http.timeout_seconds, 30);
+        assert_eq!(config.http.timeout.seconds(), 30);
         assert_eq!(config.resources.max_memory_mb, 128);
         assert!(config.audit.log_all_operations);
     }

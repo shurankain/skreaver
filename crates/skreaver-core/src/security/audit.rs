@@ -4,11 +4,11 @@ use super::SecurityContext;
 use super::errors::{SecurityViolation, ViolationSeverity};
 #[cfg(feature = "security-audit")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "security-audit")]
-use time::{Duration, OffsetDateTime};
-use time::format_description::well_known::Rfc3339;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use time::format_description::well_known::Rfc3339;
+#[cfg(feature = "security-audit")]
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 /// Security events for audit logging

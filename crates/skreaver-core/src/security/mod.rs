@@ -19,7 +19,10 @@ pub use audit::{AuditLogger, SecurityAuditLog, SecurityEvent, SecurityResult};
 pub use config::SecurityConfig;
 pub use errors::{SecurityError, SecurityViolation};
 pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
-pub use policy::{SecurityPolicy, ToolPolicy};
+pub use policy::{
+    SecurityPolicy, ToolPolicy, FileSizeLimit, FileCountLimit, TimeoutSeconds, 
+    ResponseSizeLimit, RedirectLimit, NetworkPort,
+};
 #[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
 #[cfg(feature = "security-basic")]

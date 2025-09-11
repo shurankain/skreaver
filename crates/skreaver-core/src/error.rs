@@ -5,6 +5,7 @@
 //! information about what went wrong and enable better error handling
 //! and debugging.
 
+use crate::tool::{ToolDispatch, ToolName};
 use std::fmt;
 
 /// Main error type for Skreaver operations.
@@ -26,28 +27,157 @@ pub enum SkreverError {
     Coordinator(CoordinatorError),
 }
 
-/// Errors that can occur during tool operations.
+/// Errors that can occur during tool operations with compile-time safety.
 #[derive(Debug, Clone)]
 pub enum ToolError {
     /// Tool was not found in the registry.
-    NotFound { name: String },
+    NotFound {
+        /// Validated tool identifier
+        tool: ToolDispatch,
+    },
 
     /// Tool execution failed with an error message.
-    ExecutionFailed { name: String, message: String },
+    ExecutionFailed {
+        /// Validated tool identifier
+        tool: ToolDispatch,
+        /// Error message from the tool execution
+        message: String,
+    },
 
     /// Tool input was invalid or malformed.
     InvalidInput {
-        name: String,
-        input: String,
+        /// Validated tool identifier
+        tool: ToolDispatch,
+        /// The invalid input that was provided
+        input: ValidatedInput,
+        /// Reason why the input was invalid
         reason: String,
     },
 
     /// Tool timed out during execution.
-    Timeout { name: String, duration_ms: u64 },
+    Timeout {
+        /// Validated tool identifier
+        tool: ToolDispatch,
+        /// Timeout duration in milliseconds
+        duration_ms: u64,
+    },
 
     /// Tool registry is full or cannot accept more tools.
     RegistryFull,
+
+    /// Tool name validation failed during dispatch.
+    InvalidToolName {
+        /// The invalid tool name that was provided
+        attempted_name: String,
+        /// Validation error details
+        validation_error: crate::tool::InvalidToolName,
+    },
 }
+
+/// Validated input wrapper that prevents empty or excessively large inputs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedInput(String);
+
+impl ValidatedInput {
+    /// Maximum input size (1MB)
+    pub const MAX_SIZE: usize = 1024 * 1024;
+
+    /// Create validated input with size and content checks.
+    pub fn new(input: String) -> Result<Self, InputValidationError> {
+        if input.is_empty() {
+            return Err(InputValidationError::Empty);
+        }
+
+        if input.len() > Self::MAX_SIZE {
+            return Err(InputValidationError::TooLarge {
+                size: input.len(),
+                max_size: Self::MAX_SIZE,
+            });
+        }
+
+        // Check for potentially problematic binary content
+        if input
+            .bytes()
+            .filter(|&b| b < 32 && b != b'\n' && b != b'\t' && b != b'\r')
+            .count()
+            > input.len() / 10
+        {
+            return Err(InputValidationError::BinaryContent);
+        }
+
+        Ok(ValidatedInput(input))
+    }
+
+    /// Create validated input without checks (for internal use).
+    pub(crate) fn new_unchecked(input: String) -> Self {
+        ValidatedInput(input)
+    }
+
+    /// Get the input as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Get the input length.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if input is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Convert to owned string.
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl AsRef<str> for ValidatedInput {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ValidatedInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Truncate display for very long inputs
+        if self.0.len() > 100 {
+            write!(f, "{}...", &self.0[..97])
+        } else {
+            write!(f, "{}", self.0)
+        }
+    }
+}
+
+/// Errors that can occur during input validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputValidationError {
+    Empty,
+    TooLarge { size: usize, max_size: usize },
+    BinaryContent,
+}
+
+impl std::fmt::Display for InputValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputValidationError::Empty => write!(f, "Input cannot be empty"),
+            InputValidationError::TooLarge { size, max_size } => {
+                write!(
+                    f,
+                    "Input too large: {} bytes (max: {} bytes)",
+                    size, max_size
+                )
+            }
+            InputValidationError::BinaryContent => {
+                write!(f, "Input contains excessive binary content")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InputValidationError {}
 
 /// Errors that can occur during memory operations.
 #[derive(Debug, Clone)]
@@ -145,23 +275,44 @@ impl fmt::Display for SkreverError {
 impl fmt::Display for ToolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ToolError::NotFound { name } => write!(f, "Tool '{}' not found in registry", name),
-            ToolError::ExecutionFailed { name, message } => {
-                write!(f, "Tool '{}' execution failed: {}", name, message)
+            ToolError::NotFound { tool } => {
+                write!(f, "Tool '{}' not found in registry", tool.name())
+            }
+            ToolError::ExecutionFailed { tool, message } => {
+                write!(f, "Tool '{}' execution failed: {}", tool.name(), message)
             }
             ToolError::InvalidInput {
-                name,
+                tool,
                 input,
                 reason,
-            } => write!(
-                f,
-                "Tool '{}' received invalid input '{}': {}",
-                name, input, reason
-            ),
-            ToolError::Timeout { name, duration_ms } => {
-                write!(f, "Tool '{}' timed out after {}ms", name, duration_ms)
+            } => {
+                write!(
+                    f,
+                    "Tool '{}' received invalid input '{}': {}",
+                    tool.name(),
+                    input,
+                    reason
+                )
+            }
+            ToolError::Timeout { tool, duration_ms } => {
+                write!(
+                    f,
+                    "Tool '{}' timed out after {}ms",
+                    tool.name(),
+                    duration_ms
+                )
             }
             ToolError::RegistryFull => write!(f, "Tool registry is full"),
+            ToolError::InvalidToolName {
+                attempted_name,
+                validation_error,
+            } => {
+                write!(
+                    f,
+                    "Invalid tool name '{}': {}",
+                    attempted_name, validation_error
+                )
+            }
         }
     }
 }
@@ -304,6 +455,108 @@ impl From<crate::memory::InvalidMemoryKey> for TransactionError {
     }
 }
 
+impl From<crate::tool::InvalidToolName> for ToolError {
+    fn from(err: crate::tool::InvalidToolName) -> Self {
+        ToolError::InvalidToolName {
+            attempted_name: "unknown".to_string(),
+            validation_error: err,
+        }
+    }
+}
+
+impl From<InputValidationError> for ToolError {
+    fn from(err: InputValidationError) -> Self {
+        // Create a fallback tool dispatch for cases where we don't have context
+        let fallback_tool =
+            ToolDispatch::Custom(ToolName::new("unknown").expect("'unknown' is a valid tool name"));
+        let fallback_input = ValidatedInput::new_unchecked("".to_string());
+
+        ToolError::InvalidInput {
+            tool: fallback_tool,
+            input: fallback_input,
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl ToolError {
+    /// Create a NotFound error for a validated tool.
+    pub fn not_found(tool: ToolDispatch) -> Self {
+        ToolError::NotFound { tool }
+    }
+
+    /// Create a NotFound error from a tool name string.
+    pub fn not_found_by_name(name: &str) -> Self {
+        match ToolDispatch::from_name(name) {
+            Ok(tool) => ToolError::NotFound { tool },
+            Err(validation_error) => ToolError::InvalidToolName {
+                attempted_name: name.to_string(),
+                validation_error,
+            },
+        }
+    }
+
+    /// Create an ExecutionFailed error for a validated tool.
+    pub fn execution_failed(tool: ToolDispatch, message: String) -> Self {
+        ToolError::ExecutionFailed { tool, message }
+    }
+
+    /// Create an ExecutionFailed error from a tool name string.
+    pub fn execution_failed_by_name(name: &str, message: String) -> Self {
+        match ToolDispatch::from_name(name) {
+            Ok(tool) => ToolError::ExecutionFailed { tool, message },
+            Err(validation_error) => ToolError::InvalidToolName {
+                attempted_name: name.to_string(),
+                validation_error,
+            },
+        }
+    }
+
+    /// Create an InvalidInput error with validation.
+    pub fn invalid_input(tool: ToolDispatch, input: String, reason: String) -> Self {
+        let validated_input = ValidatedInput::new(input)
+            .unwrap_or_else(|_| ValidatedInput::new_unchecked("invalid".to_string()));
+
+        ToolError::InvalidInput {
+            tool,
+            input: validated_input,
+            reason,
+        }
+    }
+
+    /// Create a Timeout error for a validated tool.
+    pub fn timeout(tool: ToolDispatch, duration_ms: u64) -> Self {
+        ToolError::Timeout { tool, duration_ms }
+    }
+
+    /// Create a Timeout error from a tool name string.
+    pub fn timeout_by_name(name: &str, duration_ms: u64) -> Self {
+        match ToolDispatch::from_name(name) {
+            Ok(tool) => ToolError::Timeout { tool, duration_ms },
+            Err(validation_error) => ToolError::InvalidToolName {
+                attempted_name: name.to_string(),
+                validation_error,
+            },
+        }
+    }
+
+    /// Get the tool dispatch associated with this error, if available.
+    pub fn tool(&self) -> Option<&ToolDispatch> {
+        match self {
+            ToolError::NotFound { tool }
+            | ToolError::ExecutionFailed { tool, .. }
+            | ToolError::InvalidInput { tool, .. }
+            | ToolError::Timeout { tool, .. } => Some(tool),
+            ToolError::RegistryFull | ToolError::InvalidToolName { .. } => None,
+        }
+    }
+
+    /// Get the tool name as a string, if available.
+    pub fn tool_name(&self) -> Option<&str> {
+        self.tool().map(|tool| tool.name())
+    }
+}
+
 /// Result type alias for Skreaver operations.
 pub type SkreverResult<T> = Result<T, SkreverError>;
 
@@ -321,3 +574,133 @@ pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
 
 /// Result type alias for transaction operations.
 pub type TransactionResult<T> = Result<T, TransactionError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool::StandardTool;
+
+    #[test]
+    fn test_tool_error_not_found_with_standard_tool() {
+        let tool = ToolDispatch::Standard(StandardTool::HttpGet);
+        let error = ToolError::not_found(tool);
+
+        assert_eq!(error.tool_name(), Some("http_get"));
+        assert!(error.to_string().contains("http_get"));
+        assert!(error.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_tool_error_not_found_by_name() {
+        let error = ToolError::not_found_by_name("file_read");
+        assert_eq!(error.tool_name(), Some("file_read"));
+
+        // Test invalid name
+        let error = ToolError::not_found_by_name("invalid tool name!");
+        assert!(matches!(error, ToolError::InvalidToolName { .. }));
+        assert_eq!(error.tool_name(), None);
+    }
+
+    #[test]
+    fn test_tool_error_execution_failed() {
+        let tool = ToolDispatch::Standard(StandardTool::JsonParse);
+        let error = ToolError::execution_failed(tool, "Invalid JSON format".to_string());
+
+        assert_eq!(error.tool_name(), Some("json_parse"));
+        assert!(error.to_string().contains("json_parse"));
+        assert!(error.to_string().contains("execution failed"));
+        assert!(error.to_string().contains("Invalid JSON format"));
+    }
+
+    #[test]
+    fn test_tool_error_invalid_input() {
+        let tool = ToolDispatch::Standard(StandardTool::HttpPost);
+        let error = ToolError::invalid_input(
+            tool,
+            "test input".to_string(),
+            "Missing required field".to_string(),
+        );
+
+        assert_eq!(error.tool_name(), Some("http_post"));
+        assert!(error.to_string().contains("invalid input"));
+        assert!(error.to_string().contains("test input"));
+        assert!(error.to_string().contains("Missing required field"));
+    }
+
+    #[test]
+    fn test_tool_error_timeout() {
+        let tool = ToolDispatch::Custom(ToolName::new("custom_tool").expect("Valid tool name"));
+        let error = ToolError::timeout(tool, 5000);
+
+        assert_eq!(error.tool_name(), Some("custom_tool"));
+        assert!(error.to_string().contains("custom_tool"));
+        assert!(error.to_string().contains("timed out"));
+        assert!(error.to_string().contains("5000ms"));
+    }
+
+    #[test]
+    fn test_validated_input() {
+        // Valid input
+        let input = ValidatedInput::new("Hello, world!".to_string()).unwrap();
+        assert_eq!(input.as_str(), "Hello, world!");
+        assert_eq!(input.len(), 13);
+        assert!(!input.is_empty());
+
+        // Empty input
+        assert!(matches!(
+            ValidatedInput::new("".to_string()),
+            Err(InputValidationError::Empty)
+        ));
+
+        // Too large input
+        let large_input = "x".repeat(ValidatedInput::MAX_SIZE + 1);
+        assert!(matches!(
+            ValidatedInput::new(large_input),
+            Err(InputValidationError::TooLarge { .. })
+        ));
+
+        // Binary content (lots of null bytes and control characters)
+        let binary_input = (0..20u8)
+            .cycle()
+            .take(100)
+            .map(|b| b as char)
+            .collect::<String>();
+        assert!(matches!(
+            ValidatedInput::new(binary_input),
+            Err(InputValidationError::BinaryContent)
+        ));
+    }
+
+    #[test]
+    fn test_validated_input_display_truncation() {
+        let short_input = ValidatedInput::new_unchecked("short".to_string());
+        assert_eq!(short_input.to_string(), "short");
+
+        let long_input = ValidatedInput::new_unchecked("x".repeat(200));
+        let display = long_input.to_string();
+        assert!(display.len() <= 100);
+        assert!(display.ends_with("..."));
+    }
+
+    #[test]
+    fn test_tool_error_conversions() {
+        // Test InvalidToolName conversion
+        let invalid_name = crate::tool::InvalidToolName::Empty;
+        let tool_error: ToolError = invalid_name.into();
+        assert!(matches!(tool_error, ToolError::InvalidToolName { .. }));
+
+        // Test InputValidationError conversion
+        let input_error = InputValidationError::Empty;
+        let tool_error: ToolError = input_error.into();
+        assert!(matches!(tool_error, ToolError::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn test_error_hierarchy() {
+        let tool_error = ToolError::not_found_by_name("missing_tool");
+        let skrever_error: SkreverError = tool_error.into();
+
+        assert!(matches!(skrever_error, SkreverError::Tool(_)));
+        assert!(skrever_error.to_string().contains("Tool error"));
+    }
+}

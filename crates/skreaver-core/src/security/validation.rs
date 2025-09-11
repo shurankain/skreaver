@@ -213,10 +213,10 @@ impl PathValidator {
         })?;
 
         let size = metadata.len();
-        if size > self.policy.max_file_size_bytes {
+        if size > self.policy.max_file_size.bytes() {
             return Err(SecurityError::FileSizeLimitExceeded {
                 size,
-                limit: self.policy.max_file_size_bytes,
+                limit: self.policy.max_file_size.bytes(),
             });
         }
 
@@ -344,9 +344,7 @@ impl ContentScanner {
             Regex::new(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]").unwrap(), // Control characters
         ];
 
-        Self {
-            binary_patterns,
-        }
+        Self { binary_patterns }
     }
 
     pub fn scan_content(&self, content: &[u8]) -> Result<ScanResult, SecurityError> {

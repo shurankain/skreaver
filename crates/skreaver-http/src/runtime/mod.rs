@@ -52,6 +52,8 @@
 
 /// Type-safe agent status management.
 pub mod agent_status;
+/// Improved API types with type safety and validation.
+pub mod api_types;
 /// Authentication middleware for HTTP runtime.
 pub mod auth;
 /// Central coordinator for agent execution and tool dispatch.
@@ -68,6 +70,7 @@ pub mod security;
 pub mod streaming;
 
 pub use agent_status::{AgentStatus, AgentStatusManager};
+pub use api_types::{AgentObservation, AgentResponse, DeliveryError, ResponseDelivery};
 pub use coordinator::Coordinator;
 pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};

@@ -5,9 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use utoipa::ToSchema;
 
 /// Agent operational status with type safety
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentStatus {
     /// Agent is initializing and not yet ready

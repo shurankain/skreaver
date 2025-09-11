@@ -4,23 +4,124 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
 
-/// How agent responses should be delivered
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ResponseMode {
+/// Validated response delivery method with compile-time safety
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResponseDelivery {
     /// Return complete response after processing
     Complete,
     /// Stream response in real-time via Server-Sent Events
-    Streaming,
+    /// Only available for streaming-capable agents
+    Streaming {
+        /// Buffer size for streaming chunks
+        #[serde(default = "default_stream_buffer_size")]
+        buffer_size: u32,
+    },
     /// Return both immediate acknowledgment and stream results
-    Hybrid,
+    /// Only available for streaming-capable agents
+    Hybrid {
+        /// Buffer size for streaming chunks
+        #[serde(default = "default_stream_buffer_size")]
+        buffer_size: u32,
+        /// Include processing metadata in acknowledgment
+        #[serde(default)]
+        include_metadata: bool,
+    },
 }
 
-impl Default for ResponseMode {
+impl ResponseDelivery {
+    /// Create a complete delivery mode
+    pub fn complete() -> Self {
+        Self::Complete
+    }
+
+    /// Create a streaming delivery mode with validation
+    pub fn streaming(agent_type: &AgentType) -> Result<Self, DeliveryError> {
+        if !agent_type.supports_streaming() {
+            return Err(DeliveryError::StreamingNotSupported(agent_type.clone()));
+        }
+        Ok(Self::Streaming {
+            buffer_size: default_stream_buffer_size(),
+        })
+    }
+
+    /// Create a hybrid delivery mode with validation
+    pub fn hybrid(agent_type: &AgentType) -> Result<Self, DeliveryError> {
+        if !agent_type.supports_streaming() {
+            return Err(DeliveryError::StreamingNotSupported(agent_type.clone()));
+        }
+        Ok(Self::Hybrid {
+            buffer_size: default_stream_buffer_size(),
+            include_metadata: false,
+        })
+    }
+
+    /// Create a streaming delivery with custom buffer size
+    pub fn streaming_with_buffer(
+        agent_type: &AgentType,
+        buffer_size: u32,
+    ) -> Result<Self, DeliveryError> {
+        if !agent_type.supports_streaming() {
+            return Err(DeliveryError::StreamingNotSupported(agent_type.clone()));
+        }
+        if buffer_size == 0 || buffer_size > MAX_STREAM_BUFFER_SIZE {
+            return Err(DeliveryError::InvalidBufferSize {
+                size: buffer_size,
+                max: MAX_STREAM_BUFFER_SIZE,
+            });
+        }
+        Ok(Self::Streaming { buffer_size })
+    }
+
+    /// Check if this delivery mode requires streaming support
+    pub fn requires_streaming(&self) -> bool {
+        matches!(self, Self::Streaming { .. } | Self::Hybrid { .. })
+    }
+
+    /// Validate delivery mode against agent capabilities
+    pub fn validate_for_agent(&self, agent_type: &AgentType) -> Result<(), DeliveryError> {
+        if self.requires_streaming() && !agent_type.supports_streaming() {
+            return Err(DeliveryError::StreamingNotSupported(agent_type.clone()));
+        }
+        Ok(())
+    }
+}
+
+impl Default for ResponseDelivery {
     fn default() -> Self {
         Self::Complete
     }
 }
+
+/// Default streaming buffer size (4KB)
+fn default_stream_buffer_size() -> u32 {
+    4 * 1024
+}
+
+/// Maximum streaming buffer size (64KB)
+const MAX_STREAM_BUFFER_SIZE: u32 = 64 * 1024;
+
+/// Errors when configuring response delivery
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeliveryError {
+    StreamingNotSupported(AgentType),
+    InvalidBufferSize { size: u32, max: u32 },
+}
+
+impl std::fmt::Display for DeliveryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StreamingNotSupported(agent_type) => {
+                write!(f, "Agent type '{}' does not support streaming", agent_type)
+            }
+            Self::InvalidBufferSize { size, max } => {
+                write!(f, "Invalid buffer size: {} (must be 1-{})", size, max)
+            }
+        }
+    }
+}
+
+impl std::error::Error for DeliveryError {}
 
 /// Validated agent observation with size and content limits
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -30,7 +131,7 @@ pub struct AgentObservation {
     pub content: String,
     /// Response delivery mode
     #[serde(default)]
-    pub response_mode: ResponseMode,
+    pub delivery: ResponseDelivery,
     /// Optional context metadata
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
@@ -39,35 +140,67 @@ pub struct AgentObservation {
 impl AgentObservation {
     /// Create a new observation with validation
     pub fn new(content: String) -> Result<Self, ObservationError> {
-        Self::with_mode(content, ResponseMode::default())
+        Self::with_delivery(content, ResponseDelivery::default())
     }
-    
-    /// Create observation with specific response mode
-    pub fn with_mode(content: String, response_mode: ResponseMode) -> Result<Self, ObservationError> {
+
+    /// Create observation with specific delivery mode
+    pub fn with_delivery(
+        content: String,
+        delivery: ResponseDelivery,
+    ) -> Result<Self, ObservationError> {
         // Validate content
         if content.is_empty() {
             return Err(ObservationError::EmptyContent);
         }
-        
+
         if content.len() > MAX_OBSERVATION_LENGTH {
             return Err(ObservationError::ContentTooLarge {
                 actual_size: content.len(),
                 max_size: MAX_OBSERVATION_LENGTH,
             });
         }
-        
+
         // Check for potentially problematic content
-        if content.chars().filter(|c| c.is_control() && *c != '\n' && *c != '\t').count() > 0 {
+        if content
+            .chars()
+            .filter(|c| c.is_control() && *c != '\n' && *c != '\t')
+            .count()
+            > 0
+        {
             return Err(ObservationError::InvalidCharacters);
         }
-        
+
         Ok(Self {
             content,
-            response_mode,
+            delivery,
             metadata: HashMap::new(),
         })
     }
-    
+
+    /// Create observation with validated streaming delivery for specific agent type
+    pub fn with_streaming(
+        content: String,
+        agent_type: &AgentType,
+    ) -> Result<Self, ObservationError> {
+        let delivery =
+            ResponseDelivery::streaming(agent_type).map_err(ObservationError::InvalidDelivery)?;
+        Self::with_delivery(content, delivery)
+    }
+
+    /// Create observation with validated hybrid delivery for specific agent type
+    pub fn with_hybrid(content: String, agent_type: &AgentType) -> Result<Self, ObservationError> {
+        let delivery =
+            ResponseDelivery::hybrid(agent_type).map_err(ObservationError::InvalidDelivery)?;
+        Self::with_delivery(content, delivery)
+    }
+
+    /// Validate the observation's delivery mode against an agent type
+    pub fn validate_for_agent(&self, agent_type: &AgentType) -> Result<(), ObservationError> {
+        self.delivery
+            .validate_for_agent(agent_type)
+            .map_err(ObservationError::InvalidDelivery)
+    }
+
     /// Add metadata to the observation
     pub fn with_metadata(mut self, key: String, value: String) -> Self {
         self.metadata.insert(key, value);
@@ -84,17 +217,25 @@ pub enum ObservationError {
     EmptyContent,
     ContentTooLarge { actual_size: usize, max_size: usize },
     InvalidCharacters,
+    InvalidDelivery(DeliveryError),
 }
 
 impl std::fmt::Display for ObservationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyContent => write!(f, "Observation content cannot be empty"),
-            Self::ContentTooLarge { actual_size, max_size } => {
-                write!(f, "Observation content too large: {} bytes (max: {} bytes)", 
-                       actual_size, max_size)
+            Self::ContentTooLarge {
+                actual_size,
+                max_size,
+            } => {
+                write!(
+                    f,
+                    "Observation content too large: {} bytes (max: {} bytes)",
+                    actual_size, max_size
+                )
             }
             Self::InvalidCharacters => write!(f, "Observation contains invalid control characters"),
+            Self::InvalidDelivery(err) => write!(f, "Invalid delivery mode: {}", err),
         }
     }
 }
@@ -136,17 +277,17 @@ impl AgentType {
     pub fn implementation_name(&self) -> &str {
         match self {
             Self::Echo => "EchoAgent",
-            Self::Advanced => "AdvancedDemoAgent", 
+            Self::Advanced => "AdvancedDemoAgent",
             Self::Analytics => "AnalyticsAgent",
             Self::Custom(name) => name,
         }
     }
-    
+
     /// Check if agent type supports specific features
     pub fn supports_streaming(&self) -> bool {
         matches!(self, Self::Advanced | Self::Analytics)
     }
-    
+
     /// Get default resource limits for agent type
     pub fn default_limits(&self) -> AgentLimits {
         match self {
@@ -172,7 +313,7 @@ impl std::fmt::Display for AgentType {
         match self {
             Self::Echo => write!(f, "echo"),
             Self::Advanced => write!(f, "advanced"),
-            Self::Analytics => write!(f, "analytics"), 
+            Self::Analytics => write!(f, "analytics"),
             Self::Custom(name) => write!(f, "custom:{}", name),
         }
     }
@@ -273,7 +414,7 @@ pub struct AgentResponse {
     #[schema(example = "Based on the analysis, I found 3 key patterns...")]
     pub content: String,
     /// Response delivery mode used
-    pub response_mode: ResponseMode,
+    pub delivery: ResponseDelivery,
     /// Processing time in milliseconds
     #[schema(example = 150)]
     pub processing_time_ms: u32,
@@ -350,7 +491,7 @@ mod tests {
         // Valid observation
         let obs = AgentObservation::new("Test input".to_string()).unwrap();
         assert_eq!(obs.content, "Test input");
-        assert_eq!(obs.response_mode, ResponseMode::Complete);
+        assert_eq!(obs.delivery, ResponseDelivery::Complete);
 
         // Empty content
         assert!(matches!(
@@ -364,14 +505,63 @@ mod tests {
             AgentObservation::new(large_content),
             Err(ObservationError::ContentTooLarge { .. })
         ));
+
+        // Test streaming validation
+        let streaming_obs =
+            AgentObservation::with_streaming("Test streaming".to_string(), &AgentType::Advanced)
+                .unwrap();
+        assert!(streaming_obs.delivery.requires_streaming());
+
+        // Test invalid streaming for non-streaming agent
+        assert!(matches!(
+            AgentObservation::with_streaming("Test".to_string(), &AgentType::Echo),
+            Err(ObservationError::InvalidDelivery(
+                DeliveryError::StreamingNotSupported(_)
+            ))
+        ));
     }
 
     #[test]
     fn test_agent_type_features() {
         assert!(AgentType::Advanced.supports_streaming());
         assert!(!AgentType::Echo.supports_streaming());
-        
-        assert_eq!(AgentType::Advanced.implementation_name(), "AdvancedDemoAgent");
+
+        assert_eq!(
+            AgentType::Advanced.implementation_name(),
+            "AdvancedDemoAgent"
+        );
+    }
+
+    #[test]
+    fn test_response_delivery() {
+        // Test complete delivery
+        let complete = ResponseDelivery::complete();
+        assert_eq!(complete, ResponseDelivery::Complete);
+        assert!(!complete.requires_streaming());
+
+        // Test streaming delivery validation
+        let streaming = ResponseDelivery::streaming(&AgentType::Advanced).unwrap();
+        assert!(streaming.requires_streaming());
+
+        // Test streaming not supported
+        assert!(matches!(
+            ResponseDelivery::streaming(&AgentType::Echo),
+            Err(DeliveryError::StreamingNotSupported(_))
+        ));
+
+        // Test buffer size validation
+        assert!(matches!(
+            ResponseDelivery::streaming_with_buffer(&AgentType::Advanced, 0),
+            Err(DeliveryError::InvalidBufferSize { .. })
+        ));
+
+        assert!(matches!(
+            ResponseDelivery::streaming_with_buffer(
+                &AgentType::Advanced,
+                MAX_STREAM_BUFFER_SIZE + 1
+            ),
+            Err(DeliveryError::InvalidBufferSize { .. })
+        ));
     }
 
     #[test]
