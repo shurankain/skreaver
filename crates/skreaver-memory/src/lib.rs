@@ -50,4 +50,9 @@ mod redis_memory;
 #[cfg(feature = "redis")]
 pub use redis_memory::RedisMemory;
 
+#[cfg(feature = "sqlite")]
+mod sqlite_memory;
+#[cfg(feature = "sqlite")]
+pub use sqlite_memory::{SqliteMemory, SqlitePool, MigrationEngine, Migration};
+
 // Future backends (placeholders - will be implemented in future versions)

@@ -12,7 +12,7 @@ categories = ["development-tools", "database"]
 
 [features]
 default = []
-sqlite = ["dep:rusqlite"]
+sqlite = ["dep:rusqlite", "dep:rand"]
 postgres = ["dep:tokio-postgres", "dep:tokio"]
 redis = ["dep:redis", "dep:tokio"]
 
@@ -29,6 +29,7 @@ tokio = { workspace = true, features = ["fs"], optional = true }
 redis = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 tokio-postgres = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }
