@@ -14,7 +14,7 @@ categories = ["development-tools", "database"]
 default = []
 sqlite = ["dep:rusqlite", "dep:rand"]
 postgres = ["dep:tokio-postgres", "dep:tokio"]
-redis = ["dep:redis", "dep:tokio"]
+redis = ["dep:redis", "dep:deadpool-redis", "dep:tokio"]
 
 [dependencies]
 # Core dependency
@@ -27,6 +27,7 @@ uuid = { workspace = true }
 # Optional backend dependencies
 tokio = { workspace = true, features = ["fs"], optional = true }
 redis = { workspace = true, optional = true }
+deadpool-redis = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 tokio-postgres = { workspace = true, features = [
   "with-serde_json-1",
