@@ -28,7 +28,9 @@ uuid = { workspace = true }
 tokio = { workspace = true, features = ["fs"], optional = true }
 redis = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
-tokio-postgres = { workspace = true, optional = true }
+tokio-postgres = { workspace = true, features = [
+  "with-serde_json-1",
+], optional = true }
 rand = { workspace = true, optional = true }
 
 [dev-dependencies]
