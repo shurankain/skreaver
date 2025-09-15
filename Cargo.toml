@@ -62,6 +62,7 @@ jsonwebtoken = "9"
 regex = "1"
 html-escape = "0.2"
 base64 = "0.22"
+sha2 = "0.10"
 
 # OpenAPI
 utoipa = { version = "5", features = ["axum_extras", "chrono"] }

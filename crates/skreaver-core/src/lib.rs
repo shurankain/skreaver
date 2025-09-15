@@ -4,6 +4,7 @@
 //! This crate provides the fundamental building blocks for creating AI agents.
 
 pub mod agent;
+pub mod auth;
 pub mod error;
 pub mod in_memory;
 pub mod memory;
@@ -21,6 +22,16 @@ pub use security::{
     SecurityConfig, SecurityContext, SecurityError, SecurityManager, SecurityPolicy,
 };
 pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
+
+// Re-export auth types
+pub use auth::{
+    AuthContext, AuthError, AuthManager, AuthMethod, AuthResult, Principal,
+    api_key::{ApiKey, ApiKeyConfig, ApiKeyManager},
+    jwt::{JwtClaims, JwtConfig, JwtManager, JwtToken},
+    middleware::{AuthMiddleware, AuthenticatedRequest},
+    rbac::{Permission, Role, RoleManager, ToolPolicy},
+    storage::{CredentialStorage, InMemoryStorage, SecureStorage},
+};
 
 // Re-export agent extensions
 pub use agent::{
