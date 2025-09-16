@@ -15,6 +15,18 @@
 
 pub mod runtime;
 
+#[cfg(feature = "openapi")]
+pub mod openapi;
+
+#[cfg(feature = "unstable-websocket")]
+pub mod websocket;
+
 // Re-export main types for public API
 pub use runtime::*;
 pub use skreaver_tools::*;
+
+#[cfg(feature = "openapi")]
+pub use openapi::*;
+
+#[cfg(feature = "unstable-websocket")]
+pub use websocket::*;

@@ -60,6 +60,7 @@ humantime = { workspace = true }
 # OpenAPI documentation
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
+serde_yaml = { workspace = true }
 
 # Security and validation
 regex = { workspace = true }
