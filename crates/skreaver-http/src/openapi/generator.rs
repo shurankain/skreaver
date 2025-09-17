@@ -21,7 +21,7 @@ impl OpenApiGenerator {
             security_schemes: HashMap::new(),
         }
     }
-    
+
     /// Add a custom schema to the specification
     pub fn add_schema<T: ToSchema>(&mut self, name: &str) -> &mut Self {
         // This would use utoipa's schema generation
@@ -31,11 +31,11 @@ impl OpenApiGenerator {
             serde_json::json!({
                 "type": "object",
                 "description": format!("Schema for {}", name)
-            })
+            }),
         );
         self
     }
-    
+
     /// Add API key security scheme
     pub fn add_api_key_security(&mut self, name: &str, header_name: &str) -> &mut Self {
         self.security_schemes.insert(
@@ -45,11 +45,11 @@ impl OpenApiGenerator {
                 "in": "header",
                 "name": header_name,
                 "description": "API key for authentication"
-            })
+            }),
         );
         self
     }
-    
+
     /// Add Bearer token security scheme
     pub fn add_bearer_security(&mut self, name: &str) -> &mut Self {
         self.security_schemes.insert(
@@ -59,11 +59,11 @@ impl OpenApiGenerator {
                 "scheme": "bearer",
                 "bearerFormat": "JWT",
                 "description": "JWT Bearer token"
-            })
+            }),
         );
         self
     }
-    
+
     /// Generate the complete OpenAPI specification
     pub fn generate(&self) -> Result<Value, Box<dyn std::error::Error>> {
         let mut spec = serde_json::json!({
@@ -81,27 +81,27 @@ impl OpenApiGenerator {
                 "responses": self.generate_common_responses()
             }
         });
-        
+
         // Add optional fields
         if let Some(contact) = &self.config.contact {
             spec["info"]["contact"] = serde_json::to_value(contact)?;
         }
-        
+
         if let Some(license) = &self.config.license {
             spec["info"]["license"] = serde_json::to_value(license)?;
         }
-        
+
         if let Some(terms) = &self.config.terms_of_service {
             spec["info"]["termsOfService"] = Value::String(terms.clone());
         }
-        
+
         if let Some(external_docs) = &self.config.external_docs {
             spec["externalDocs"] = serde_json::to_value(external_docs)?;
         }
-        
+
         Ok(spec)
     }
-    
+
     /// Generate common schemas
     fn generate_schemas(&self) -> Value {
         let mut schemas = serde_json::json!({
@@ -285,7 +285,7 @@ impl OpenApiGenerator {
                         "required": ["type", "message"]
                     },
                     {
-                        "type": "object", 
+                        "type": "object",
                         "properties": {
                             "type": { "type": "string", "enum": ["INTERNAL_SERVER_ERROR"] },
                             "message": { "type": "string" },
@@ -296,17 +296,17 @@ impl OpenApiGenerator {
                 ]
             }
         });
-        
+
         // Add custom schemas
         if let Some(schemas_obj) = schemas.as_object_mut() {
             for (name, schema) in &self.custom_schemas {
                 schemas_obj.insert(name.clone(), schema.clone());
             }
         }
-        
+
         schemas
     }
-    
+
     /// Generate common response definitions
     fn generate_common_responses(&self) -> Value {
         serde_json::json!({
@@ -465,45 +465,49 @@ impl ApiDocGenerator {
             endpoints: Vec::new(),
         }
     }
-    
+
     /// Add an endpoint to the documentation
     pub fn add_endpoint(&mut self, endpoint: EndpointInfo) -> &mut Self {
         self.endpoints.push(endpoint);
         self
     }
-    
+
     /// Generate the complete API documentation
     pub fn generate(&self) -> Result<Value, Box<dyn std::error::Error>> {
         let mut spec = self.generator.generate()?;
-        
+
         // Add paths from endpoints
         let mut paths = serde_json::Map::new();
-        
+
         for endpoint in &self.endpoints {
-            let path_item = paths.entry(&endpoint.path)
+            let path_item = paths
+                .entry(&endpoint.path)
                 .or_insert_with(|| serde_json::json!({}));
-            
+
             let operation = self.generate_operation(endpoint)?;
             path_item[endpoint.method.to_lowercase()] = operation;
         }
-        
+
         spec["paths"] = Value::Object(paths);
-        
+
         Ok(spec)
     }
-    
+
     /// Generate operation documentation for an endpoint
-    fn generate_operation(&self, endpoint: &EndpointInfo) -> Result<Value, Box<dyn std::error::Error>> {
+    fn generate_operation(
+        &self,
+        endpoint: &EndpointInfo,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
         let mut operation = serde_json::json!({
             "summary": endpoint.summary,
             "tags": endpoint.tags,
             "responses": {}
         });
-        
+
         if let Some(description) = &endpoint.description {
             operation["description"] = Value::String(description.clone());
         }
-        
+
         // Add parameters
         if !endpoint.parameters.is_empty() {
             let mut params = Vec::new();
@@ -512,7 +516,7 @@ impl ApiDocGenerator {
                     "name": param.name,
                     "in": match param.location {
                         ParameterLocation::Query => "query",
-                        ParameterLocation::Path => "path", 
+                        ParameterLocation::Path => "path",
                         ParameterLocation::Header => "header",
                         ParameterLocation::Cookie => "cookie",
                     },
@@ -523,7 +527,7 @@ impl ApiDocGenerator {
             }
             operation["parameters"] = Value::Array(params);
         }
-        
+
         // Add request body
         if let Some(body) = &endpoint.request_body {
             operation["requestBody"] = serde_json::json!({
@@ -532,7 +536,7 @@ impl ApiDocGenerator {
                 "description": body.description
             });
         }
-        
+
         // Add responses
         let mut responses = serde_json::Map::new();
         for (status, response) in &endpoint.responses {
@@ -542,19 +546,21 @@ impl ApiDocGenerator {
                     "description": response.description,
                     "content": response.content,
                     "headers": response.headers
-                })
+                }),
             );
         }
         operation["responses"] = Value::Object(responses);
-        
+
         // Add security
         if !endpoint.security.is_empty() {
-            let security_reqs: Vec<Value> = endpoint.security.iter()
+            let security_reqs: Vec<Value> = endpoint
+                .security
+                .iter()
                 .map(|scheme| serde_json::json!({ scheme: [] }))
                 .collect();
             operation["security"] = Value::Array(security_reqs);
         }
-        
+
         Ok(operation)
     }
 }
@@ -562,7 +568,7 @@ impl ApiDocGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_openapi_generator_new() {
         let config = OpenApiConfig::default();
@@ -570,30 +576,30 @@ mod tests {
         assert!(generator.custom_schemas.is_empty());
         assert!(generator.security_schemes.is_empty());
     }
-    
+
     #[test]
     fn test_add_api_key_security() {
         let config = OpenApiConfig::default();
         let mut generator = OpenApiGenerator::new(config);
-        
+
         generator.add_api_key_security("ApiKey", "X-API-Key");
         assert!(generator.security_schemes.contains_key("ApiKey"));
     }
-    
+
     #[test]
     fn test_add_bearer_security() {
         let config = OpenApiConfig::default();
         let mut generator = OpenApiGenerator::new(config);
-        
+
         generator.add_bearer_security("BearerAuth");
         assert!(generator.security_schemes.contains_key("BearerAuth"));
     }
-    
+
     #[test]
     fn test_generate_basic_spec() {
         let config = OpenApiConfig::default();
         let generator = OpenApiGenerator::new(config);
-        
+
         let spec = generator.generate().unwrap();
         assert_eq!(spec["openapi"], "3.0.3");
         assert_eq!(spec["info"]["title"], "Skreaver API");

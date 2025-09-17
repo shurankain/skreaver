@@ -1,7 +1,7 @@
 //! OpenAPI specification and documentation support
 //!
 //! This module provides comprehensive OpenAPI 3.0 specification generation
-//! for Skreaver HTTP APIs, including automatic schema generation, 
+//! for Skreaver HTTP APIs, including automatic schema generation,
 //! documentation UI, and validation.
 
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,11 @@ pub mod ui;
 pub mod validation;
 
 pub use generator::{ApiDocGenerator, OpenApiGenerator};
-pub use ui::{SwaggerUi, RapiDocUi, ApiUiConfig, ApiSpecResponse};
-pub use validation::{RequestValidator, ResponseValidator, ValidationConfig, ValidatedJson, ValidationErrors, validation_middleware};
+pub use ui::{ApiSpecResponse, ApiUiConfig, RapiDocUi, SwaggerUi};
+pub use validation::{
+    RequestValidator, ResponseValidator, ValidatedJson, ValidationConfig, ValidationErrors,
+    validation_middleware,
+};
 
 /// OpenAPI specification configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,7 +153,7 @@ impl<T> ApiResponse<T> {
             request_id: uuid::Uuid::new_v4().to_string(),
         }
     }
-    
+
     /// Create an error response
     pub fn error(message: String) -> Self {
         Self {
@@ -196,14 +199,9 @@ pub struct PaginatedResponse<T> {
 
 impl<T> PaginatedResponse<T> {
     /// Create a paginated response
-    pub fn new(
-        items: Vec<T>,
-        page: u64,
-        page_size: u64,
-        total_items: u64,
-    ) -> Self {
+    pub fn new(items: Vec<T>, page: u64, page_size: u64, total_items: u64) -> Self {
         let total_pages = total_items.div_ceil(page_size);
-        
+
         Self {
             items,
             pagination: PaginationInfo {
@@ -235,9 +233,7 @@ pub enum ApiError {
         details: Option<serde_json::Value>,
     },
     /// Unauthorized (401)
-    Unauthorized {
-        message: String,
-    },
+    Unauthorized { message: String },
     /// Forbidden (403)
     Forbidden {
         message: String,
@@ -250,9 +246,7 @@ pub enum ApiError {
         resource_id: Option<String>,
     },
     /// Conflict (409)
-    Conflict {
-        message: String,
-    },
+    Conflict { message: String },
     /// Unprocessable entity (422)
     UnprocessableEntity {
         message: String,
@@ -264,10 +258,7 @@ pub enum ApiError {
         retry_after: Option<u64>,
     },
     /// Internal server error (500)
-    InternalServerError {
-        message: String,
-        error_id: String,
-    },
+    InternalServerError { message: String, error_id: String },
 }
 
 impl std::fmt::Display for ApiError {
@@ -278,9 +269,15 @@ impl std::fmt::Display for ApiError {
             ApiError::Forbidden { message, .. } => write!(f, "Forbidden: {}", message),
             ApiError::NotFound { message, .. } => write!(f, "Not Found: {}", message),
             ApiError::Conflict { message } => write!(f, "Conflict: {}", message),
-            ApiError::UnprocessableEntity { message, .. } => write!(f, "Unprocessable Entity: {}", message),
-            ApiError::RateLimitExceeded { message, .. } => write!(f, "Rate Limit Exceeded: {}", message),
-            ApiError::InternalServerError { message, .. } => write!(f, "Internal Server Error: {}", message),
+            ApiError::UnprocessableEntity { message, .. } => {
+                write!(f, "Unprocessable Entity: {}", message)
+            }
+            ApiError::RateLimitExceeded { message, .. } => {
+                write!(f, "Rate Limit Exceeded: {}", message)
+            }
+            ApiError::InternalServerError { message, .. } => {
+                write!(f, "Internal Server Error: {}", message)
+            }
         }
     }
 }
@@ -301,7 +298,7 @@ pub struct ValidationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_api_response_success() {
         let response = ApiResponse::success("test data");
@@ -309,7 +306,7 @@ mod tests {
         assert_eq!(response.data, Some("test data"));
         assert!(response.error.is_none());
     }
-    
+
     #[test]
     fn test_api_response_error() {
         let response: ApiResponse<String> = ApiResponse::error("test error".to_string());
@@ -317,12 +314,12 @@ mod tests {
         assert!(response.data.is_none());
         assert_eq!(response.error, Some("test error".to_string()));
     }
-    
+
     #[test]
     fn test_paginated_response() {
         let items = vec!["item1", "item2", "item3"];
         let response = PaginatedResponse::new(items.clone(), 1, 2, 5);
-        
+
         assert_eq!(response.items, items);
         assert_eq!(response.pagination.page, 1);
         assert_eq!(response.pagination.page_size, 2);
@@ -331,7 +328,7 @@ mod tests {
         assert!(response.pagination.has_next);
         assert!(!response.pagination.has_prev);
     }
-    
+
     #[test]
     fn test_openapi_config_default() {
         let config = OpenApiConfig::default();

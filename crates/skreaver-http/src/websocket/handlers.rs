@@ -1,14 +1,14 @@
 //! WebSocket route handlers and middleware
 
 use super::{
-    WebSocketManager, ConnectionInfo, WsMessage, WsError,
+    ConnectionInfo, WebSocketManager, WsError, WsMessage,
     protocol::{MessageEnvelope, MessagePayload, channels, events},
 };
 use axum::{
-    extract::{ws::WebSocketUpgrade, ConnectInfo, State, Query},
-    response::{Response, IntoResponse},
-    http::{StatusCode, HeaderMap},
     Json,
+    extract::{ConnectInfo, Query, State, ws::WebSocketUpgrade},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
@@ -64,7 +64,7 @@ pub async fn websocket_upgrade_handler(
         "WebSocket upgrade request from {} (client: {:?}, version: {:?})",
         addr, query.client, query.version
     );
-    
+
     // Validate client information
     if let Some(client) = &query.client {
         if !is_valid_client_name(client) {
@@ -72,17 +72,15 @@ pub async fn websocket_upgrade_handler(
             return (StatusCode::BAD_REQUEST, "Invalid client name").into_response();
         }
     }
-    
+
     // Check connection limits before upgrade
     let stats = manager.get_stats().await;
     if stats.total_connections >= manager.config.max_connections {
         warn!("Connection limit exceeded for {}", addr);
         return (StatusCode::TOO_MANY_REQUESTS, "Connection limit exceeded").into_response();
     }
-    
-    ws.on_upgrade(move |socket| {
-        handle_websocket_connection(socket, addr, manager, query)
-    })
+
+    ws.on_upgrade(move |socket| handle_websocket_connection(socket, addr, manager, query))
 }
 
 /// Handle individual WebSocket connection with enhanced protocol
@@ -93,7 +91,7 @@ async fn handle_websocket_connection(
     query: WsUpgradeQuery,
 ) {
     let mut conn_info = ConnectionInfo::new(addr);
-    
+
     // Add client metadata from query
     if let Some(client) = query.client {
         conn_info.metadata.insert("client".to_string(), client);
@@ -101,10 +99,13 @@ async fn handle_websocket_connection(
     if let Some(version) = query.version {
         conn_info.metadata.insert("version".to_string(), version);
     }
-    
+
     let conn_id = conn_info.id;
-    info!("WebSocket connection established: {} from {}", conn_id, addr);
-    
+    info!(
+        "WebSocket connection established: {} from {}",
+        conn_id, addr
+    );
+
     // Register connection with manager
     let _sender = match manager.add_connection(conn_id, conn_info).await {
         Ok(sender) => sender,
@@ -113,9 +114,9 @@ async fn handle_websocket_connection(
             return;
         }
     };
-    
+
     let (mut ws_sender, mut ws_receiver) = socket.split();
-    
+
     // Send welcome message
     let welcome = MessageEnvelope::event(
         channels::SYSTEM,
@@ -132,15 +133,19 @@ async fn handle_websocket_connection(
                 channels::METRICS,
                 channels::DEBUG
             ]
-        })
+        }),
     );
-    
+
     if let Ok(welcome_json) = serde_json::to_string(&welcome) {
-        if ws_sender.send(axum::extract::ws::Message::Text(welcome_json.into())).await.is_err() {
+        if ws_sender
+            .send(axum::extract::ws::Message::Text(welcome_json.into()))
+            .await
+            .is_err()
+        {
             warn!("Failed to send welcome message to {}", conn_id);
         }
     }
-    
+
     // Auto-authenticate if token provided
     if let Some(token) = query.token {
         let auth_msg = WsMessage::Auth { token };
@@ -148,10 +153,10 @@ async fn handle_websocket_connection(
             error!("Auto-authentication failed for {}: {}", conn_id, e);
         }
     }
-    
+
     // Message handling loop
     use futures::{SinkExt, StreamExt};
-    
+
     let manager_clone = Arc::clone(&manager);
     let receive_task = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
@@ -159,7 +164,9 @@ async fn handle_websocket_connection(
                 Ok(axum::extract::ws::Message::Text(text)) => {
                     // Try parsing as MessageEnvelope first
                     if let Ok(envelope) = serde_json::from_str::<MessageEnvelope>(&text) {
-                        if let Err(e) = handle_protocol_message(&manager_clone, conn_id, envelope).await {
+                        if let Err(e) =
+                            handle_protocol_message(&manager_clone, conn_id, envelope).await
+                        {
                             error!("Error handling protocol message from {}: {}", conn_id, e);
                         }
                     }
@@ -192,10 +199,10 @@ async fn handle_websocket_connection(
             }
         }
     });
-    
+
     // Wait for receive task to complete
     let _ = receive_task.await;
-    
+
     // Cleanup
     info!("WebSocket connection {} disconnected", conn_id);
     manager.remove_connection(conn_id).await;
@@ -207,11 +214,17 @@ async fn handle_protocol_message(
     conn_id: uuid::Uuid,
     envelope: MessageEnvelope,
 ) -> Result<(), WsError> {
-    debug!("Handling protocol message from {}: {:?}", conn_id, envelope.payload);
-    
+    debug!(
+        "Handling protocol message from {}: {:?}",
+        conn_id, envelope.payload
+    );
+
     match envelope.payload {
         MessagePayload::Handshake(data) => {
-            info!("Handshake from {}: {} v{}", conn_id, data.client_name, data.client_version);
+            info!(
+                "Handshake from {}: {} v{}",
+                conn_id, data.client_name, data.client_version
+            );
             // TODO: Store handshake information
             Ok(())
         }
@@ -220,9 +233,7 @@ async fn handle_protocol_message(
             manager.handle_message(conn_id, ws_msg).await
         }
         MessagePayload::Subscribe(data) => {
-            let channels = data.channels.into_iter()
-                .map(|sub| sub.channel)
-                .collect();
+            let channels = data.channels.into_iter().map(|sub| sub.channel).collect();
             let ws_msg = WsMessage::Subscribe { channels };
             manager.handle_message(conn_id, ws_msg).await
         }
@@ -231,12 +242,15 @@ async fn handle_protocol_message(
             handle_rpc_request(manager, conn_id, &envelope.message_id, data).await
         }
         MessagePayload::Ping(data) => {
-            let pong = MessageEnvelope::pong(data.timestamp)
-                .with_correlation_id(envelope.message_id);
+            let pong =
+                MessageEnvelope::pong(data.timestamp).with_correlation_id(envelope.message_id);
             send_protocol_message(manager, conn_id, pong).await
         }
         _ => {
-            warn!("Unexpected message type from {}: {:?}", conn_id, envelope.payload);
+            warn!(
+                "Unexpected message type from {}: {:?}",
+                conn_id, envelope.payload
+            );
             Ok(())
         }
     }
@@ -250,13 +264,11 @@ async fn handle_rpc_request(
     request: super::protocol::RequestData,
 ) -> Result<(), WsError> {
     debug!("Handling RPC request from {}: {}", conn_id, request.method);
-    
+
     let response = match request.method.as_str() {
-        "ping" => {
-            MessageEnvelope::success_response(serde_json::json!({
-                "timestamp": chrono::Utc::now().timestamp_millis()
-            }))
-        }
+        "ping" => MessageEnvelope::success_response(serde_json::json!({
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        })),
         "subscribe" => {
             if let Ok(channels) = serde_json::from_value::<Vec<String>>(request.params) {
                 let ws_msg = WsMessage::Subscribe { channels };
@@ -287,11 +299,12 @@ async fn handle_rpc_request(
                 "totalChannels": stats.total_channels
             }))
         }
-        _ => {
-            MessageEnvelope::error_response("METHOD_NOT_FOUND", &format!("Method '{}' not found", request.method))
-        }
+        _ => MessageEnvelope::error_response(
+            "METHOD_NOT_FOUND",
+            &format!("Method '{}' not found", request.method),
+        ),
     };
-    
+
     let response = response.with_correlation_id(message_id.to_string());
     send_protocol_message(manager, conn_id, response).await
 }
@@ -335,7 +348,7 @@ async fn send_protocol_message(
         },
         _ => return Ok(()), // Skip other message types for now
     };
-    
+
     manager.send_to_connection(conn_id, legacy_msg).await
 }
 
@@ -344,7 +357,7 @@ pub async fn websocket_status_handler(
     State(manager): State<Arc<WebSocketManager>>,
 ) -> Json<WsStatusResponse> {
     let stats = manager.get_stats().await;
-    
+
     let response = WsStatusResponse {
         websocket_url: "/ws".to_string(),
         protocol_version: super::protocol::PROTOCOL_VERSION.to_string(),
@@ -363,7 +376,7 @@ pub async fn websocket_status_handler(
             uptime_seconds: 0, // TODO: Track server uptime
         },
     };
-    
+
     Json(response)
 }
 
@@ -384,14 +397,21 @@ pub async fn broadcast_handler(
     State(manager): State<Arc<WebSocketManager>>,
     Json(request): Json<BroadcastRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    info!("Broadcasting event to channel {}: {}", request.channel, request.event_type);
-    
+    info!(
+        "Broadcasting event to channel {}: {}",
+        request.channel, request.event_type
+    );
+
     if let Some(user_id) = request.user_id {
-        manager.send_to_user(&user_id, &request.channel, request.data).await;
+        manager
+            .send_to_user(&user_id, &request.channel, request.data)
+            .await;
     } else {
-        manager.broadcast_to_channel(&request.channel, request.data).await;
+        manager
+            .broadcast_to_channel(&request.channel, request.data)
+            .await;
     }
-    
+
     Ok(Json(serde_json::json!({
         "success": true,
         "message": "Event broadcasted successfully"
@@ -401,8 +421,9 @@ pub async fn broadcast_handler(
 /// Validate client name
 fn is_valid_client_name(name: &str) -> bool {
     // Allow alphanumeric characters, hyphens, and underscores
-    name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') 
-        && !name.is_empty() 
+    name.chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        && !name.is_empty()
         && name.len() <= 50
 }
 
@@ -415,41 +436,41 @@ pub async fn websocket_middleware(
 ) -> Result<Response, StatusCode> {
     let start = std::time::Instant::now();
     let addr = addr.0;
-    
+
     // Log connection attempt
     info!("WebSocket connection attempt from {}", addr);
-    
+
     // Check for required headers
     if !headers.contains_key("upgrade") || !headers.contains_key("connection") {
         warn!("Invalid WebSocket upgrade headers from {}", addr);
         return Err(StatusCode::BAD_REQUEST);
     }
-    
+
     let response = next.run(request).await;
     let duration = start.elapsed();
-    
+
     // Log connection result
     info!("WebSocket upgrade processed for {} in {:?}", addr, duration);
-    
+
     Ok(response)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_is_valid_client_name() {
         assert!(is_valid_client_name("valid-client"));
         assert!(is_valid_client_name("client_v1"));
         assert!(is_valid_client_name("ClientApp123"));
-        
+
         assert!(!is_valid_client_name(""));
         assert!(!is_valid_client_name("invalid client")); // space
         assert!(!is_valid_client_name("invalid@client")); // special char
         assert!(!is_valid_client_name(&"x".repeat(51))); // too long
     }
-    
+
     #[test]
     fn test_ws_upgrade_query_parsing() {
         // This would be tested with actual query parsing in integration tests
@@ -458,12 +479,12 @@ mod tests {
             client: Some("test-client".to_string()),
             version: Some("1.0.0".to_string()),
         };
-        
+
         assert_eq!(query.token, Some("test-token".to_string()));
         assert_eq!(query.client, Some("test-client".to_string()));
         assert_eq!(query.version, Some("1.0.0".to_string()));
     }
-    
+
     #[test]
     fn test_broadcast_request() {
         let request = BroadcastRequest {
@@ -472,7 +493,7 @@ mod tests {
             data: serde_json::json!({"key": "value"}),
             user_id: None,
         };
-        
+
         assert_eq!(request.channel, "test");
         assert_eq!(request.event_type, "test-event");
         assert_eq!(request.data["key"], "value");

@@ -5,8 +5,8 @@
 
 use axum::{
     extract::{
-        ws::{WebSocket, WebSocketUpgrade, Message},
         ConnectInfo, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::Response,
 };
@@ -86,11 +86,11 @@ impl ConnectionInfo {
             metadata: HashMap::new(),
         }
     }
-    
+
     pub fn update_activity(&mut self) {
         self.last_activity = Instant::now();
     }
-    
+
     pub fn is_expired(&self, timeout: Duration) -> bool {
         self.last_activity.elapsed() > timeout
     }
@@ -101,25 +101,15 @@ impl ConnectionInfo {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum WsMessage {
     /// Ping message
-    Ping {
-        timestamp: i64,
-    },
+    Ping { timestamp: i64 },
     /// Pong message
-    Pong {
-        timestamp: i64,
-    },
+    Pong { timestamp: i64 },
     /// Authentication message
-    Auth {
-        token: String,
-    },
+    Auth { token: String },
     /// Subscribe to events
-    Subscribe {
-        channels: Vec<String>,
-    },
+    Subscribe { channels: Vec<String> },
     /// Unsubscribe from events
-    Unsubscribe {
-        channels: Vec<String>,
-    },
+    Unsubscribe { channels: Vec<String> },
     /// Event notification
     Event {
         channel: String,
@@ -127,14 +117,9 @@ pub enum WsMessage {
         timestamp: i64,
     },
     /// Error message
-    Error {
-        code: String,
-        message: String,
-    },
+    Error { code: String, message: String },
     /// Success acknowledgment
-    Success {
-        message: String,
-    },
+    Success { message: String },
 }
 
 impl WsMessage {
@@ -143,26 +128,26 @@ impl WsMessage {
             timestamp: chrono::Utc::now().timestamp(),
         }
     }
-    
+
     pub fn pong() -> Self {
         Self::Pong {
             timestamp: chrono::Utc::now().timestamp(),
         }
     }
-    
+
     pub fn error(code: &str, message: &str) -> Self {
         Self::Error {
             code: code.to_string(),
             message: message.to_string(),
         }
     }
-    
+
     pub fn success(message: &str) -> Self {
         Self::Success {
             message: message.to_string(),
         }
     }
-    
+
     pub fn event(channel: &str, data: serde_json::Value) -> Self {
         Self::Event {
             channel: channel.to_string(),
@@ -180,25 +165,25 @@ pub type WsResult<T> = Result<T, WsError>;
 pub enum WsError {
     #[error("Connection limit exceeded")]
     ConnectionLimitExceeded,
-    
+
     #[error("Authentication failed: {0}")]
     AuthenticationFailed(String),
-    
+
     #[error("Message too large: {size} bytes (max: {max})")]
     MessageTooLarge { size: usize, max: usize },
-    
+
     #[error("Invalid message format: {0}")]
     InvalidMessage(String),
-    
+
     #[error("Connection closed")]
     ConnectionClosed,
-    
+
     #[error("Channel not found: {0}")]
     ChannelNotFound(String),
-    
+
     #[error("Permission denied")]
     PermissionDenied,
-    
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -209,27 +194,21 @@ impl WsError {
             WsError::ConnectionLimitExceeded => {
                 WsMessage::error("CONNECTION_LIMIT_EXCEEDED", "Too many connections")
             }
-            WsError::AuthenticationFailed(msg) => {
-                WsMessage::error("AUTHENTICATION_FAILED", msg)
-            }
-            WsError::MessageTooLarge { size, max } => {
-                WsMessage::error("MESSAGE_TOO_LARGE", &format!("Message size {} exceeds limit {}", size, max))
-            }
-            WsError::InvalidMessage(msg) => {
-                WsMessage::error("INVALID_MESSAGE", msg)
-            }
+            WsError::AuthenticationFailed(msg) => WsMessage::error("AUTHENTICATION_FAILED", msg),
+            WsError::MessageTooLarge { size, max } => WsMessage::error(
+                "MESSAGE_TOO_LARGE",
+                &format!("Message size {} exceeds limit {}", size, max),
+            ),
+            WsError::InvalidMessage(msg) => WsMessage::error("INVALID_MESSAGE", msg),
             WsError::ConnectionClosed => {
                 WsMessage::error("CONNECTION_CLOSED", "Connection was closed")
             }
-            WsError::ChannelNotFound(channel) => {
-                WsMessage::error("CHANNEL_NOT_FOUND", &format!("Channel '{}' not found", channel))
-            }
-            WsError::PermissionDenied => {
-                WsMessage::error("PERMISSION_DENIED", "Permission denied")
-            }
-            WsError::Internal(msg) => {
-                WsMessage::error("INTERNAL_ERROR", msg)
-            }
+            WsError::ChannelNotFound(channel) => WsMessage::error(
+                "CHANNEL_NOT_FOUND",
+                &format!("Channel '{}' not found", channel),
+            ),
+            WsError::PermissionDenied => WsMessage::error("PERMISSION_DENIED", "Permission denied"),
+            WsError::Internal(msg) => WsMessage::error("INTERNAL_ERROR", msg),
         }
     }
 }
@@ -241,30 +220,29 @@ pub async fn websocket_handler(
     State(manager): State<Arc<WebSocketManager>>,
 ) -> Response {
     info!("WebSocket connection request from {}", addr);
-    
+
     ws.on_upgrade(move |socket| handle_socket(socket, addr, manager))
 }
 
 /// Handle individual WebSocket connection
-async fn handle_socket(
-    socket: WebSocket,
-    addr: SocketAddr,
-    manager: Arc<WebSocketManager>,
-) {
+async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSocketManager>) {
     let conn_info = ConnectionInfo::new(addr);
     let conn_id = conn_info.id;
-    
-    info!("WebSocket connection established: {} from {}", conn_id, addr);
-    
+
+    info!(
+        "WebSocket connection established: {} from {}",
+        conn_id, addr
+    );
+
     // Register connection with manager
     if let Err(e) = manager.add_connection(conn_id, conn_info.clone()).await {
         error!("Failed to register connection {}: {}", conn_id, e);
         return;
     }
-    
+
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::channel::<WsMessage>(manager.config.buffer_size);
-    
+
     // Start background tasks
     let manager_clone = Arc::clone(&manager);
     let tx_ping = tx.clone();
@@ -277,7 +255,7 @@ async fn handle_socket(
             }
         }
     });
-    
+
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             let json_msg = match serde_json::to_string(&msg) {
@@ -287,37 +265,35 @@ async fn handle_socket(
                     continue;
                 }
             };
-            
+
             if sender.send(Message::Text(json_msg.into())).await.is_err() {
                 break;
             }
         }
     });
-    
+
     let manager_clone = Arc::clone(&manager);
     let receive_task = tokio::spawn(async move {
         while let Some(msg) = receiver.next().await {
             match msg {
-                Ok(Message::Text(text)) => {
-                    match serde_json::from_str::<WsMessage>(&text) {
-                        Ok(ws_msg) => {
-                            if let Err(e) = manager_clone.handle_message(conn_id, ws_msg).await {
-                                error!("Error handling message from {}: {}", conn_id, e);
-                                let error_msg = e.to_message();
-                                if tx.send(error_msg).await.is_err() {
-                                    break;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Invalid JSON message from {}: {}", conn_id, e);
-                            let error_msg = WsError::InvalidMessage(e.to_string()).to_message();
+                Ok(Message::Text(text)) => match serde_json::from_str::<WsMessage>(&text) {
+                    Ok(ws_msg) => {
+                        if let Err(e) = manager_clone.handle_message(conn_id, ws_msg).await {
+                            error!("Error handling message from {}: {}", conn_id, e);
+                            let error_msg = e.to_message();
                             if tx.send(error_msg).await.is_err() {
                                 break;
                             }
                         }
                     }
-                }
+                    Err(e) => {
+                        error!("Invalid JSON message from {}: {}", conn_id, e);
+                        let error_msg = WsError::InvalidMessage(e.to_string()).to_message();
+                        if tx.send(error_msg).await.is_err() {
+                            break;
+                        }
+                    }
+                },
                 Ok(Message::Binary(_)) => {
                     warn!("Binary messages not supported from {}", conn_id);
                 }
@@ -341,14 +317,14 @@ async fn handle_socket(
             }
         }
     });
-    
+
     // Wait for any task to complete
     tokio::select! {
         _ = ping_task => {},
         _ = send_task => {},
         _ = receive_task => {},
     }
-    
+
     // Cleanup
     info!("WebSocket connection {} closed", conn_id);
     manager.remove_connection(conn_id).await;
@@ -357,7 +333,7 @@ async fn handle_socket(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_ws_config_default() {
         let config = WebSocketConfig::default();
@@ -368,54 +344,54 @@ mod tests {
         assert!(config.enable_compression);
         assert_eq!(config.buffer_size, 100);
     }
-    
+
     #[test]
     fn test_connection_info() {
         let addr = "127.0.0.1:8080".parse().unwrap();
         let mut conn_info = ConnectionInfo::new(addr);
-        
+
         assert_eq!(conn_info.addr, addr);
         assert!(!conn_info.is_expired(Duration::from_secs(1)));
-        
+
         conn_info.update_activity();
         assert!(!conn_info.is_expired(Duration::from_secs(1)));
     }
-    
+
     #[test]
     fn test_ws_message_creation() {
         let ping = WsMessage::ping();
         assert!(matches!(ping, WsMessage::Ping { .. }));
-        
+
         let pong = WsMessage::pong();
         assert!(matches!(pong, WsMessage::Pong { .. }));
-        
+
         let error = WsMessage::error("TEST", "test error");
         assert!(matches!(error, WsMessage::Error { .. }));
-        
+
         let success = WsMessage::success("test success");
         assert!(matches!(success, WsMessage::Success { .. }));
-        
+
         let event = WsMessage::event("test", serde_json::json!({"key": "value"}));
         assert!(matches!(event, WsMessage::Event { .. }));
     }
-    
+
     #[test]
     fn test_ws_error_to_message() {
         let error = WsError::ConnectionLimitExceeded;
         let msg = error.to_message();
         assert!(matches!(msg, WsMessage::Error { .. }));
-        
+
         let error = WsError::AuthenticationFailed("invalid token".to_string());
         let msg = error.to_message();
         assert!(matches!(msg, WsMessage::Error { .. }));
     }
-    
+
     #[test]
     fn test_ws_message_serialization() {
         let ping = WsMessage::ping();
         let json = serde_json::to_string(&ping).unwrap();
         assert!(json.contains("\"type\":\"ping\""));
-        
+
         let event = WsMessage::event("test", serde_json::json!({"data": "value"}));
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"event\""));

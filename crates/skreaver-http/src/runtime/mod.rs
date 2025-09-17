@@ -56,6 +56,8 @@ pub mod agent_status;
 pub mod api_types;
 /// Authentication middleware for HTTP runtime.
 pub mod auth;
+/// Backpressure and request queue management.
+pub mod backpressure;
 /// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
 /// Unified error handling system.
@@ -71,6 +73,7 @@ pub mod streaming;
 
 pub use agent_status::{AgentStatus, AgentStatusManager};
 pub use api_types::{AgentObservation, AgentResponse, DeliveryError, ResponseDelivery};
+pub use backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, RequestPriority};
 pub use coordinator::Coordinator;
 pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};

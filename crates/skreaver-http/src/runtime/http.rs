@@ -7,6 +7,7 @@
 
 use crate::runtime::{
     Coordinator, auth,
+    backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, RequestPriority},
     rate_limit::{RateLimitConfig, RateLimitState},
     streaming::{self, StreamingAgentExecutor},
 };
@@ -25,8 +26,7 @@ use skreaver_core::Agent;
 use skreaver_observability::health::{HealthCheck, SystemHealth};
 use skreaver_observability::metrics::get_metrics_registry;
 use skreaver_observability::{
-    AgentId as ObsAgentId, ErrorKind, HealthChecker, ObservabilityConfig, SessionId,
-    init_observability,
+    AgentId as ObsAgentId, HealthChecker, ObservabilityConfig, SessionId, init_observability,
 };
 use skreaver_tools::ToolRegistry;
 use std::{collections::HashMap, sync::Arc};
@@ -43,6 +43,7 @@ pub struct HttpAgentRuntime<T: ToolRegistry> {
     pub agents: Arc<RwLock<HashMap<AgentId, AgentInstance>>>,
     pub tool_registry: Arc<T>,
     pub rate_limit_state: Arc<RateLimitState>,
+    pub backpressure_manager: Arc<BackpressureManager>,
 }
 
 /// HTTP runtime configuration
@@ -50,6 +51,8 @@ pub struct HttpAgentRuntime<T: ToolRegistry> {
 pub struct HttpRuntimeConfig {
     /// Rate limiting configuration
     pub rate_limit: RateLimitConfig,
+    /// Backpressure and queue management configuration
+    pub backpressure: BackpressureConfig,
     /// Request timeout in seconds
     pub request_timeout_secs: u64,
     /// Maximum request body size in bytes
@@ -66,6 +69,7 @@ impl Default for HttpRuntimeConfig {
     fn default() -> Self {
         Self {
             rate_limit: RateLimitConfig::default(),
+            backpressure: BackpressureConfig::default(),
             request_timeout_secs: 30,
             max_body_size: 16 * 1024 * 1024, // 16MB
             enable_cors: true,
@@ -223,6 +227,85 @@ pub struct CreateTokenResponse {
 pub struct StreamRequest {
     /// Optional input to send to the agent
     pub input: Option<String>,
+    /// Whether to include debug information in stream
+    #[serde(default)]
+    pub debug: bool,
+    /// Custom timeout in seconds for the operation
+    pub timeout_seconds: Option<u64>,
+}
+
+/// Request for batch operations
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BatchObserveRequest {
+    /// List of inputs to process
+    pub inputs: Vec<String>,
+    /// Whether to return results as stream
+    #[serde(default)]
+    pub stream: bool,
+    /// Maximum parallel operations
+    #[serde(default = "default_parallel_limit")]
+    pub parallel_limit: usize,
+    /// Timeout per individual operation in seconds
+    #[serde(default = "default_operation_timeout")]
+    pub timeout_seconds: u64,
+}
+
+fn default_parallel_limit() -> usize {
+    5
+}
+fn default_operation_timeout() -> u64 {
+    60
+}
+
+/// Response for batch operations
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BatchObserveResponse {
+    /// Agent identifier
+    pub agent_id: String,
+    /// Results for each input
+    pub results: Vec<BatchResult>,
+    /// Total processing time
+    pub total_time_ms: u64,
+    /// Request timestamp
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+/// Individual result in batch operation
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct BatchResult {
+    /// Input index
+    pub index: usize,
+    /// Whether the operation succeeded
+    pub success: bool,
+    /// Response content (if successful)
+    pub response: Option<String>,
+    /// Error message (if failed)
+    pub error: Option<String>,
+    /// Processing time for this individual operation
+    pub time_ms: u64,
+}
+
+/// Queue metrics response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct QueueMetricsResponse {
+    /// Agent ID (if for specific agent)
+    pub agent_id: Option<String>,
+    /// Number of requests in queue
+    pub queue_size: usize,
+    /// Number of active/processing requests
+    pub active_requests: usize,
+    /// Total requests processed
+    pub total_processed: u64,
+    /// Total requests that timed out
+    pub total_timeouts: u64,
+    /// Total requests rejected
+    pub total_rejections: u64,
+    /// Average processing time in milliseconds
+    pub avg_processing_time_ms: f64,
+    /// Current load factor (0.0-1.0)
+    pub load_factor: f64,
+    /// Timestamp of metrics collection
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
@@ -238,10 +321,21 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             tracing::warn!("Failed to initialize observability: {}", e);
         }
 
+        let backpressure_manager = Arc::new(BackpressureManager::new(config.backpressure.clone()));
+
+        // Start backpressure manager in background
+        let backpressure_manager_clone = Arc::clone(&backpressure_manager);
+        tokio::spawn(async move {
+            if let Err(e) = backpressure_manager_clone.start().await {
+                tracing::error!("Failed to start backpressure manager: {}", e);
+            }
+        });
+
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             tool_registry: Arc::new(tool_registry),
             rate_limit_state: Arc::new(RateLimitState::new(config.rate_limit)),
+            backpressure_manager,
         }
     }
 
@@ -262,8 +356,18 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             .route("/agents", get(list_agents).post(create_agent))
             .route("/agents/{agent_id}/status", get(get_agent_status))
             .route("/agents/{agent_id}/observe", post(observe_agent))
+            .route(
+                "/agents/{agent_id}/observe/stream",
+                post(observe_agent_stream),
+            )
+            .route("/agents/{agent_id}/batch", post(batch_observe_agent))
             .route("/agents/{agent_id}/stream", get(stream_agent))
+            .route(
+                "/agents/{agent_id}/queue/metrics",
+                get(get_agent_queue_metrics),
+            )
             .route("/agents/{agent_id}", axum::routing::delete(delete_agent))
+            .route("/queue/metrics", get(get_global_queue_metrics))
             .with_state(self)
             .layer(TraceLayer::new_for_http());
 
@@ -424,7 +528,7 @@ async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync>(
         ("bearer_auth" = [])
     )
 )]
-async fn observe_agent<T: ToolRegistry + Clone + Send + Sync>(
+async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     State(runtime): State<HttpAgentRuntime<T>>,
     Path(agent_id): Path<String>,
     Json(request): Json<ObserveRequest>,
@@ -437,59 +541,143 @@ async fn observe_agent<T: ToolRegistry + Clone + Send + Sync>(
         let _ = registry.record_http_request(&route, "POST", start_time.elapsed());
     }
 
-    let mut agents = runtime.agents.write().await;
-
-    match agents.get_mut(&agent_id) {
-        Some(instance) => {
-            // Create agent session for observability
-            let session_id = SessionId::generate();
-
-            // Record agent session start
-            if let Some(registry) = get_metrics_registry() {
-                let obs_agent_id = ObsAgentId::new(agent_id.clone())
-                    .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
-                let tags = skreaver_observability::CardinalTags::for_agent_session(
-                    obs_agent_id.clone(),
-                    session_id.clone(),
-                );
-                let _ = registry.record_agent_session_start(&tags);
-            }
-
-            let response = instance.coordinator.step(request.input);
-
-            // Record agent session end
-            if let Some(registry) = get_metrics_registry() {
-                let obs_agent_id = ObsAgentId::new(agent_id.clone())
-                    .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
-                let tags = skreaver_observability::CardinalTags::for_agent_session(
-                    obs_agent_id,
-                    session_id,
-                );
-                let _ = registry.record_agent_session_end(&tags);
-            }
-
-            Ok(Json(ObserveResponse {
-                agent_id: agent_id.clone(),
-                response,
-                timestamp: chrono::Utc::now(),
-            }))
-        }
-        None => {
-            // Record error metric
-            if let Some(registry) = get_metrics_registry() {
-                let _ = registry.record_agent_error(&ErrorKind::Internal);
-            }
-
-            Err((
+    // Check if agent exists first
+    {
+        let agents = runtime.agents.read().await;
+        if !agents.contains_key(&agent_id) {
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
                     error: "agent_not_found".to_string(),
                     message: format!("Agent with ID '{}' not found", agent_id),
                     details: None,
                 }),
-            ))
+            ));
         }
     }
+
+    // Use backpressure manager for request processing
+    let priority = RequestPriority::Normal; // TODO: Allow setting priority in request
+    let timeout = Some(std::time::Duration::from_secs(30)); // TODO: Make configurable
+
+    let (_request_id, rx) = runtime
+        .backpressure_manager
+        .queue_request_with_input(agent_id.clone(), request.input.clone(), priority, timeout)
+        .await
+        .map_err(|e| {
+            let status = match e {
+                crate::runtime::backpressure::BackpressureError::QueueFull { .. } => {
+                    StatusCode::TOO_MANY_REQUESTS
+                }
+                crate::runtime::backpressure::BackpressureError::SystemOverloaded { .. } => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: "backpressure_error".to_string(),
+                    message: e.to_string(),
+                    details: None,
+                }),
+            )
+        })?;
+
+    // Start processing the queued request
+    let runtime_clone = runtime.clone();
+    let agent_id_clone = agent_id.clone();
+    tokio::spawn(async move {
+        let agent_id_for_processing = agent_id_clone.clone();
+        let runtime_for_closure = runtime_clone.clone();
+        if let Some(_) = runtime_clone
+            .backpressure_manager
+            .process_next_queued_request(&agent_id_clone, move |input| {
+                let runtime_inner = runtime_for_closure.clone();
+                let agent_id_for_closure = agent_id_for_processing.clone();
+                async move {
+                    // Process the request within backpressure constraints
+                    let mut agents = runtime_inner.agents.write().await;
+                    if let Some(instance) = agents.get_mut(&agent_id_for_closure) {
+                        // Create agent session for observability
+                        let session_id = SessionId::generate();
+
+                        // Record agent session start
+                        if let Some(registry) = get_metrics_registry() {
+                            let obs_agent_id = ObsAgentId::new(agent_id_for_closure.clone())
+                                .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
+                            let tags = skreaver_observability::CardinalTags::for_agent_session(
+                                obs_agent_id.clone(),
+                                session_id.clone(),
+                            );
+                            let _ = registry.record_agent_session_start(&tags);
+                        }
+
+                        let response = instance.coordinator.step(input);
+
+                        // Record agent session end
+                        if let Some(registry) = get_metrics_registry() {
+                            let obs_agent_id = ObsAgentId::new(agent_id_for_closure.clone())
+                                .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
+                            let tags = skreaver_observability::CardinalTags::for_agent_session(
+                                obs_agent_id,
+                                session_id,
+                            );
+                            let _ = registry.record_agent_session_end(&tags);
+                        }
+
+                        response
+                    } else {
+                        "Agent not found".to_string()
+                    }
+                }
+            })
+            .await
+        {
+            // Processing started successfully
+        }
+    });
+
+    // Wait for response from backpressure manager
+    let response = rx.await.map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "request_cancelled".to_string(),
+                message: "Request was cancelled".to_string(),
+                details: None,
+            }),
+        )
+    })?;
+
+    let response = response.map_err(|e| {
+        let status = match e {
+            crate::runtime::backpressure::BackpressureError::QueueTimeout { .. } => {
+                StatusCode::REQUEST_TIMEOUT
+            }
+            crate::runtime::backpressure::BackpressureError::ProcessingTimeout { .. } => {
+                StatusCode::REQUEST_TIMEOUT
+            }
+            crate::runtime::backpressure::BackpressureError::AgentNotFound { .. } => {
+                StatusCode::NOT_FOUND
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (
+            status,
+            Json(ErrorResponse {
+                error: "processing_error".to_string(),
+                message: e.to_string(),
+                details: None,
+            }),
+        )
+    })?;
+
+    Ok(Json(ObserveResponse {
+        agent_id: agent_id.clone(),
+        response,
+        timestamp: chrono::Utc::now(),
+    }))
 }
 
 /// DELETE /agents/{agent_id} - Remove an agent
@@ -662,10 +850,13 @@ async fn create_token(
     get,
     path = "/agents/{agent_id}/stream",
     params(
-        ("agent_id" = String, Path, description = "Agent identifier")
+        ("agent_id" = String, Path, description = "Agent identifier"),
+        ("input" = Option<String>, Query, description = "Optional input to send to agent"),
+        ("debug" = Option<bool>, Query, description = "Include debug information in stream"),
+        ("timeout_seconds" = Option<u64>, Query, description = "Custom timeout in seconds")
     ),
     responses(
-        (status = 200, description = "Agent execution stream"),
+        (status = 200, description = "Server-Sent Events stream of agent updates"),
         (status = 404, description = "Agent not found", body = ErrorResponse),
         (status = 401, description = "Authentication required", body = auth::AuthError)
     )
@@ -700,24 +891,411 @@ async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
     if let Some(input) = params.input {
         let runtime_clone = runtime.clone();
         let agent_id_clone = agent_id.clone();
+        let debug = params.debug;
+        let timeout = params.timeout_seconds.unwrap_or(300); // Default 5 minutes
+
         tokio::spawn(async move {
-            let mut agents = runtime_clone.agents.write().await;
-            if let Some(instance) = agents.get_mut(&agent_id_clone) {
-                let _result = executor
-                    .execute_with_streaming(agent_id_clone.clone(), |exec| async move {
-                        exec.thinking(&agent_id_clone, "Processing observation")
-                            .await;
-                        let response = instance.coordinator.step(input);
-                        exec.partial(&agent_id_clone, &response).await;
-                        Ok(response)
+            let agent_id_for_timeout = agent_id_clone.clone();
+
+            // Apply timeout to the entire operation
+            let execution_result =
+                tokio::time::timeout(std::time::Duration::from_secs(timeout), async {
+                    executor
+                        .execute_with_streaming(agent_id_clone.clone(), |exec| async move {
+                            if debug {
+                                exec.thinking(&agent_id_clone, "Starting agent processing")
+                                    .await;
+                                exec.partial(
+                                    &agent_id_clone,
+                                    &format!(
+                                        "Debug: Processing input of {} characters",
+                                        input.len()
+                                    ),
+                                )
+                                .await;
+                            }
+
+                            exec.thinking(&agent_id_clone, "Processing observation")
+                                .await;
+
+                            // Access the agent instance here
+                            let response = {
+                                let mut agents = runtime_clone.agents.write().await;
+                                if let Some(instance) = agents.get_mut(&agent_id_clone) {
+                                    let response = instance.coordinator.step(input);
+                                    drop(agents); // Release lock immediately
+                                    Ok(response)
+                                } else {
+                                    Err("Agent not found".to_string())
+                                }
+                            }?;
+
+                            if debug {
+                                exec.partial(
+                                    &agent_id_clone,
+                                    &format!(
+                                        "Debug: Generated response of {} characters",
+                                        response.len()
+                                    ),
+                                )
+                                .await;
+                            }
+
+                            exec.partial(&agent_id_clone, &response).await;
+                            Ok(response)
+                        })
+                        .await
+                })
+                .await;
+
+            // Handle timeout
+            if execution_result.is_err() {
+                let _ = executor
+                    .send_update(streaming::AgentUpdate::Error {
+                        agent_id: agent_id_for_timeout,
+                        error: format!("Operation timed out after {} seconds", timeout),
+                        timestamp: chrono::Utc::now(),
                     })
                     .await;
             }
+        });
+    } else {
+        // Send a status ping for connection health
+        let agent_id_clone = agent_id.clone();
+        tokio::spawn(async move {
+            let _ = executor
+                .send_update(streaming::AgentUpdate::Ping {
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
+
+            // Send initial status for this agent
+            let _ = executor
+                .send_update(streaming::AgentUpdate::Started {
+                    agent_id: agent_id_clone,
+                    timestamp: chrono::Utc::now(),
+                })
+                .await;
         });
     }
 
     // Return SSE stream
     Ok(streaming::create_sse_stream(receiver))
+}
+
+/// POST /agents/{agent_id}/observe/stream - Stream agent observation in real-time
+#[utoipa::path(
+    post,
+    path = "/agents/{agent_id}/observe/stream",
+    params(
+        ("agent_id" = String, Path, description = "Agent identifier")
+    ),
+    request_body = ObserveRequest,
+    responses(
+        (status = 200, description = "Server-Sent Events stream of agent processing"),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+        (status = 401, description = "Authentication required", body = auth::AuthError)
+    )
+)]
+async fn observe_agent_stream<T: ToolRegistry + Clone + Send + Sync>(
+    State(runtime): State<HttpAgentRuntime<T>>,
+    Path(agent_id): Path<String>,
+    Json(request): Json<ObserveRequest>,
+) -> Result<
+    Sse<impl Stream<Item = Result<axum::response::sse::Event, axum::BoxError>>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    // Verify agent exists
+    {
+        let agents = runtime.agents.read().await;
+        if !agents.contains_key(&agent_id) {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "agent_not_found".to_string(),
+                    message: format!("Agent with ID '{}' not found", agent_id),
+                    details: None,
+                }),
+            ));
+        }
+    }
+
+    // Create streaming executor
+    let (executor, receiver) = streaming::StreamingAgentExecutor::new();
+
+    // Start background task to process observation
+    let runtime_clone = runtime.clone();
+    let agent_id_clone = agent_id.clone();
+    let input = request.input;
+
+    tokio::spawn(async move {
+        let mut agents = runtime_clone.agents.write().await;
+        if let Some(instance) = agents.get_mut(&agent_id_clone) {
+            let _result = executor
+                .execute_with_streaming(agent_id_clone.clone(), |exec| async move {
+                    exec.thinking(&agent_id_clone, "Analyzing input").await;
+                    let response = instance.coordinator.step(input);
+                    exec.partial(&agent_id_clone, &response).await;
+                    Ok(response)
+                })
+                .await;
+        }
+    });
+
+    // Return SSE stream
+    Ok(streaming::create_sse_stream(receiver))
+}
+
+/// POST /agents/{agent_id}/batch - Process multiple observations in batch
+#[utoipa::path(
+    post,
+    path = "/agents/{agent_id}/batch",
+    params(
+        ("agent_id" = String, Path, description = "Agent identifier")
+    ),
+    request_body = BatchObserveRequest,
+    responses(
+        (status = 200, description = "Batch processing results", body = BatchObserveResponse),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+        (status = 401, description = "Authentication required", body = auth::AuthError)
+    )
+)]
+async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
+    State(runtime): State<HttpAgentRuntime<T>>,
+    Path(agent_id): Path<String>,
+    Json(request): Json<BatchObserveRequest>,
+) -> Result<Json<BatchObserveResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let start_time = std::time::Instant::now();
+
+    // Verify agent exists
+    {
+        let agents = runtime.agents.read().await;
+        if !agents.contains_key(&agent_id) {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "agent_not_found".to_string(),
+                    message: format!("Agent with ID '{}' not found", agent_id),
+                    details: None,
+                }),
+            ));
+        }
+    }
+
+    // Validate batch size
+    if request.inputs.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "empty_batch".to_string(),
+                message: "Batch request must contain at least one input".to_string(),
+                details: None,
+            }),
+        ));
+    }
+
+    if request.inputs.len() > 100 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "batch_too_large".to_string(),
+                message: "Batch size cannot exceed 100 inputs".to_string(),
+                details: None,
+            }),
+        ));
+    }
+
+    // Process inputs with semaphore for concurrency control
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(request.parallel_limit));
+    let results = Arc::new(tokio::sync::Mutex::new(vec![
+        BatchResult {
+            index: 0,
+            success: false,
+            response: None,
+            error: None,
+            time_ms: 0,
+        };
+        request.inputs.len()
+    ]));
+
+    let mut handles = Vec::new();
+
+    for (index, input) in request.inputs.into_iter().enumerate() {
+        let permit = semaphore.clone().acquire_owned().await.map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "semaphore_error".to_string(),
+                    message: "Failed to acquire processing permit".to_string(),
+                    details: None,
+                }),
+            )
+        })?;
+        let runtime_clone = runtime.clone();
+        let agent_id_clone = agent_id.clone();
+        let results_clone = Arc::clone(&results);
+        let timeout_duration = std::time::Duration::from_secs(request.timeout_seconds);
+
+        let handle = tokio::spawn(async move {
+            let _permit = permit; // Hold the permit for the duration of this task
+            let op_start = std::time::Instant::now();
+
+            let result = tokio::time::timeout(timeout_duration, async {
+                // Minimize lock scope within timeout
+                let mut agents = runtime_clone.agents.write().await;
+                if let Some(instance) = agents.get_mut(&agent_id_clone) {
+                    let response = instance.coordinator.step(input);
+                    drop(agents); // Release lock immediately after step
+                    Ok(response)
+                } else {
+                    drop(agents); // Release lock even when agent not found
+                    Err("Agent not found".to_string())
+                }
+            })
+            .await;
+
+            let batch_result = match result {
+                Ok(Ok(response)) => BatchResult {
+                    index,
+                    success: true,
+                    response: Some(response),
+                    error: None,
+                    time_ms: op_start.elapsed().as_millis() as u64,
+                },
+                Ok(Err(error)) => BatchResult {
+                    index,
+                    success: false,
+                    response: None,
+                    error: Some(error),
+                    time_ms: op_start.elapsed().as_millis() as u64,
+                },
+                Err(_) => BatchResult {
+                    index,
+                    success: false,
+                    response: None,
+                    error: Some("Operation timed out".to_string()),
+                    time_ms: timeout_duration.as_millis() as u64,
+                },
+            };
+
+            let mut results_guard = results_clone.lock().await;
+            results_guard[index] = batch_result;
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all tasks to complete
+    for handle in handles {
+        let _ = handle.await;
+    }
+
+    let results = Arc::try_unwrap(results)
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "internal_error".to_string(),
+                    message: "Failed to collect batch results".to_string(),
+                    details: None,
+                }),
+            )
+        })?
+        .into_inner();
+    let total_time = start_time.elapsed().as_millis() as u64;
+
+    Ok(Json(BatchObserveResponse {
+        agent_id,
+        results,
+        total_time_ms: total_time,
+        timestamp: chrono::Utc::now(),
+    }))
+}
+
+/// GET /agents/{agent_id}/queue/metrics - Get queue metrics for specific agent
+#[utoipa::path(
+    get,
+    path = "/agents/{agent_id}/queue/metrics",
+    params(
+        ("agent_id" = String, Path, description = "Agent identifier")
+    ),
+    responses(
+        (status = 200, description = "Agent queue metrics", body = QueueMetricsResponse),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+        (status = 401, description = "Authentication required", body = auth::AuthError)
+    )
+)]
+async fn get_agent_queue_metrics<T: ToolRegistry + Clone + Send + Sync>(
+    State(runtime): State<HttpAgentRuntime<T>>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<QueueMetricsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Verify agent exists
+    {
+        let agents = runtime.agents.read().await;
+        if !agents.contains_key(&agent_id) {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "agent_not_found".to_string(),
+                    message: format!("Agent with ID '{}' not found", agent_id),
+                    details: None,
+                }),
+            ));
+        }
+    }
+
+    let metrics = runtime
+        .backpressure_manager
+        .get_agent_metrics(&agent_id)
+        .await
+        .unwrap_or_else(|| QueueMetrics {
+            queue_size: 0,
+            active_requests: 0,
+            total_processed: 0,
+            total_timeouts: 0,
+            total_rejections: 0,
+            avg_processing_time_ms: 0.0,
+            load_factor: 0.0,
+        });
+
+    Ok(Json(QueueMetricsResponse {
+        agent_id: Some(agent_id),
+        queue_size: metrics.queue_size,
+        active_requests: metrics.active_requests,
+        total_processed: metrics.total_processed,
+        total_timeouts: metrics.total_timeouts,
+        total_rejections: metrics.total_rejections,
+        avg_processing_time_ms: metrics.avg_processing_time_ms,
+        load_factor: metrics.load_factor,
+        timestamp: chrono::Utc::now(),
+    }))
+}
+
+/// GET /queue/metrics - Get global queue metrics
+#[utoipa::path(
+    get,
+    path = "/queue/metrics",
+    responses(
+        (status = 200, description = "Global queue metrics", body = QueueMetricsResponse),
+        (status = 401, description = "Authentication required", body = auth::AuthError)
+    )
+)]
+async fn get_global_queue_metrics<T: ToolRegistry + Clone + Send + Sync>(
+    State(runtime): State<HttpAgentRuntime<T>>,
+) -> Json<QueueMetricsResponse> {
+    let metrics = runtime.backpressure_manager.get_global_metrics().await;
+
+    Json(QueueMetricsResponse {
+        agent_id: None,
+        queue_size: metrics.queue_size,
+        active_requests: metrics.active_requests,
+        total_processed: metrics.total_processed,
+        total_timeouts: metrics.total_timeouts,
+        total_rejections: metrics.total_rejections,
+        avg_processing_time_ms: metrics.avg_processing_time_ms,
+        load_factor: metrics.load_factor,
+        timestamp: chrono::Utc::now(),
+    })
 }
 
 /// Create OpenAPI documentation router
@@ -772,7 +1350,9 @@ async fn openapi_spec() -> Json<utoipa::openapi::OpenApi> {
             get_agent_status,
             observe_agent,
             stream_agent,
-            delete_agent
+            delete_agent,
+            get_agent_queue_metrics,
+            get_global_queue_metrics
         ),
         components(
             schemas(
@@ -784,7 +1364,8 @@ async fn openapi_spec() -> Json<utoipa::openapi::OpenApi> {
                 AgentsListResponse,
                 ErrorResponse,
                 CreateTokenRequest,
-                CreateTokenResponse
+                CreateTokenResponse,
+                QueueMetricsResponse
             )
         ),
         tags(
@@ -1107,5 +1688,331 @@ mod tests {
         assert_eq!(json["info"]["title"], "Skreaver HTTP Runtime API");
         assert_eq!(json["info"]["version"], "0.1.0");
         assert!(json["paths"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_batch_observe_agent() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "batch-test-agent").await;
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        let request_body = json!({
+            "inputs": ["Hello batch 1", "Hello batch 2", "Hello batch 3"],
+            "parallel_limit": 2,
+            "timeout_seconds": 30
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agents/batch-test-agent/batch")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["agent_id"], "batch-test-agent");
+        assert_eq!(json["results"].as_array().unwrap().len(), 3);
+        assert!(json["total_time_ms"].as_u64().is_some());
+
+        // Check individual results
+        let results = json["results"].as_array().unwrap();
+        for (i, result) in results.iter().enumerate() {
+            assert_eq!(result["index"], i);
+            assert_eq!(result["success"], true);
+            assert!(result["response"].is_string());
+            assert!(result["time_ms"].as_u64().is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_batch_observe_agent_empty_batch() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "empty-batch-agent").await;
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        let request_body = json!({
+            "inputs": [],
+            "parallel_limit": 1,
+            "timeout_seconds": 30
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agents/empty-batch-agent/batch")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["error"], "empty_batch");
+    }
+
+    #[tokio::test]
+    async fn test_batch_observe_agent_too_large() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "large-batch-agent").await;
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        // Create a batch with 101 inputs (over the limit)
+        let inputs: Vec<String> = (0..101).map(|i| format!("Input {}", i)).collect();
+        let request_body = json!({
+            "inputs": inputs,
+            "parallel_limit": 1,
+            "timeout_seconds": 30
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agents/large-batch-agent/batch")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["error"], "batch_too_large");
+    }
+
+    #[tokio::test]
+    async fn test_observe_agent_stream_endpoint() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "stream-test-agent").await;
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        let request_body = json!({
+            "input": "Hello, streaming agent!"
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agents/stream-test-agent/observe/stream")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Check that we get SSE content type
+        let content_type = response.headers().get("content-type");
+        assert!(content_type.is_some());
+        let content_type_str = content_type.unwrap().to_str().unwrap();
+        assert!(content_type_str.contains("text/event-stream"));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_batch_requests() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "concurrent-batch-agent").await;
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        // Create multiple concurrent batch requests
+        let mut handles = Vec::new();
+
+        for batch_id in 0..3 {
+            let app_clone = app.clone();
+            let token_clone = token.clone();
+
+            let handle = tokio::spawn(async move {
+                let request_body = json!({
+                    "inputs": [
+                        format!("Batch {} input 1", batch_id),
+                        format!("Batch {} input 2", batch_id)
+                    ],
+                    "parallel_limit": 1,
+                    "timeout_seconds": 10
+                });
+
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/agents/concurrent-batch-agent/batch")
+                    .header("Authorization", format!("Bearer {}", token_clone))
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap();
+
+                app_clone.oneshot(request).await.unwrap()
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all requests to complete
+        let mut responses = Vec::new();
+        for handle in handles {
+            let response = handle.await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            responses.push(response);
+        }
+
+        // Verify all responses are valid
+        for response in responses {
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let json: Value = serde_json::from_slice(&body).unwrap();
+
+            assert_eq!(json["agent_id"], "concurrent-batch-agent");
+            assert_eq!(json["results"].as_array().unwrap().len(), 2);
+
+            // All operations should succeed
+            let results = json["results"].as_array().unwrap();
+            for result in results {
+                assert_eq!(result["success"], true);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_batch_with_nonexistent_agent() {
+        let runtime = create_test_runtime();
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        let request_body = json!({
+            "inputs": ["Test input"],
+            "parallel_limit": 1,
+            "timeout_seconds": 10
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agents/nonexistent-agent/batch")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["error"], "agent_not_found");
+    }
+
+    #[tokio::test]
+    async fn test_high_concurrency_stress() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "stress-test-agent").await;
+
+        let app = runtime.router();
+        let token = create_test_token();
+
+        // Create many concurrent requests of different types
+        let mut handles = Vec::new();
+
+        // Mix of batch requests, individual observations, and status checks
+        for i in 0..10 {
+            let app_clone = app.clone();
+            let token_clone = token.clone();
+
+            // Batch request
+            let batch_handle = tokio::spawn(async move {
+                let request_body = json!({
+                    "inputs": [format!("Stress test batch {} item 1", i), format!("Stress test batch {} item 2", i)],
+                    "parallel_limit": 2,
+                    "timeout_seconds": 5
+                });
+
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/agents/stress-test-agent/batch")
+                    .header("Authorization", format!("Bearer {}", token_clone))
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap();
+
+                app_clone.oneshot(request).await.unwrap()
+            });
+            handles.push(batch_handle);
+
+            // Individual observation
+            let obs_app = app.clone();
+            let obs_token = token.clone();
+            let obs_handle = tokio::spawn(async move {
+                let request_body = json!({
+                    "input": format!("Individual observation {}", i)
+                });
+
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/agents/stress-test-agent/observe")
+                    .header("Authorization", format!("Bearer {}", obs_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(request_body.to_string()))
+                    .unwrap();
+
+                obs_app.oneshot(request).await.unwrap()
+            });
+            handles.push(obs_handle);
+
+            // Status check
+            let status_app = app.clone();
+            let status_token = token.clone();
+            let status_handle = tokio::spawn(async move {
+                let request = Request::builder()
+                    .uri("/agents/stress-test-agent/status")
+                    .header("Authorization", format!("Bearer {}", status_token))
+                    .body(Body::empty())
+                    .unwrap();
+
+                status_app.oneshot(request).await.unwrap()
+            });
+            handles.push(status_handle);
+        }
+
+        // Wait for all requests to complete
+        let mut successful_responses = 0;
+        for handle in handles {
+            let response = handle.await.unwrap();
+            if response.status() == StatusCode::OK {
+                successful_responses += 1;
+            }
+        }
+
+        // All requests should succeed under high concurrency
+        assert_eq!(
+            successful_responses, 30,
+            "All 30 concurrent requests should succeed"
+        );
     }
 }

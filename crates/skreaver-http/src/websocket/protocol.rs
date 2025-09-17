@@ -13,19 +13,19 @@ pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 pub mod channels {
     /// System events (server status, maintenance, etc.)
     pub const SYSTEM: &str = "system";
-    
+
     /// Agent events (lifecycle, status changes, etc.)
     pub const AGENTS: &str = "agents";
-    
+
     /// Task events (creation, updates, completion, etc.)
     pub const TASKS: &str = "tasks";
-    
+
     /// User-specific notifications
     pub const NOTIFICATIONS: &str = "notifications";
-    
+
     /// Real-time metrics and monitoring
     pub const METRICS: &str = "metrics";
-    
+
     /// Debug and development events
     pub const DEBUG: &str = "debug";
 }
@@ -57,7 +57,7 @@ impl MessageEnvelope {
             payload,
         }
     }
-    
+
     pub fn with_correlation_id(mut self, correlation_id: String) -> Self {
         self.correlation_id = Some(correlation_id);
         self
@@ -303,7 +303,7 @@ pub mod events {
     pub const SERVER_SHUTDOWN: &str = "server.shutdown";
     /// Server maintenance mode
     pub const SERVER_MAINTENANCE: &str = "server.maintenance";
-    
+
     /// Agent created
     pub const AGENT_CREATED: &str = "agent.created";
     /// Agent updated
@@ -316,7 +316,7 @@ pub mod events {
     pub const AGENT_STOPPED: &str = "agent.stopped";
     /// Agent error
     pub const AGENT_ERROR: &str = "agent.error";
-    
+
     /// Task created
     pub const TASK_CREATED: &str = "task.created";
     /// Task updated
@@ -327,17 +327,17 @@ pub mod events {
     pub const TASK_FAILED: &str = "task.failed";
     /// Task cancelled
     pub const TASK_CANCELLED: &str = "task.cancelled";
-    
+
     /// User notification
     pub const USER_NOTIFICATION: &str = "user.notification";
     /// System notification
     pub const SYSTEM_NOTIFICATION: &str = "system.notification";
-    
+
     /// Metrics update
     pub const METRICS_UPDATE: &str = "metrics.update";
     /// Health check result
     pub const HEALTH_CHECK: &str = "health.check";
-    
+
     /// Debug log
     pub const DEBUG_LOG: &str = "debug.log";
     /// Debug event
@@ -350,28 +350,29 @@ impl MessageEnvelope {
     pub fn handshake(data: HandshakeData) -> Self {
         Self::new(MessagePayload::Handshake(data))
     }
-    
+
     /// Create an auth message
     pub fn auth(data: AuthData) -> Self {
         Self::new(MessagePayload::Auth(data))
     }
-    
+
     /// Create a subscribe message
     pub fn subscribe(channels: Vec<String>) -> Self {
-        let channel_subs = channels.into_iter()
+        let channel_subs = channels
+            .into_iter()
             .map(|channel| ChannelSubscription {
                 channel,
                 filters: None,
                 qos: QosLevel::default(),
             })
             .collect();
-        
+
         Self::new(MessagePayload::Subscribe(SubscribeData {
             action: SubscriptionAction::Subscribe,
             channels: channel_subs,
         }))
     }
-    
+
     /// Create an event message
     pub fn event(channel: &str, event_type: &str, data: serde_json::Value) -> Self {
         Self::new(MessagePayload::Event(EventData {
@@ -382,7 +383,7 @@ impl MessageEnvelope {
             sequence: None,
         }))
     }
-    
+
     /// Create a request message
     pub fn request(method: &str, params: serde_json::Value) -> Self {
         Self::new(MessagePayload::Request(RequestData {
@@ -391,7 +392,7 @@ impl MessageEnvelope {
             timeout: None,
         }))
     }
-    
+
     /// Create a success response message
     pub fn success_response(result: serde_json::Value) -> Self {
         Self::new(MessagePayload::Response(ResponseData {
@@ -400,7 +401,7 @@ impl MessageEnvelope {
             error: None,
         }))
     }
-    
+
     /// Create an error response message
     pub fn error_response(code: &str, message: &str) -> Self {
         Self::new(MessagePayload::Response(ResponseData {
@@ -413,7 +414,7 @@ impl MessageEnvelope {
             }),
         }))
     }
-    
+
     /// Create an error message
     pub fn error(code: &str, message: &str) -> Self {
         Self::new(MessagePayload::Error(ErrorData {
@@ -425,7 +426,7 @@ impl MessageEnvelope {
             context: None,
         }))
     }
-    
+
     /// Create a ping message
     pub fn ping() -> Self {
         Self::new(MessagePayload::Ping(PingData {
@@ -433,7 +434,7 @@ impl MessageEnvelope {
             payload: None,
         }))
     }
-    
+
     /// Create a pong message
     pub fn pong(ping_timestamp: i64) -> Self {
         Self::new(MessagePayload::Pong(PongData {
@@ -447,7 +448,7 @@ impl MessageEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_message_envelope_creation() {
         let envelope = MessageEnvelope::ping();
@@ -456,7 +457,7 @@ mod tests {
         assert!(envelope.timestamp > 0);
         assert!(matches!(envelope.payload, MessagePayload::Ping(_)));
     }
-    
+
     #[test]
     fn test_handshake_message() {
         let handshake_data = HandshakeData {
@@ -466,11 +467,11 @@ mod tests {
             capabilities: vec!["auth".to_string(), "events".to_string()],
             metadata: HashMap::new(),
         };
-        
+
         let envelope = MessageEnvelope::handshake(handshake_data);
         assert!(matches!(envelope.payload, MessagePayload::Handshake(_)));
     }
-    
+
     #[test]
     fn test_auth_message() {
         let auth_data = AuthData {
@@ -478,16 +479,16 @@ mod tests {
             token: "test-token".to_string(),
             user_info: None,
         };
-        
+
         let envelope = MessageEnvelope::auth(auth_data);
         assert!(matches!(envelope.payload, MessagePayload::Auth(_)));
     }
-    
+
     #[test]
     fn test_subscribe_message() {
         let channels = vec!["test-channel".to_string()];
         let envelope = MessageEnvelope::subscribe(channels);
-        
+
         if let MessagePayload::Subscribe(data) = envelope.payload {
             assert!(matches!(data.action, SubscriptionAction::Subscribe));
             assert_eq!(data.channels.len(), 1);
@@ -496,12 +497,12 @@ mod tests {
             panic!("Expected Subscribe payload");
         }
     }
-    
+
     #[test]
     fn test_event_message() {
         let data = serde_json::json!({"key": "value"});
         let envelope = MessageEnvelope::event("test-channel", "test-event", data.clone());
-        
+
         if let MessagePayload::Event(event_data) = envelope.payload {
             assert_eq!(event_data.channel, "test-channel");
             assert_eq!(event_data.event_type, "test-event");
@@ -510,21 +511,21 @@ mod tests {
             panic!("Expected Event payload");
         }
     }
-    
+
     #[test]
     fn test_request_response() {
         let params = serde_json::json!({"param": "value"});
         let request = MessageEnvelope::request("test-method", params);
-        
+
         if let MessagePayload::Request(req_data) = request.payload {
             assert_eq!(req_data.method, "test-method");
         } else {
             panic!("Expected Request payload");
         }
-        
+
         let result = serde_json::json!({"result": "success"});
         let response = MessageEnvelope::success_response(result.clone());
-        
+
         if let MessagePayload::Response(resp_data) = response.payload {
             assert!(matches!(resp_data.status, ResponseStatus::Success));
             assert_eq!(resp_data.result, Some(result));
@@ -532,20 +533,20 @@ mod tests {
             panic!("Expected Response payload");
         }
     }
-    
+
     #[test]
     fn test_error_messages() {
         let error = MessageEnvelope::error("TEST_ERROR", "Test error message");
-        
+
         if let MessagePayload::Error(error_data) = error.payload {
             assert_eq!(error_data.error.code, "TEST_ERROR");
             assert_eq!(error_data.error.message, "Test error message");
         } else {
             panic!("Expected Error payload");
         }
-        
+
         let error_response = MessageEnvelope::error_response("REQUEST_FAILED", "Request failed");
-        
+
         if let MessagePayload::Response(resp_data) = error_response.payload {
             assert!(matches!(resp_data.status, ResponseStatus::Error));
             assert!(resp_data.error.is_some());
@@ -553,19 +554,19 @@ mod tests {
             panic!("Expected Response payload");
         }
     }
-    
+
     #[test]
     fn test_ping_pong() {
         let ping = MessageEnvelope::ping();
-        
+
         let ping_timestamp = if let MessagePayload::Ping(ping_data) = ping.payload {
             ping_data.timestamp
         } else {
             panic!("Expected Ping payload");
         };
-        
+
         let pong = MessageEnvelope::pong(ping_timestamp);
-        
+
         if let MessagePayload::Pong(pong_data) = pong.payload {
             assert_eq!(pong_data.ping_timestamp, ping_timestamp);
             assert!(pong_data.pong_timestamp >= ping_timestamp);
@@ -573,32 +574,35 @@ mod tests {
             panic!("Expected Pong payload");
         }
     }
-    
+
     #[test]
     fn test_qos_level_default() {
         let qos = QosLevel::default();
         assert!(matches!(qos, QosLevel::AtMostOnce));
     }
-    
+
     #[test]
     fn test_correlation_id() {
-        let envelope = MessageEnvelope::ping()
-            .with_correlation_id("test-correlation-id".to_string());
-        
-        assert_eq!(envelope.correlation_id, Some("test-correlation-id".to_string()));
+        let envelope =
+            MessageEnvelope::ping().with_correlation_id("test-correlation-id".to_string());
+
+        assert_eq!(
+            envelope.correlation_id,
+            Some("test-correlation-id".to_string())
+        );
     }
-    
+
     #[test]
     fn test_serialization() {
         let envelope = MessageEnvelope::event(
             "test-channel",
             "test-event",
-            serde_json::json!({"data": "test"})
+            serde_json::json!({"data": "test"}),
         );
-        
+
         let json = serde_json::to_string(&envelope).unwrap();
         let deserialized: MessageEnvelope = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(envelope.version, deserialized.version);
         assert_eq!(envelope.message_id, deserialized.message_id);
     }
