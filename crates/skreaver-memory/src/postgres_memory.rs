@@ -18,7 +18,7 @@ use skreaver_core::memory::{
 // Use the modular components
 mod postgres;
 use postgres::{
-    PostgresConfig, PostgresPool, PostgresMigrationEngine, PostgresTransactionalMemory,
+    PostgresConfig, PostgresMigrationEngine, PostgresPool, PostgresTransactionalMemory,
 };
 
 /// PostgreSQL memory backend with enterprise features
@@ -229,11 +229,13 @@ impl TransactionalMemory for PostgresMemory {
     fn begin_transaction(&mut self) -> Result<Box<dyn MemoryWriter>, TransactionError> {
         let rt = tokio::runtime::Handle::current();
         rt.block_on(async {
-            let mut conn = self.pool.acquire().await.map_err(|e| {
-                TransactionError::TransactionFailed {
-                    reason: format!("Failed to acquire connection: {}", e),
-                }
-            })?;
+            let mut conn =
+                self.pool
+                    .acquire()
+                    .await
+                    .map_err(|e| TransactionError::TransactionFailed {
+                        reason: format!("Failed to acquire connection: {}", e),
+                    })?;
 
             let tx = conn
                 .client_mut()

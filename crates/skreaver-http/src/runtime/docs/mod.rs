@@ -3,13 +3,12 @@
 //! This module provides OpenAPI specification and Swagger UI endpoints
 //! for interactive API documentation.
 
-use axum::{response::{Html, Json}};
+use axum::response::{Html, Json};
 use utoipa::OpenApi;
 
 use crate::runtime::types::{
-    CreateAgentRequest, CreateAgentResponse, ObserveRequest, ObserveResponse,
-    AgentStatus, AgentsListResponse, ErrorResponse, CreateTokenRequest,
-    CreateTokenResponse, QueueMetricsResponse
+    AgentStatus, AgentsListResponse, CreateAgentRequest, CreateAgentResponse, CreateTokenRequest,
+    CreateTokenResponse, ErrorResponse, ObserveRequest, ObserveResponse, QueueMetricsResponse,
 };
 
 /// GET /docs - Swagger UI for interactive API documentation

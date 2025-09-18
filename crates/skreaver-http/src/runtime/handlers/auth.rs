@@ -5,7 +5,10 @@
 
 use axum::{http::StatusCode, response::Json};
 
-use crate::runtime::{auth, types::{CreateTokenRequest, CreateTokenResponse, ErrorResponse}};
+use crate::runtime::{
+    auth,
+    types::{CreateTokenRequest, CreateTokenResponse, ErrorResponse},
+};
 
 /// POST /auth/token - Create a new JWT token
 #[utoipa::path(

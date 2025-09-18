@@ -2,10 +2,18 @@
 //!
 //! This module provides endpoints for monitoring queue metrics and backpressure status.
 
-use axum::{extract::{Path, State}, http::StatusCode, response::Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::Json,
+};
 use skreaver_tools::ToolRegistry;
 
-use crate::runtime::{HttpAgentRuntime, backpressure::QueueMetrics, types::{QueueMetricsResponse, ErrorResponse}};
+use crate::runtime::{
+    HttpAgentRuntime,
+    backpressure::QueueMetrics,
+    types::{ErrorResponse, QueueMetricsResponse},
+};
 
 /// GET /agents/{agent_id}/queue/metrics - Get agent-specific queue metrics
 #[utoipa::path(

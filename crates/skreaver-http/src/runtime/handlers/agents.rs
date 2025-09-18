@@ -2,10 +2,19 @@
 //!
 //! This module provides CRUD operations for managing agents through HTTP endpoints.
 
-use axum::{extract::{Path, State}, http::StatusCode, response::Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::Json,
+};
 use skreaver_tools::ToolRegistry;
 
-use crate::runtime::{HttpAgentRuntime, types::{CreateAgentRequest, CreateAgentResponse, AgentStatus, AgentsListResponse, ErrorResponse}};
+use crate::runtime::{
+    HttpAgentRuntime,
+    types::{
+        AgentStatus, AgentsListResponse, CreateAgentRequest, CreateAgentResponse, ErrorResponse,
+    },
+};
 
 /// GET /agents - List all agents
 #[utoipa::path(
@@ -32,7 +41,7 @@ pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync>(
             agent_type: instance.coordinator.get_agent_type().to_string(),
             status: "running".to_string(),
             created_at: chrono::Utc::now(), // TODO: Track actual creation time
-            last_activity: None, // TODO: Track last activity
+            last_activity: None,            // TODO: Track last activity
         })
         .collect();
 
@@ -104,7 +113,7 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync>(
             agent_type: instance.coordinator.get_agent_type().to_string(),
             status: "running".to_string(),
             created_at: chrono::Utc::now(), // TODO: Track actual creation time
-            last_activity: None, // TODO: Track last activity
+            last_activity: None,            // TODO: Track last activity
         })),
         None => Err((
             StatusCode::NOT_FOUND,

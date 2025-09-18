@@ -60,8 +60,12 @@ pub mod auth;
 pub mod backpressure;
 /// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
+/// API documentation endpoints.
+pub mod docs;
 /// Unified error handling system.
 pub mod errors;
+/// HTTP request handlers organized by functionality.
+pub mod handlers;
 /// HTTP runtime for serving agents over REST API.
 pub mod http;
 /// Rate limiting middleware for HTTP runtime.
@@ -74,10 +78,6 @@ pub mod security;
 pub mod streaming;
 /// Type definitions for HTTP runtime (requests, responses, etc.).
 pub mod types;
-/// HTTP request handlers organized by functionality.
-pub mod handlers;
-/// API documentation endpoints.
-pub mod docs;
 
 pub use agent_status::{AgentStatus, AgentStatusManager};
 pub use api_types::{AgentObservation, AgentResponse, DeliveryError, ResponseDelivery};

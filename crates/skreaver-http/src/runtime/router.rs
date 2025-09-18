@@ -2,25 +2,37 @@
 //!
 //! This module provides router setup and route registration for the HTTP runtime.
 
-use axum::{Router, routing::{get, post}};
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use skreaver_tools::ToolRegistry;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::runtime::{
     HttpAgentRuntime, HttpRuntimeConfig,
+    docs::{openapi_spec, swagger_ui},
     handlers::{
-        // Health and metrics
-        health_check, readiness_check, metrics_endpoint,
+        batch_observe_agent,
+        create_agent,
         // Authentication
         create_token,
-        // Agents
-        list_agents, create_agent, get_agent_status, delete_agent,
-        // Observations
-        observe_agent, stream_agent, observe_agent_stream, batch_observe_agent,
+        delete_agent,
         // Queue metrics
-        get_agent_queue_metrics, get_global_queue_metrics,
+        get_agent_queue_metrics,
+        get_agent_status,
+        get_global_queue_metrics,
+        // Health and metrics
+        health_check,
+        // Agents
+        list_agents,
+        metrics_endpoint,
+        // Observations
+        observe_agent,
+        observe_agent_stream,
+        readiness_check,
+        stream_agent,
     },
-    docs::{swagger_ui, openapi_spec},
 };
 
 impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
@@ -41,7 +53,10 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             .route("/agents", get(list_agents).post(create_agent))
             .route("/agents/{agent_id}/status", get(get_agent_status))
             .route("/agents/{agent_id}/observe", post(observe_agent))
-            .route("/agents/{agent_id}/observe/stream", post(observe_agent_stream))
+            .route(
+                "/agents/{agent_id}/observe/stream",
+                post(observe_agent_stream),
+            )
             .route("/agents/{agent_id}/batch", post(batch_observe_agent))
             .route("/agents/{agent_id}/stream", get(stream_agent))
             .route(

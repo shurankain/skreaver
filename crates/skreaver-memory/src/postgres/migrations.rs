@@ -3,8 +3,8 @@
 //! This module provides database migration functionality with version control
 //! and rollback support for PostgreSQL schemas.
 
-use skreaver_core::error::MemoryError;
 use super::pool::PostgresPool;
+use skreaver_core::error::MemoryError;
 
 /// PostgreSQL migration engine for schema versioning
 pub struct PostgresMigrationEngine {

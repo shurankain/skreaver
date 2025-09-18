@@ -3,10 +3,10 @@
 //! This module provides connection pooling functionality with RAII resource management,
 //! health monitoring, and connection validation.
 
+use skreaver_core::error::MemoryError;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio_postgres::{Client, Error as PgError, NoTls};
-use skreaver_core::error::MemoryError;
 
 use super::config::PostgresConfig;
 use super::health::PostgresPoolHealth;

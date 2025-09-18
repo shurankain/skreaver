@@ -89,7 +89,6 @@ where
     }
 }
 
-
 impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
     /// Create a new HTTP agent runtime with default configuration
     pub fn new(tool_registry: T) -> Self {
@@ -121,7 +120,6 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         }
     }
 
-
     /// Add an agent instance to the runtime
     pub async fn add_agent<A>(&self, agent_id: String, agent: A) -> Result<(), String>
     where
@@ -138,26 +136,7 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         agents.insert(agent_id, instance);
         Ok(())
     }
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[cfg(test)]
 mod tests {

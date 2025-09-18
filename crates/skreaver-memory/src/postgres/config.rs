@@ -2,9 +2,9 @@
 //!
 //! This module provides configuration structures and validation for PostgreSQL connections.
 
+use skreaver_core::error::MemoryError;
 use std::time::Duration;
 use tokio_postgres::{Config, Error as PgError};
-use skreaver_core::error::MemoryError;
 
 /// PostgreSQL connection configuration
 #[derive(Debug, Clone)]

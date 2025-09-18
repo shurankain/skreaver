@@ -13,4 +13,4 @@ pub use agents::*;
 pub use auth::*;
 pub use health::*;
 pub use metrics::*;
-pub use observations::{observe_agent, stream_agent, observe_agent_stream, batch_observe_agent};
+pub use observations::{batch_observe_agent, observe_agent, observe_agent_stream, stream_agent};

@@ -13,8 +13,13 @@ use skreaver_observability::{AgentId as ObsAgentId, SessionId, metrics::get_metr
 use skreaver_tools::ToolRegistry;
 
 use crate::runtime::{
-    HttpAgentRuntime, backpressure::RequestPriority, streaming::{self, StreamingAgentExecutor},
-    types::{ObserveRequest, ObserveResponse, ErrorResponse, StreamRequest, BatchObserveRequest, BatchObserveResponse, BatchResult}
+    HttpAgentRuntime,
+    backpressure::RequestPriority,
+    streaming::{self, StreamingAgentExecutor},
+    types::{
+        BatchObserveRequest, BatchObserveResponse, BatchResult, ErrorResponse, ObserveRequest,
+        ObserveResponse, StreamRequest,
+    },
 };
 use std::sync::Arc;
 
