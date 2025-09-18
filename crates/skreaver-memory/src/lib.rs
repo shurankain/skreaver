@@ -51,9 +51,13 @@ mod redis_memory;
 pub use redis_memory::RedisMemory;
 
 #[cfg(feature = "sqlite")]
+mod sqlite;
+#[cfg(feature = "sqlite")]
 mod sqlite_memory;
 #[cfg(feature = "sqlite")]
-pub use sqlite_memory::{Migration, MigrationEngine, SqliteMemory, SqlitePool};
+pub use sqlite::{HealthStatus as SqliteHealthStatus, Migration, MigrationEngine, SqlitePool};
+#[cfg(feature = "sqlite")]
+pub use sqlite_memory::SqliteMemory;
 
 #[cfg(feature = "postgres")]
 mod postgres_memory;
