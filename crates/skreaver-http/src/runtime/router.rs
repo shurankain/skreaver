@@ -1,0 +1,75 @@
+//! HTTP router configuration
+//!
+//! This module provides router setup and route registration for the HTTP runtime.
+
+use axum::{Router, routing::{get, post}};
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use skreaver_tools::ToolRegistry;
+
+use crate::runtime::{
+    HttpAgentRuntime, HttpRuntimeConfig,
+    handlers::{
+        // Health and metrics
+        health_check, readiness_check, metrics_endpoint,
+        // Authentication
+        create_token,
+        // Agents
+        list_agents, create_agent, get_agent_status, delete_agent,
+        // Observations
+        observe_agent, stream_agent, observe_agent_stream, batch_observe_agent,
+        // Queue metrics
+        get_agent_queue_metrics, get_global_queue_metrics,
+    },
+    docs::{swagger_ui, openapi_spec},
+};
+
+impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
+    /// Create the Axum router with all endpoints and middleware
+    pub fn router(self) -> Router {
+        self.router_with_config(HttpRuntimeConfig::default())
+    }
+
+    /// Create the Axum router with custom configuration
+    pub fn router_with_config(self, config: HttpRuntimeConfig) -> Router {
+        let mut router = Router::new()
+            // Public endpoints (no auth required)
+            .route("/health", get(health_check))
+            .route("/ready", get(readiness_check))
+            .route("/metrics", get(metrics_endpoint))
+            .route("/auth/token", post(create_token))
+            // Protected endpoints (require authentication)
+            .route("/agents", get(list_agents).post(create_agent))
+            .route("/agents/{agent_id}/status", get(get_agent_status))
+            .route("/agents/{agent_id}/observe", post(observe_agent))
+            .route("/agents/{agent_id}/observe/stream", post(observe_agent_stream))
+            .route("/agents/{agent_id}/batch", post(batch_observe_agent))
+            .route("/agents/{agent_id}/stream", get(stream_agent))
+            .route(
+                "/agents/{agent_id}/queue/metrics",
+                get(get_agent_queue_metrics),
+            )
+            .route("/agents/{agent_id}", axum::routing::delete(delete_agent))
+            .route("/queue/metrics", get(get_global_queue_metrics))
+            .with_state(self)
+            .layer(TraceLayer::new_for_http());
+
+        // Add CORS if enabled
+        if config.enable_cors {
+            router = router.layer(CorsLayer::permissive());
+        }
+
+        // Add OpenAPI documentation if enabled
+        if config.enable_openapi {
+            router = router.merge(create_openapi_router());
+        }
+
+        router
+    }
+}
+
+/// Create OpenAPI documentation router
+fn create_openapi_router() -> Router {
+    Router::new()
+        .route("/docs", get(swagger_ui))
+        .route("/api-docs/openapi.json", get(openapi_spec))
+}

@@ -138,4 +138,6 @@ pub struct QueueMetricsResponse {
     pub avg_processing_time_ms: f64,
     /// Current load factor (0.0-1.0)
     pub load_factor: f64,
+    /// Timestamp when metrics were collected
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }

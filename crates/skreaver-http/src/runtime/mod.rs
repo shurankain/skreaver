@@ -66,12 +66,18 @@ pub mod errors;
 pub mod http;
 /// Rate limiting middleware for HTTP runtime.
 pub mod rate_limit;
+/// HTTP router configuration and route registration.
+pub mod router;
 /// Security management and input validation.
 pub mod security;
 /// Streaming responses for long-running operations.
 pub mod streaming;
 /// Type definitions for HTTP runtime (requests, responses, etc.).
 pub mod types;
+/// HTTP request handlers organized by functionality.
+pub mod handlers;
+/// API documentation endpoints.
+pub mod docs;
 
 pub use agent_status::{AgentStatus, AgentStatusManager};
 pub use api_types::{AgentObservation, AgentResponse, DeliveryError, ResponseDelivery};
