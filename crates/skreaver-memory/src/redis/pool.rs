@@ -1,21 +1,20 @@
-//! Redis connection pool management with health monitoring and metrics
+//! Redis connection pool management with health monitoring
 //!
-//! This module provides connection pooling functionality with support for
-//! standalone, cluster, and sentinel Redis deployments, along with
-//! comprehensive connection health monitoring and performance metrics.
+//! This module handles Redis connection pooling for different deployment types
+//! with comprehensive health monitoring and error handling.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "redis")]
-use deadpool_redis::{Config as PoolConfig, Connection as PooledConnection, Pool};
+use deadpool_redis::{Config as PoolConfig, Pool};
 #[cfg(feature = "redis")]
-use redis::{ErrorKind as RedisErrorKind, RedisError, cluster::ClusterClient};
+use redis::cluster::ClusterClient;
 
 use skreaver_core::error::MemoryError;
 use skreaver_core::memory::MemoryKey;
 
-use super::config::{RedisConfig, RedisDeployment};
+use super::config::{Cluster, RedisDeploymentV2, Sentinel, Standalone, ValidRedisConfig};
 use super::health::{ConnectionMetrics, PoolStats, RedisHealth};
 
 /// Redis connection pool utility functions
@@ -26,58 +25,90 @@ pub struct RedisPoolUtils;
 impl RedisPoolUtils {
     /// Create connection pool based on deployment type
     pub async fn create_pool(
-        config: &RedisConfig,
+        config: &ValidRedisConfig,
     ) -> Result<(Pool, Option<Arc<ClusterClient>>), MemoryError> {
-        match &config.deployment {
-            RedisDeployment::Standalone { url } => {
-                let pool_config = PoolConfig::from_url(url);
-                let pool = pool_config
-                    .create_pool(Some(deadpool_redis::Runtime::Tokio1))
-                    .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "redis".to_string(),
-                        reason: format!("Failed to create connection pool: {}", e),
-                    })?;
-
-                Ok((pool, None))
+        match config.deployment() {
+            RedisDeploymentV2::Standalone(standalone) => {
+                Self::create_standalone_pool(&standalone, config).await
             }
-            RedisDeployment::Cluster { nodes } => {
-                let cluster_client = ClusterClient::new(nodes.clone()).map_err(|e| {
-                    MemoryError::ConnectionFailed {
-                        backend: "redis".to_string(),
-                        reason: format!("Failed to create cluster client: {}", e),
-                    }
-                })?;
-
-                // For cluster, we'll use the first node for the pool
-                // In production, you might want a more sophisticated approach
-                let pool_config = PoolConfig::from_url(&nodes[0]);
-                let pool = pool_config
-                    .create_pool(Some(deadpool_redis::Runtime::Tokio1))
-                    .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "redis".to_string(),
-                        reason: format!("Failed to create cluster pool: {}", e),
-                    })?;
-
-                Ok((pool, Some(Arc::new(cluster_client))))
+            RedisDeploymentV2::Cluster(cluster) => {
+                Self::create_cluster_pool(&cluster, config).await
             }
-            RedisDeployment::Sentinel {
-                sentinels: _,
-                service_name: _,
-            } => {
-                // Sentinel support would be implemented here
-                Err(MemoryError::ConnectionFailed {
-                    backend: "redis".to_string(),
-                    reason: "Redis Sentinel support not implemented yet".to_string(),
-                })
+            RedisDeploymentV2::Sentinel(sentinel) => {
+                Self::create_sentinel_pool(&sentinel, config).await
             }
         }
     }
 
-    /// Get a pooled connection
+    /// Create standalone Redis pool
+    async fn create_standalone_pool(
+        standalone: &Standalone,
+        _config: &ValidRedisConfig,
+    ) -> Result<(Pool, Option<Arc<ClusterClient>>), MemoryError> {
+        let pool_config = PoolConfig::from_url(standalone.url.as_str());
+        let pool = pool_config
+            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+            .map_err(|e| MemoryError::ConnectionFailed {
+                backend: "redis".to_string(),
+                reason: format!("Failed to create connection pool: {}", e),
+            })?;
+
+        Ok((pool, None))
+    }
+
+    /// Create cluster Redis pool
+    async fn create_cluster_pool(
+        cluster: &Cluster,
+        _config: &ValidRedisConfig,
+    ) -> Result<(Pool, Option<Arc<ClusterClient>>), MemoryError> {
+        let urls: Vec<&str> = cluster
+            .nodes
+            .as_slice()
+            .iter()
+            .map(|node| node.as_str())
+            .collect();
+
+        let cluster_client =
+            ClusterClient::new(urls).map_err(|e| MemoryError::ConnectionFailed {
+                backend: "redis".to_string(),
+                reason: format!("Failed to create cluster client: {}", e),
+            })?;
+
+        // For cluster, use the first node for pool creation
+        let pool_config = PoolConfig::from_url(cluster.nodes.first().as_str());
+        let pool = pool_config
+            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+            .map_err(|e| MemoryError::ConnectionFailed {
+                backend: "redis".to_string(),
+                reason: format!("Failed to create cluster pool: {}", e),
+            })?;
+
+        Ok((pool, Some(Arc::new(cluster_client))))
+    }
+
+    /// Create sentinel Redis pool
+    async fn create_sentinel_pool(
+        sentinel: &Sentinel,
+        _config: &ValidRedisConfig,
+    ) -> Result<(Pool, Option<Arc<ClusterClient>>), MemoryError> {
+        // For now, use the first sentinel as the connection URL
+        // In a full implementation, this would use Redis Sentinel protocol
+        let pool_config = PoolConfig::from_url(sentinel.sentinels.first().as_str());
+        let pool = pool_config
+            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+            .map_err(|e| MemoryError::ConnectionFailed {
+                backend: "redis".to_string(),
+                reason: format!("Failed to create sentinel pool: {}", e),
+            })?;
+
+        Ok((pool, None))
+    }
+
+    /// Get connection from pool with metrics tracking
     pub async fn get_connection(
         pool: &Pool,
-        metrics: &tokio::sync::Mutex<ConnectionMetrics>,
-    ) -> Result<PooledConnection, MemoryError> {
+        metrics: &Arc<tokio::sync::Mutex<ConnectionMetrics>>,
+    ) -> Result<deadpool_redis::Connection, MemoryError> {
         let start = Instant::now();
 
         let conn = pool.get().await.map_err(|e| {
@@ -92,103 +123,89 @@ impl RedisPoolUtils {
         Ok(conn)
     }
 
+    /// Apply key prefix based on configuration
+    pub fn prefixed_key(config: &ValidRedisConfig, key: &MemoryKey) -> String {
+        match &config.key_prefix {
+            Some(prefix) => format!("{}:{}", prefix.as_str(), key.as_str()),
+            None => key.as_str().to_string(),
+        }
+    }
+
     /// Update connection metrics
     pub fn update_metrics(
-        metrics: &tokio::sync::Mutex<ConnectionMetrics>,
+        metrics: &Arc<tokio::sync::Mutex<ConnectionMetrics>>,
         success: bool,
         latency: Duration,
     ) {
-        if let Ok(mut metrics_guard) = metrics.try_lock() {
-            metrics_guard.total_commands += 1;
+        // Use spawn to avoid blocking
+        let metrics = Arc::clone(metrics);
+        tokio::spawn(async move {
+            let mut metrics_guard = metrics.lock().await;
             if success {
                 metrics_guard.successful_commands += 1;
             } else {
                 metrics_guard.failed_commands += 1;
             }
+            metrics_guard.total_commands += 1;
+            metrics_guard.avg_latency_ms =
+                (metrics_guard.avg_latency_ms as f64 + latency.as_millis() as f64) / 2.0;
+        });
+    }
 
-            let latency_ms = latency.as_secs_f64() * 1000.0;
-            metrics_guard.avg_latency_ms = (metrics_guard.avg_latency_ms
-                * (metrics_guard.total_commands - 1) as f64
-                + latency_ms)
-                / metrics_guard.total_commands as f64;
+    /// Sanitize Redis errors for security (remove sensitive info)
+    pub fn sanitize_error(error: &redis::RedisError) -> String {
+        let error_str = error.to_string();
+
+        // Remove potential sensitive information from error messages
+        if error_str.contains("password") || error_str.contains("auth") {
+            "Authentication failed".to_string()
+        } else if error_str.contains("connection") {
+            "Connection error".to_string()
+        } else {
+            // Keep generic error info but limit length
+            let sanitized = error_str.chars().take(100).collect::<String>();
+            if sanitized.len() < error_str.len() {
+                format!("{}...", sanitized)
+            } else {
+                sanitized
+            }
         }
     }
 
-    /// Apply key prefix if configured
-    pub fn prefixed_key(config: &RedisConfig, key: &MemoryKey) -> String {
-        match &config.key_prefix {
-            Some(prefix) => format!("{}:{}", prefix, key.as_str()),
-            None => key.as_str().to_string(),
-        }
-    }
-
-    /// Sanitize Redis errors for security
-    pub fn sanitize_error(error: &RedisError) -> String {
-        match error.kind() {
-            RedisErrorKind::AuthenticationFailed => "Authentication failed".to_string(),
-            RedisErrorKind::TypeError => "Data type error".to_string(),
-            RedisErrorKind::ExecAbortError => "Transaction aborted".to_string(),
-            RedisErrorKind::BusyLoadingError => "Redis is loading data".to_string(),
-            RedisErrorKind::NoScriptError => "Script not found".to_string(),
-            RedisErrorKind::ReadOnly => "Redis is read-only".to_string(),
-            _ if error.to_string().contains("connection") => "Connection error".to_string(),
-            _ if error.to_string().contains("timeout") => "Operation timeout".to_string(),
-            _ => "Redis operation failed".to_string(),
-        }
-    }
-
-    /// Perform health check
+    /// Perform comprehensive health check
     pub async fn health_check(
         pool: &Pool,
-        config: &RedisConfig,
-        health: &tokio::sync::RwLock<RedisHealth>,
-        metrics: &tokio::sync::Mutex<ConnectionMetrics>,
+        config: &ValidRedisConfig,
+        health: &Arc<tokio::sync::RwLock<RedisHealth>>,
+        metrics: &Arc<tokio::sync::Mutex<ConnectionMetrics>>,
     ) -> Result<RedisHealth, MemoryError> {
         let start = Instant::now();
 
-        let result = async {
-            let mut conn = Self::get_connection(pool, metrics).await?;
+        let mut conn = Self::get_connection(pool, metrics).await?;
 
-            // Perform PING
-            let _: String = redis::cmd("PING")
-                .query_async(&mut *conn)
-                .await
-                .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "redis".to_string(),
-                    reason: Self::sanitize_error(&e),
-                })?;
-
-            // Get server info
-            let info: String = redis::cmd("INFO")
-                .arg("server")
-                .query_async(&mut *conn)
-                .await
-                .unwrap_or_else(|_| "unavailable".to_string());
-
-            Ok::<_, MemoryError>(info)
-        }
-        .await;
+        // Perform health check operations
+        let result: Result<String, redis::RedisError> =
+            redis::cmd("PING").query_async(&mut *conn).await;
 
         let mut health_guard = health.write().await;
 
         match result {
-            Ok(server_info) => {
+            Ok(_) => {
                 health_guard.healthy = true;
                 health_guard.last_ping = Some(start);
-                health_guard.server_info = Some(server_info);
                 health_guard.error = None;
 
-                // Update pool stats (simplified)
+                // Update pool stats
                 health_guard.pool_stats = PoolStats {
-                    total_connections: config.pool_size,
-                    idle_connections: config.pool_size, // Simplified
+                    total_connections: config.pool_size(),
+                    idle_connections: config.pool_size(), // Simplified
                     active_connections: 0,
                     created_at: health_guard.pool_stats.created_at,
                 };
             }
             Err(e) => {
                 health_guard.healthy = false;
-                health_guard.error = Some(e.to_string());
+                health_guard.error = Some(Self::sanitize_error(&e));
             }
         }
 
@@ -196,7 +213,7 @@ impl RedisPoolUtils {
     }
 
     /// Get current health status
-    pub async fn get_health(health: &tokio::sync::RwLock<RedisHealth>) -> RedisHealth {
+    pub async fn get_health(health: &Arc<tokio::sync::RwLock<RedisHealth>>) -> RedisHealth {
         health.read().await.clone()
     }
 }

@@ -9,13 +9,13 @@ use redis::RedisError;
 use skreaver_core::error::{MemoryError, TransactionError};
 use skreaver_core::memory::{MemoryKey, MemoryUpdate, MemoryWriter};
 
-use super::config::RedisConfig;
+use super::config::ValidRedisConfig;
 
 /// Transactional memory wrapper for Redis operations
 #[cfg(feature = "redis")]
 pub struct RedisTransactionalMemory {
     operations: Vec<TransactionOperation>,
-    config: RedisConfig,
+    config: ValidRedisConfig,
 }
 
 /// Types of operations that can be performed in a Redis transaction
@@ -29,7 +29,7 @@ enum TransactionOperation {
 #[cfg(feature = "redis")]
 impl RedisTransactionalMemory {
     /// Create a new transactional memory wrapper
-    pub fn new(config: RedisConfig) -> Self {
+    pub fn new(config: ValidRedisConfig) -> Self {
         Self {
             operations: Vec::new(),
             config,
@@ -182,5 +182,5 @@ impl RedisTransactionExecutor {
 /// Trait for types that can provide configuration (needed for transaction setup)
 #[cfg(feature = "redis")]
 pub trait ConfigProvider {
-    fn get_config(&self) -> &RedisConfig;
+    fn get_config(&self) -> &ValidRedisConfig;
 }

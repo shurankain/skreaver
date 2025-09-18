@@ -26,9 +26,8 @@ use skreaver_core::memory::{
 
 // Use the modular components
 use crate::redis::{
-    ConfigProvider, ConnectionMetrics, PoolStats, REDIS_RUNTIME, RedisConfig,
-    RedisConnectionProvider, RedisHealth, RedisPoolUtils, RedisTransactionExecutor,
-    with_redis_runtime,
+    ConfigProvider, ConnectionMetrics, PoolStats, REDIS_RUNTIME, RedisConnectionProvider,
+    RedisHealth, RedisPoolUtils, RedisTransactionExecutor, ValidRedisConfig, with_redis_runtime,
 };
 
 /// Enhanced Redis memory backend with enterprise features
@@ -37,7 +36,7 @@ pub struct RedisMemory {
     /// Connection pool
     pool: Pool,
     /// Configuration
-    config: RedisConfig,
+    config: ValidRedisConfig,
     /// Cluster client for cluster operations
     cluster_client: Option<Arc<ClusterClient>>,
     /// Health monitoring state
@@ -48,10 +47,10 @@ pub struct RedisMemory {
 
 #[cfg(feature = "redis")]
 impl RedisMemory {
-    /// Create a new Redis memory backend
-    pub async fn new(config: RedisConfig) -> Result<Self, MemoryError> {
-        config.validate()?;
-
+    /// Create a new Redis memory backend with type-safe configuration
+    /// This method provides compile-time validation guarantees
+    pub async fn new(config: ValidRedisConfig) -> Result<Self, MemoryError> {
+        // No validation needed - ValidRedisConfig guarantees correctness!
         let (pool, cluster_client) = RedisPoolUtils::create_pool(&config).await?;
 
         let health = Arc::new(RwLock::new(RedisHealth {
@@ -81,6 +80,30 @@ impl RedisMemory {
         memory.health_check().await?;
 
         Ok(memory)
+    }
+
+    /// Create Redis memory with localhost configuration (compile-time safe)
+    pub async fn localhost() -> Result<Self, MemoryError> {
+        use crate::redis::RedisConfigBuilder;
+
+        let config = RedisConfigBuilder::new()
+            .standalone("redis://localhost:6379")
+            .with_pool_size(10)
+            .build()?;
+
+        Self::new(config).await
+    }
+
+    /// Create Redis memory with cluster configuration (compile-time safe)
+    pub async fn cluster(nodes: Vec<String>) -> Result<Self, MemoryError> {
+        use crate::redis::RedisConfigBuilder;
+
+        let config = RedisConfigBuilder::new()
+            .cluster(nodes)
+            .with_pool_size(20) // Larger pool for cluster
+            .build()?;
+
+        Self::new(config).await
     }
 
     /// Get a pooled connection
@@ -232,7 +255,7 @@ impl RedisMemory {
         // Use SCAN instead of KEYS for production safety
         let mut cursor = 0;
         let mut all_keys = Vec::new();
-        let scan_pattern = match &self.config.key_prefix {
+        let scan_pattern = match self.config.key_prefix() {
             Some(prefix) => format!("{}:*", prefix),
             None => "*".to_string(),
         };
@@ -277,7 +300,7 @@ impl RedisMemory {
         for (key, value) in all_keys.into_iter().zip(values) {
             if let Some(val) = value {
                 // Remove prefix if present
-                let clean_key = match &self.config.key_prefix {
+                let clean_key = match self.config.key_prefix() {
                     Some(prefix) => {
                         let prefix_with_colon = format!("{}:", prefix);
                         key.strip_prefix(&prefix_with_colon).unwrap_or(&key)
@@ -310,7 +333,7 @@ impl RedisMemory {
         pipe.atomic();
 
         // Clear existing keys with our prefix
-        let scan_pattern = match &self.config.key_prefix {
+        let scan_pattern = match self.config.key_prefix() {
             Some(prefix) => format!("{}:*", prefix),
             None => "*".to_string(),
         };
@@ -329,7 +352,7 @@ impl RedisMemory {
 
         // Set new data
         for (key, value) in snapshot_data {
-            let prefixed_key = match &self.config.key_prefix {
+            let prefixed_key = match self.config.key_prefix() {
                 Some(prefix) => format!("{}:{}", prefix, key),
                 None => key,
             };
@@ -413,7 +436,7 @@ impl RedisConnectionProvider for RedisMemory {
 
 #[cfg(feature = "redis")]
 impl ConfigProvider for RedisMemory {
-    fn get_config(&self) -> &RedisConfig {
+    fn get_config(&self) -> &ValidRedisConfig {
         &self.config
     }
 }

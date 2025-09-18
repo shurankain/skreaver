@@ -15,7 +15,7 @@ pub mod runtime;
 pub mod transactions;
 
 // Re-export public types for convenience
-pub use config::RedisConfig;
+pub use config::{RedisConfigBuilder, ValidRedisConfig};
 pub use health::{ConnectionMetrics, PoolStats, RedisHealth};
 pub use pool::RedisPoolUtils;
 pub use runtime::{REDIS_RUNTIME, with_redis_runtime};
