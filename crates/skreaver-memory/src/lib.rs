@@ -46,6 +46,8 @@ pub use namespaced_memory::NamespacedMemory;
 
 // Conditional memory backends
 #[cfg(feature = "redis")]
+mod redis;
+#[cfg(feature = "redis")]
 mod redis_memory;
 #[cfg(feature = "redis")]
 pub use redis_memory::RedisMemory;

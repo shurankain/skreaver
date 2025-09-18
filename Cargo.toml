@@ -46,7 +46,7 @@ tower-http = { version = "0.6", features = [
 ] }
 
 # Storage and cache
-redis = { version = "0.27", features = ["tokio-comp", "cluster"] }
+redis = { version = "0.32", features = ["tokio-comp", "cluster"] }
 deadpool-redis = "0.22.0"
 rusqlite = { version = "0.37", features = ["bundled"] }
 tokio-postgres = "0.7"
