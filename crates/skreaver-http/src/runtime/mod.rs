@@ -70,6 +70,8 @@ pub mod rate_limit;
 pub mod security;
 /// Streaming responses for long-running operations.
 pub mod streaming;
+/// Type definitions for HTTP runtime (requests, responses, etc.).
+pub mod types;
 
 pub use agent_status::{AgentStatus, AgentStatusManager};
 pub use api_types::{AgentObservation, AgentResponse, DeliveryError, ResponseDelivery};
