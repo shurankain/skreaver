@@ -672,10 +672,10 @@ impl BackpressureManager {
 impl Drop for BackpressureManager {
     fn drop(&mut self) {
         // Use blocking call since Drop can't be async
-        if let Ok(mut shutdown_tx_guard) = self.shutdown_tx.try_write() {
-            if let Some(shutdown_tx) = shutdown_tx_guard.take() {
-                let _ = shutdown_tx.send(());
-            }
+        if let Ok(mut shutdown_tx_guard) = self.shutdown_tx.try_write()
+            && let Some(shutdown_tx) = shutdown_tx_guard.take()
+        {
+            let _ = shutdown_tx.send(());
         }
     }
 }
@@ -711,8 +711,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_full_rejection() {
-        let mut config = BackpressureConfig::default();
-        config.max_queue_size = 1;
+        let config = BackpressureConfig {
+            max_queue_size: 1,
+            ..BackpressureConfig::default()
+        };
         let manager = BackpressureManager::new(config);
         manager.start().await.unwrap();
 
@@ -767,8 +769,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_processing_timeout() {
-        let mut config = BackpressureConfig::default();
-        config.processing_timeout = Duration::from_millis(100);
+        let config = BackpressureConfig {
+            processing_timeout: Duration::from_millis(100),
+            ..BackpressureConfig::default()
+        };
         let manager = BackpressureManager::new(config);
         manager.start().await.unwrap();
 

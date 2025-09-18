@@ -590,7 +590,7 @@ async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     tokio::spawn(async move {
         let agent_id_for_processing = agent_id_clone.clone();
         let runtime_for_closure = runtime_clone.clone();
-        if let Some(_) = runtime_clone
+        if runtime_clone
             .backpressure_manager
             .process_next_queued_request(&agent_id_clone, move |input| {
                 let runtime_inner = runtime_for_closure.clone();
@@ -633,6 +633,7 @@ async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
                 }
             })
             .await
+            .is_some()
         {
             // Processing started successfully
         }
@@ -1248,7 +1249,7 @@ async fn get_agent_queue_metrics<T: ToolRegistry + Clone + Send + Sync>(
         .backpressure_manager
         .get_agent_metrics(&agent_id)
         .await
-        .unwrap_or_else(|| QueueMetrics {
+        .unwrap_or(QueueMetrics {
             queue_size: 0,
             active_requests: 0,
             total_processed: 0,
