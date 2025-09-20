@@ -21,6 +21,7 @@ pub struct RedisTransactionalMemory {
 /// Types of operations that can be performed in a Redis transaction
 #[cfg(feature = "redis")]
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum TransactionOperation {
     Set { key: String, value: String },
     Del { key: String },
@@ -117,7 +118,9 @@ impl MemoryWriter for RedisTransactionalMemory {
 /// Trait for types that can provide Redis connections (needed for transaction commit)
 #[cfg(feature = "redis")]
 pub trait RedisConnectionProvider {
-    async fn get_connection(&self) -> Result<deadpool_redis::Connection, MemoryError>;
+    fn get_connection(
+        &self,
+    ) -> impl std::future::Future<Output = Result<deadpool_redis::Connection, MemoryError>> + Send;
 }
 
 /// Transaction execution utility for Redis memory

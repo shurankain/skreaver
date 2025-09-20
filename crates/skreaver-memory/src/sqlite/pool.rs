@@ -229,6 +229,7 @@ impl SqlitePool {
     }
 
     /// Validate connection health before returning it
+    #[allow(dead_code)]
     fn validate_connection(conn: &Connection) -> Result<(), MemoryError> {
         // Simple connectivity test - just check if SQLite responds
         conn.execute("SELECT 1", [])

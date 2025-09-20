@@ -5,8 +5,8 @@
 
 #[cfg(feature = "redis")]
 mod redis_connection_state_tests {
-    use std::time::Duration;
     use skreaver_memory::redis::{Disconnected, RedisConnection, StatefulConnectionManager};
+    use std::time::Duration;
 
     #[test]
     fn test_connection_state_phantom_types() {

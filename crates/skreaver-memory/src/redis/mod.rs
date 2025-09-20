@@ -17,7 +17,10 @@ pub mod transactions;
 
 // Re-export public types for convenience
 pub use config::{RedisConfigBuilder, ValidRedisConfig};
-pub use connection::{Connected, Disconnected, ConnectedRedis, DisconnectedRedis, RedisConnection, StatefulConnectionManager};
+pub use connection::{
+    Connected, ConnectedRedis, Disconnected, DisconnectedRedis, RedisConnection,
+    StatefulConnectionManager,
+};
 pub use health::{ConnectionMetrics, PoolStats, RedisHealth};
 pub use pool::RedisPoolUtils;
 pub use runtime::{REDIS_RUNTIME, with_redis_runtime};

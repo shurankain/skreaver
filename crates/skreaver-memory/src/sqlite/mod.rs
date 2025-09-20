@@ -9,7 +9,6 @@ pub mod migrations;
 pub mod pool;
 
 // Re-export commonly used types
-pub use backup::{BackupFormat, BackupHandle};
 pub use health::HealthStatus;
-pub use migrations::{AppliedMigration, Migration, MigrationEngine, MigrationStatus};
-pub use pool::{PoolHealth, PooledConnection, SqlitePool};
+pub use migrations::{Migration, MigrationEngine};
+pub use pool::SqlitePool;

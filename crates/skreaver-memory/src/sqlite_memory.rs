@@ -216,6 +216,7 @@ impl SqlitePool {
     }
 
     /// Validate connection health before returning it
+    #[allow(dead_code)]
     fn validate_connection(conn: &Connection) -> Result<(), MemoryError> {
         // Simple connectivity test - just check if SQLite responds
         conn.execute("SELECT 1", [])
@@ -298,6 +299,7 @@ impl SqlitePool {
     }
 
     /// Check pool health
+    #[allow(dead_code)]
     pub fn health_check(&self) -> Result<PoolHealth, MemoryError> {
         let available_count = {
             let available =
@@ -388,6 +390,7 @@ impl Drop for PooledConnection {
 
 /// Health status for the connection pool
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PoolHealth {
     pub healthy_connections: usize,
     pub total_connections: usize,
@@ -395,6 +398,7 @@ pub struct PoolHealth {
 }
 
 /// Administrative operations trait for memory backends
+#[allow(dead_code)]
 pub trait MemoryAdmin {
     /// Create a backup handle for the memory backend
     fn backup(&self) -> Result<BackupHandle, MemoryError>;
@@ -414,6 +418,7 @@ pub trait MemoryAdmin {
 
 /// Handle for backup operations
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct BackupHandle {
     pub id: String,
     pub created_at: std::time::SystemTime,
@@ -424,6 +429,7 @@ pub struct BackupHandle {
 
 /// Backup format types
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum BackupFormat {
     Json,
     SqliteDump,
@@ -431,6 +437,7 @@ pub enum BackupFormat {
 
 /// Structured health status
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum HealthStatus {
     Healthy {
         details: String,
@@ -448,6 +455,7 @@ pub enum HealthStatus {
 
 /// Migration status information
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MigrationStatus {
     pub current_version: u32,
     pub latest_version: u32,
@@ -457,6 +465,7 @@ pub struct MigrationStatus {
 
 /// Applied migration information
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AppliedMigration {
     pub version: u32,
     pub description: String,
@@ -473,6 +482,7 @@ pub struct Migration {
     pub version: u32,
     pub description: String,
     pub up: String,
+    #[allow(dead_code)]
     pub down: Option<String>,
 }
 
@@ -581,6 +591,7 @@ impl MigrationEngine {
     }
 
     /// Rollback to a specific version
+    #[allow(dead_code)]
     pub fn rollback(&self, conn: &Connection, target_version: u32) -> Result<(), MemoryError> {
         let current_version: u32 = conn
             .query_row(
@@ -647,6 +658,7 @@ impl MigrationEngine {
     }
 
     /// Get migration status information
+    #[allow(dead_code)]
     pub fn get_migration_status(&self, conn: &Connection) -> Result<MigrationStatus, MemoryError> {
         let current_version: u32 = conn
             .query_row(

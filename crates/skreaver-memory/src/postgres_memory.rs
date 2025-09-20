@@ -17,8 +17,7 @@ use skreaver_core::memory::{
 
 // Use the modular components
 use crate::postgres::{
-    PostgresConfig, PostgresMigrationEngine, PostgresPool,
-    PostgresTransactionalMemory,
+    PostgresConfig, PostgresMigrationEngine, PostgresPool, PostgresTransactionalMemory,
 };
 
 /// PostgreSQL memory backend with enterprise features
@@ -280,8 +279,8 @@ impl SnapshotableMemory for PostgresMemory {
 
     fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
         // Parse snapshot and restore all data
-        let data: std::collections::HashMap<String, String> =
-            serde_json::from_str(snapshot).map_err(|e| MemoryError::RestoreFailed {
+        let data: std::collections::HashMap<String, String> = serde_json::from_str(snapshot)
+            .map_err(|e| MemoryError::RestoreFailed {
                 reason: format!("Failed to parse snapshot: {}", e),
             })?;
 
@@ -332,9 +331,12 @@ impl TransactionalMemory for PostgresMemory {
 
             match result {
                 Ok(r) => {
-                    tx_memory.commit().await.map_err(|e| TransactionError::TransactionFailed {
-                        reason: format!("Failed to commit transaction: {}", e),
-                    })?;
+                    tx_memory
+                        .commit()
+                        .await
+                        .map_err(|e| TransactionError::TransactionFailed {
+                            reason: format!("Failed to commit transaction: {}", e),
+                        })?;
                     Ok(r)
                 }
                 Err(e) => {
@@ -363,7 +365,7 @@ mod tests {
         let result = PostgresMemory::new(config).await;
         assert!(result.is_err());
 
-        let valid_config = PostgresConfig::default();
+        let _valid_config = PostgresConfig::default();
         // This would fail without a real PostgreSQL instance
         // assert!(PostgresMemory::new(valid_config).await.is_ok());
     }

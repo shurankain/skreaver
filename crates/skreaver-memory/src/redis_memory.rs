@@ -27,7 +27,8 @@ use skreaver_core::memory::{
 // Use the modular components
 use crate::redis::{
     ConfigProvider, ConnectionMetrics, PoolStats, REDIS_RUNTIME, RedisConnectionProvider,
-    RedisHealth, RedisPoolUtils, RedisTransactionExecutor, StatefulConnectionManager, ValidRedisConfig, with_redis_runtime,
+    RedisHealth, RedisPoolUtils, RedisTransactionExecutor, StatefulConnectionManager,
+    ValidRedisConfig, with_redis_runtime,
 };
 
 /// Enhanced Redis memory backend with enterprise features
@@ -36,6 +37,7 @@ pub struct RedisMemory {
     /// Connection pool
     pool: Pool,
     /// Stateful connection manager with type safety
+    #[allow(dead_code)]
     connection_manager: StatefulConnectionManager,
     /// Configuration
     config: ValidRedisConfig,
@@ -118,6 +120,7 @@ impl RedisMemory {
     }
 
     /// Get a type-safe connection with state tracking
+    #[allow(dead_code)]
     async fn get_stateful_connection(&self) -> Result<crate::redis::ConnectedRedis, MemoryError> {
         self.connection_manager.get_connection().await
     }
@@ -441,8 +444,10 @@ impl SnapshotableMemory for RedisMemory {
 
 #[cfg(feature = "redis")]
 impl RedisConnectionProvider for RedisMemory {
-    async fn get_connection(&self) -> Result<PooledConnection, MemoryError> {
-        self.get_connection().await
+    fn get_connection(
+        &self,
+    ) -> impl std::future::Future<Output = Result<PooledConnection, MemoryError>> + Send {
+        async move { RedisPoolUtils::get_connection(&self.pool, &self.metrics).await }
     }
 }
 

@@ -143,11 +143,9 @@ impl RedisConnection<Connected> {
         Fut: std::future::Future<Output = Result<T, redis::RedisError>>,
     {
         let conn = self.connection();
-        let result = f(conn).await.map_err(|e| {
-            MemoryError::LoadFailed {
-                key: skreaver_core::memory::MemoryKey::new("redis_operation").unwrap(),
-                reason: format!("Redis operation failed: {}", e),
-            }
+        let result = f(conn).await.map_err(|e| MemoryError::LoadFailed {
+            key: skreaver_core::memory::MemoryKey::new("redis_operation").unwrap(),
+            reason: format!("Redis operation failed: {}", e),
         })?;
 
         self.update_activity();
@@ -156,7 +154,6 @@ impl RedisConnection<Connected> {
 
     /// Ping the connection to verify it's still alive
     pub async fn ping(mut self) -> Result<Self, (RedisConnection<Disconnected>, MemoryError)> {
-
         let conn = self.connection();
         let result: Result<String, redis::RedisError> = redis::cmd("PING").query_async(conn).await;
 
@@ -254,7 +251,10 @@ impl StatefulConnectionManager {
 
         Err(MemoryError::ConnectionFailed {
             backend: "redis".to_string(),
-            reason: format!("Failed to connect after {} attempts", self.max_retry_attempts),
+            reason: format!(
+                "Failed to connect after {} attempts",
+                self.max_retry_attempts
+            ),
         })
     }
 
@@ -283,7 +283,8 @@ impl StatefulConnectionManager {
         disconnected: DisconnectedRedis,
     ) -> Result<ConnectedRedis, MemoryError> {
         let reset_disconnected = disconnected.reset_attempts();
-        self.get_connection_from_disconnected(reset_disconnected).await
+        self.get_connection_from_disconnected(reset_disconnected)
+            .await
     }
 
     /// Get connection from existing disconnected state
@@ -306,7 +307,10 @@ impl StatefulConnectionManager {
 
         Err(MemoryError::ConnectionFailed {
             backend: "redis".to_string(),
-            reason: format!("Failed to reconnect after {} attempts", self.max_retry_attempts),
+            reason: format!(
+                "Failed to reconnect after {} attempts",
+                self.max_retry_attempts
+            ),
         })
     }
 }

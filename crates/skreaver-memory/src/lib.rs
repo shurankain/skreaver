@@ -68,7 +68,9 @@ pub mod postgres;
 #[cfg(feature = "postgres")]
 mod postgres_memory;
 #[cfg(feature = "postgres")]
-pub use postgres::{PostgresConfig, PostgresMigration, PostgresMigrationEngine, PostgresPool, PostgresPoolHealth};
+pub use postgres::{
+    PostgresConfig, PostgresMigration, PostgresMigrationEngine, PostgresPool, PostgresPoolHealth,
+};
 #[cfg(feature = "postgres")]
 pub use postgres_memory::PostgresMemory;
 
