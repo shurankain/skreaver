@@ -64,11 +64,12 @@ pub use sqlite::{HealthStatus as SqliteHealthStatus, Migration, MigrationEngine,
 pub use sqlite_memory::SqliteMemory;
 
 #[cfg(feature = "postgres")]
+pub mod postgres;
+#[cfg(feature = "postgres")]
 mod postgres_memory;
 #[cfg(feature = "postgres")]
-pub use postgres_memory::{
-    PostgresConfig, PostgresMemory, PostgresMigration, PostgresMigrationEngine, PostgresPool,
-    PostgresPoolHealth,
-};
+pub use postgres::{PostgresConfig, PostgresMigration, PostgresMigrationEngine, PostgresPool, PostgresPoolHealth};
+#[cfg(feature = "postgres")]
+pub use postgres_memory::PostgresMemory;
 
 // Future backends (placeholders - will be implemented in future versions)

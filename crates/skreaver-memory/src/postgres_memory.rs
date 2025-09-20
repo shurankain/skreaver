@@ -16,9 +16,9 @@ use skreaver_core::memory::{
 };
 
 // Use the modular components
-mod postgres;
-use postgres::{
-    PostgresConfig, PostgresMigrationEngine, PostgresPool, PostgresTransactionalMemory,
+use crate::postgres::{
+    PostgresConfig, PostgresMigrationEngine, PostgresPool,
+    PostgresTransactionalMemory,
 };
 
 /// PostgreSQL memory backend with enterprise features
@@ -114,8 +114,8 @@ impl PostgresMemory {
 
         match row {
             Some(row) => {
-                let json_value: serde_json::Value = row.get(0);
-                Ok(Some(json_value.to_string()))
+                let value: String = row.get(0);
+                Ok(Some(value))
             }
             None => Ok(None),
         }
@@ -125,9 +125,6 @@ impl PostgresMemory {
     pub async fn store_async(&self, update: MemoryUpdate) -> Result<(), MemoryError> {
         let conn = self.pool.acquire().await?;
         let namespaced_key = self.namespaced_key(&update.key);
-
-        let json_value: serde_json::Value = serde_json::from_str(&update.value)
-            .unwrap_or_else(|_| serde_json::Value::String(update.value.clone()));
 
         conn.client()
             .execute(
@@ -140,13 +137,75 @@ impl PostgresMemory {
                 "#,
                 &[
                     &namespaced_key,
-                    &json_value,
-                    &self.namespace.as_deref().unwrap_or(""),
+                    &update.value,
+                    &self.namespace.as_deref().unwrap_or("").to_string(),
                 ],
             )
             .await
             .map_err(|e| MemoryError::StoreFailed {
                 key: update.key.clone(),
+                reason: format!("Database error: {}", e),
+            })?;
+
+        Ok(())
+    }
+
+    /// Get all data for snapshot operations
+    async fn get_all_data(&self) -> Result<std::collections::HashMap<String, String>, MemoryError> {
+        let conn = self.pool.acquire().await?;
+
+        let namespace_filter = match &self.namespace {
+            Some(ns) => format!("WHERE namespace = '{}'", ns),
+            None => "WHERE namespace = ''".to_string(),
+        };
+
+        let query = format!("SELECT key, value FROM memory_entries {}", namespace_filter);
+
+        let rows = conn
+            .client()
+            .query(&query, &[])
+            .await
+            .map_err(|e| MemoryError::LoadFailed {
+                key: MemoryKey::new("snapshot").unwrap(),
+                reason: format!("Database error: {}", e),
+            })?;
+
+        let mut data = std::collections::HashMap::new();
+        for row in rows {
+            let key: String = row.get(0);
+            let value: String = row.get(1);
+
+            // Remove namespace prefix if present
+            let clean_key = match &self.namespace {
+                Some(ns) => {
+                    let prefix = format!("{}:", ns);
+                    key.strip_prefix(&prefix).unwrap_or(&key).to_string()
+                }
+                None => key,
+            };
+
+            data.insert(clean_key, value);
+        }
+
+        Ok(data)
+    }
+
+    /// Clear all data for restore operations
+    async fn clear_all_data(&self) -> Result<(), MemoryError> {
+        let conn = self.pool.acquire().await?;
+
+        let namespace_filter = match &self.namespace {
+            Some(ns) => format!("WHERE namespace = '{}'", ns),
+            None => "WHERE namespace = ''".to_string(),
+        };
+
+        let query = format!("DELETE FROM memory_entries {}", namespace_filter);
+
+        conn.client()
+            .execute(&query, &[])
+            .await
+            .map_err(|e| MemoryError::StoreFailed {
+                key: MemoryKey::new("clear_all").unwrap(),
                 reason: format!("Database error: {}", e),
             })?;
 
@@ -207,26 +266,46 @@ impl MemoryWriter for PostgresMemory {
 }
 
 impl SnapshotableMemory for PostgresMemory {
-    fn create_snapshot(&self) -> Result<Box<dyn MemoryReader>, MemoryError> {
+    fn snapshot(&mut self) -> Option<String> {
         // PostgreSQL provides snapshot isolation through its MVCC implementation
-        // For now, return a clone which will read from the same timestamp
-        Ok(Box::new(self.clone()))
+        // For a simple implementation, we'll export all data as JSON
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(async {
+            match self.get_all_data().await {
+                Ok(data) => serde_json::to_string(&data).ok(),
+                Err(_) => None,
+            }
+        })
     }
 
-    fn restore_from_snapshot(
-        &mut self,
-        _snapshot: Box<dyn MemoryReader>,
-    ) -> Result<(), MemoryError> {
-        // PostgreSQL snapshots are read-only views
-        // To "restore", we would need to implement point-in-time recovery
-        Err(MemoryError::SnapshotFailed {
-            reason: "PostgreSQL snapshot restoration not implemented - use database backup/restore instead".to_string(),
+    fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
+        // Parse snapshot and restore all data
+        let data: std::collections::HashMap<String, String> =
+            serde_json::from_str(snapshot).map_err(|e| MemoryError::RestoreFailed {
+                reason: format!("Failed to parse snapshot: {}", e),
+            })?;
+
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(async {
+            // Clear existing data and restore from snapshot
+            self.clear_all_data().await?;
+            for (key, value) in data {
+                let memory_key = MemoryKey::new(&key).map_err(|e| MemoryError::RestoreFailed {
+                    reason: format!("Invalid key in snapshot: {}", e),
+                })?;
+                let update = MemoryUpdate::from_validated(memory_key, value);
+                self.store(update)?;
+            }
+            Ok(())
         })
     }
 }
 
 impl TransactionalMemory for PostgresMemory {
-    fn begin_transaction(&mut self) -> Result<Box<dyn MemoryWriter>, TransactionError> {
+    fn transaction<F, R>(&mut self, f: F) -> Result<R, TransactionError>
+    where
+        F: FnOnce(&mut dyn MemoryWriter) -> Result<R, TransactionError>,
+    {
         let rt = tokio::runtime::Handle::current();
         rt.block_on(async {
             let mut conn =
@@ -247,8 +326,22 @@ impl TransactionalMemory for PostgresMemory {
                     reason: format!("Failed to start transaction: {}", e),
                 })?;
 
-            let tx_memory = PostgresTransactionalMemory::new(tx, self.namespace.clone());
-            Ok(Box::new(tx_memory) as Box<dyn MemoryWriter>)
+            // Use the proper transactional wrapper
+            let mut tx_memory = PostgresTransactionalMemory::new(tx, self.namespace.clone());
+            let result = f(&mut tx_memory);
+
+            match result {
+                Ok(r) => {
+                    tx_memory.commit().await.map_err(|e| TransactionError::TransactionFailed {
+                        reason: format!("Failed to commit transaction: {}", e),
+                    })?;
+                    Ok(r)
+                }
+                Err(e) => {
+                    let _ = tx_memory.rollback().await; // Best effort rollback
+                    Err(e)
+                }
+            }
         })
     }
 }
