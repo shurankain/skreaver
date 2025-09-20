@@ -14,7 +14,7 @@ categories = ["development-tools", "observability"]
 default = ["metrics", "tracing"]
 metrics = ["dep:prometheus", "dep:tokio"]
 tracing = ["dep:tracing", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
-opentelemetry = ["tracing", "dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry-prometheus"]
+opentelemetry = ["tracing", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp"]
 health = ["metrics", "dep:serde_json", "dep:async-trait"]
 openapi = ["dep:utoipa"]
 
@@ -36,8 +36,8 @@ tracing-subscriber = { workspace = true, optional = true, features = ["json", "e
 
 # OpenTelemetry
 opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
 opentelemetry-otlp = { workspace = true, optional = true }
-opentelemetry-prometheus = { workspace = true, optional = true }
 
 # Health checks
 serde_json = { workspace = true, optional = true }
