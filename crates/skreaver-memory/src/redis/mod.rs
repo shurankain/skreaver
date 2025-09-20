@@ -9,6 +9,7 @@
 //! - Performance monitoring and metrics
 
 pub mod config;
+pub mod connection;
 pub mod health;
 pub mod pool;
 pub mod runtime;
@@ -16,6 +17,7 @@ pub mod transactions;
 
 // Re-export public types for convenience
 pub use config::{RedisConfigBuilder, ValidRedisConfig};
+pub use connection::{Connected, Disconnected, ConnectedRedis, DisconnectedRedis, RedisConnection, StatefulConnectionManager};
 pub use health::{ConnectionMetrics, PoolStats, RedisHealth};
 pub use pool::RedisPoolUtils;
 pub use runtime::{REDIS_RUNTIME, with_redis_runtime};

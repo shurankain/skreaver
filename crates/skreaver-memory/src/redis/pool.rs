@@ -15,6 +15,7 @@ use skreaver_core::error::MemoryError;
 use skreaver_core::memory::MemoryKey;
 
 use super::config::{Cluster, RedisDeploymentV2, Sentinel, Standalone, ValidRedisConfig};
+use super::connection::StatefulConnectionManager;
 use super::health::{ConnectionMetrics, PoolStats, RedisHealth};
 
 /// Redis connection pool utility functions
@@ -215,5 +216,12 @@ impl RedisPoolUtils {
     /// Get current health status
     pub async fn get_health(health: &Arc<tokio::sync::RwLock<RedisHealth>>) -> RedisHealth {
         health.read().await.clone()
+    }
+
+    /// Create a stateful connection manager from pool
+    pub fn create_connection_manager(pool: Pool) -> StatefulConnectionManager {
+        StatefulConnectionManager::new(pool)
+            .with_max_idle_duration(Duration::from_secs(300))
+            .with_max_retry_attempts(3)
     }
 }

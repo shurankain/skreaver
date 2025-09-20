@@ -27,7 +27,7 @@ use skreaver_core::memory::{
 // Use the modular components
 use crate::redis::{
     ConfigProvider, ConnectionMetrics, PoolStats, REDIS_RUNTIME, RedisConnectionProvider,
-    RedisHealth, RedisPoolUtils, RedisTransactionExecutor, ValidRedisConfig, with_redis_runtime,
+    RedisHealth, RedisPoolUtils, RedisTransactionExecutor, StatefulConnectionManager, ValidRedisConfig, with_redis_runtime,
 };
 
 /// Enhanced Redis memory backend with enterprise features
@@ -35,6 +35,8 @@ use crate::redis::{
 pub struct RedisMemory {
     /// Connection pool
     pool: Pool,
+    /// Stateful connection manager with type safety
+    connection_manager: StatefulConnectionManager,
     /// Configuration
     config: ValidRedisConfig,
     /// Cluster client for cluster operations
@@ -53,6 +55,9 @@ impl RedisMemory {
         // No validation needed - ValidRedisConfig guarantees correctness!
         let (pool, cluster_client) = RedisPoolUtils::create_pool(&config).await?;
 
+        // Create stateful connection manager
+        let connection_manager = RedisPoolUtils::create_connection_manager(pool.clone());
+
         let health = Arc::new(RwLock::new(RedisHealth {
             healthy: false,
             last_ping: None,
@@ -70,6 +75,7 @@ impl RedisMemory {
 
         let memory = Self {
             pool,
+            connection_manager,
             config,
             cluster_client,
             health: Arc::clone(&health),
@@ -106,9 +112,14 @@ impl RedisMemory {
         Self::new(config).await
     }
 
-    /// Get a pooled connection
+    /// Get a pooled connection (legacy method)
     async fn get_connection(&self) -> Result<PooledConnection, MemoryError> {
         RedisPoolUtils::get_connection(&self.pool, &self.metrics).await
+    }
+
+    /// Get a type-safe connection with state tracking
+    async fn get_stateful_connection(&self) -> Result<crate::redis::ConnectedRedis, MemoryError> {
+        self.connection_manager.get_connection().await
     }
 
     /// Update connection metrics
@@ -142,6 +153,7 @@ impl Clone for RedisMemory {
     fn clone(&self) -> Self {
         Self {
             pool: self.pool.clone(),
+            connection_manager: RedisPoolUtils::create_connection_manager(self.pool.clone()),
             config: self.config.clone(),
             cluster_client: self.cluster_client.clone(),
             health: Arc::clone(&self.health),
