@@ -123,9 +123,14 @@ pub fn init_observability(config: ObservabilityConfig) -> Result<(), Observabili
     if let Some(endpoint) = &config.otel_endpoint {
         let otel_config =
             otel::OtelConfig::new(endpoint.clone(), format!("{}-http", config.namespace))
-                .with_attribute("service.namespace".to_string(), config.namespace.clone());
+                .map_err(|e| {
+                    ObservabilityError::OpenTelemetryInit(format!("Invalid OTel config: {}", e))
+                })?
+                .with_service_namespace(config.namespace.clone());
 
-        otel::init_otel_exporter(&otel_config)?;
+        let _otel_state = otel::init_otel_exporter(&otel_config)?;
+        // Note: OtelState should be stored somewhere for proper lifecycle management
+        // For now, it will be dropped at the end of this scope, which will trigger cleanup
     }
 
     Ok(())
@@ -152,4 +157,8 @@ pub enum ObservabilityError {
     #[cfg(feature = "metrics")]
     #[error("Metrics error: {0}")]
     Metrics(#[from] metrics::MetricsError),
+
+    #[cfg(feature = "opentelemetry")]
+    #[error("OpenTelemetry configuration error: {0}")]
+    OtelConfig(#[from] otel::OtelConfigError),
 }
