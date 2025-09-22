@@ -58,6 +58,14 @@ tempfile = "3.22.0"
 rand = "0.9"
 criterion = { version = "0.7", features = ["html_reports", "async_tokio"] }
 
+# Advanced testing dependencies
+proptest = "1.5"  # Property-based testing
+cargo-fuzz = "0.12"  # Fuzzing support
+quickcheck = "1.0"  # Alternative property testing
+quickcheck_macros = "1.0"  # Quickcheck macros
+fake = { version = "2.9", features = ["derive"] }  # Test data generation
+rstest = "0.23"  # Parametrized tests
+
 # Security and validation
 jsonwebtoken = "9"
 regex = "1"
@@ -119,14 +127,20 @@ skreaver-http = { path = "crates/skreaver-http" }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
 
-# Benchmarking dependencies  
+# Testing and benchmarking dependencies
 [dev-dependencies]
 tokio-test = { workspace = true }
 tempfile = { workspace = true }
 rand = { workspace = true }
 skreaver-testing = { path = "crates/skreaver-testing" }
-# Only for benchmarks - not compiled in normal builds
+# Benchmarking - not compiled in normal builds
 criterion = { workspace = true }
+# Advanced testing
+proptest = { workspace = true }
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
+fake = { workspace = true }
+rstest = { workspace = true }
 
 [profile.dev]
 # Faster debug builds for development
