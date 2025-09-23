@@ -133,6 +133,7 @@ tokio-test = { workspace = true }
 tempfile = { workspace = true }
 rand = { workspace = true }
 skreaver-testing = { path = "crates/skreaver-testing" }
+skreaver-observability = { path = "crates/skreaver-observability" }
 # Benchmarking - not compiled in normal builds
 criterion = { workspace = true }
 # Advanced testing
