@@ -122,7 +122,7 @@ pub struct ExecutionStats {
     pub percentiles: Percentiles,
 }
 
-/// Custom serialization for Vec<Duration>
+/// Custom serialization for `Vec<Duration>`
 mod duration_vec_serde {
     use super::*;
 

@@ -10,10 +10,9 @@ use axum::{
 use skreaver_tools::ToolRegistry;
 
 use crate::runtime::{
-    HttpAgentRuntime,
-    types::{
-        AgentStatus, AgentsListResponse, CreateAgentRequest, CreateAgentResponse, ErrorResponse,
-    },
+    AgentFactoryError, HttpAgentRuntime,
+    api_types::CreateAgentRequest,
+    types::{AgentStatus, AgentsListResponse, CreateAgentResponse, ErrorResponse},
 };
 
 /// GET /agents - List all agents
@@ -29,7 +28,7 @@ use crate::runtime::{
         ("bearer_auth" = [])
     )
 )]
-pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync>(
+pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync + 'static>(
     State(runtime): State<HttpAgentRuntime<T>>,
 ) -> Result<Json<AgentsListResponse>, (StatusCode, Json<ErrorResponse>)> {
     let agents = runtime.agents.read().await;
@@ -60,28 +59,59 @@ pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync>(
         (status = 201, description = "Agent created successfully", body = CreateAgentResponse),
         (status = 400, description = "Invalid request", body = ErrorResponse),
         (status = 401, description = "Authentication required", body = crate::runtime::auth::AuthError),
-        (status = 501, description = "Not implemented", body = ErrorResponse)
+        (status = 500, description = "Agent creation failed", body = ErrorResponse)
     ),
     security(
         ("api_key" = []),
         ("bearer_auth" = [])
     )
 )]
-pub async fn create_agent<T: ToolRegistry + Clone + Send + Sync>(
-    State(_runtime): State<HttpAgentRuntime<T>>,
-    Json(_request): Json<CreateAgentRequest>,
+pub async fn create_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
+    State(runtime): State<HttpAgentRuntime<T>>,
+    Json(request): Json<CreateAgentRequest>,
 ) -> Result<Json<CreateAgentResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // For now, we'll return an error since we need a factory pattern to create agents dynamically
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "not_implemented".to_string(),
-            message:
-                "Dynamic agent creation not yet implemented. Use runtime.add_agent() directly."
-                    .to_string(),
-            details: None,
-        }),
-    ))
+    match runtime.create_agent(request.spec, None).await {
+        Ok(response) => {
+            // Convert the factory response to the HTTP response format
+            Ok(Json(CreateAgentResponse {
+                agent_id: response.agent_id,
+                agent_type: response.spec.agent_type.to_string(),
+                status: response.status.simple_name().to_string(),
+            }))
+        }
+        Err(AgentFactoryError::UnknownAgentType(agent_type)) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "unknown_agent_type".to_string(),
+                message: format!("Unknown agent type: {}", agent_type),
+                details: None,
+            }),
+        )),
+        Err(AgentFactoryError::InvalidConfiguration { field, reason }) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid_configuration".to_string(),
+                message: format!("Invalid configuration for field '{}': {}", field, reason),
+                details: None,
+            }),
+        )),
+        Err(AgentFactoryError::CreationFailed { agent_type, reason }) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "creation_failed".to_string(),
+                message: format!("Failed to create {} agent: {}", agent_type, reason),
+                details: None,
+            }),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "agent_creation_failed".to_string(),
+                message: e.to_string(),
+                details: None,
+            }),
+        )),
+    }
 }
 
 /// GET /agents/{agent_id}/status - Get agent status
@@ -101,7 +131,7 @@ pub async fn create_agent<T: ToolRegistry + Clone + Send + Sync>(
         ("bearer_auth" = [])
     )
 )]
-pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync>(
+pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync + 'static>(
     State(runtime): State<HttpAgentRuntime<T>>,
     Path(agent_id): Path<String>,
 ) -> Result<Json<AgentStatus>, (StatusCode, Json<ErrorResponse>)> {
@@ -143,19 +173,25 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync>(
         ("bearer_auth" = [])
     )
 )]
-pub async fn delete_agent<T: ToolRegistry + Clone + Send + Sync>(
+pub async fn delete_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     State(runtime): State<HttpAgentRuntime<T>>,
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let mut agents = runtime.agents.write().await;
-
-    match agents.remove(&agent_id) {
-        Some(_) => Ok(StatusCode::NO_CONTENT),
-        None => Err((
+    match runtime.remove_agent(&agent_id).await {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(AgentFactoryError::AgentNotFound(_)) => Err((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
                 error: "agent_not_found".to_string(),
                 message: format!("Agent with ID '{}' not found", agent_id),
+                details: None,
+            }),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "deletion_failed".to_string(),
+                message: e.to_string(),
                 details: None,
             }),
         )),

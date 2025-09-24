@@ -50,6 +50,12 @@
 //! let result = coordinator.step("user input".to_string());
 //! ```
 
+/// Concrete agent builders for standard agent types.
+pub mod agent_builders;
+/// Agent factory pattern for dynamic agent creation.
+pub mod agent_factory;
+/// Agent instance management with state tracking.
+pub mod agent_instance;
 /// Type-safe agent status management.
 pub mod agent_status;
 /// Improved API types with type safety and validation.
@@ -79,8 +85,13 @@ pub mod streaming;
 /// Type definitions for HTTP runtime (requests, responses, etc.).
 pub mod types;
 
+pub use agent_builders::{AdvancedAgentBuilder, AnalyticsAgentBuilder, EchoAgentBuilder};
+pub use agent_factory::{AgentBuilder, AgentFactory, AgentFactoryError};
+pub use agent_instance::{AgentId, AgentInstance, CoordinatorTrait};
 pub use agent_status::{AgentStatus, AgentStatusManager};
-pub use api_types::{AgentObservation, AgentResponse, DeliveryError, ResponseDelivery};
+pub use api_types::{
+    AgentObservation, AgentResponse, AgentSpec, AgentType, DeliveryError, ResponseDelivery,
+};
 pub use backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, RequestPriority};
 pub use coordinator::Coordinator;
 pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};

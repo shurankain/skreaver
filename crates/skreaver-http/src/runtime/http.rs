@@ -7,6 +7,10 @@
 
 use crate::runtime::{
     Coordinator,
+    agent_builders::{AdvancedAgentBuilder, AnalyticsAgentBuilder, EchoAgentBuilder},
+    agent_factory::{AgentFactory, AgentFactoryError},
+    agent_instance::{AgentInstance, CoordinatorTrait},
+    api_types::{AgentSpec, CreateAgentResponse},
     backpressure::{BackpressureConfig, BackpressureManager},
     rate_limit::{RateLimitConfig, RateLimitState},
 };
@@ -26,6 +30,7 @@ pub struct HttpAgentRuntime<T: ToolRegistry> {
     pub tool_registry: Arc<T>,
     pub rate_limit_state: Arc<RateLimitState>,
     pub backpressure_manager: Arc<BackpressureManager>,
+    pub agent_factory: Arc<AgentFactory>,
 }
 
 /// HTTP runtime configuration
@@ -61,16 +66,7 @@ impl Default for HttpRuntimeConfig {
     }
 }
 
-/// Container for agent and its coordinator
-pub struct AgentInstance {
-    pub coordinator: Box<dyn CoordinatorTrait + Send + Sync>,
-}
-
-/// Trait to allow dynamic dispatch of coordinators
-pub trait CoordinatorTrait {
-    fn step(&mut self, input: String) -> String;
-    fn get_agent_type(&self) -> &'static str;
-}
+// AgentInstance and CoordinatorTrait are now imported from agent_instance module
 
 impl<A: Agent + Send + Sync + 'static, T: ToolRegistry + Clone> CoordinatorTrait
     for Coordinator<A, T>
@@ -112,15 +108,61 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             }
         });
 
+        // Create and configure agent factory with standard builders
+        let mut agent_factory = AgentFactory::new();
+        agent_factory.register_builder(Box::new(EchoAgentBuilder));
+        agent_factory.register_builder(Box::new(AdvancedAgentBuilder));
+        agent_factory.register_builder(Box::new(AnalyticsAgentBuilder));
+
         Self {
-            agents: Arc::new(RwLock::new(HashMap::new())),
+            agents: agent_factory.agents(),
             tool_registry: Arc::new(tool_registry),
             rate_limit_state: Arc::new(RateLimitState::new(config.rate_limit)),
             backpressure_manager,
+            agent_factory: Arc::new(agent_factory),
         }
     }
 
-    /// Add an agent instance to the runtime
+    /// Create a new agent from specification using the factory pattern
+    pub async fn create_agent(
+        &self,
+        spec: AgentSpec,
+        custom_id: Option<String>,
+    ) -> Result<CreateAgentResponse, AgentFactoryError> {
+        self.agent_factory.create_agent(spec, custom_id).await
+    }
+
+    /// Get list of supported agent types
+    pub fn supported_agent_types(&self) -> Vec<crate::runtime::api_types::AgentType> {
+        self.agent_factory.supported_types()
+    }
+
+    /// Check if an agent type is supported
+    pub fn supports_agent_type(&self, agent_type: &crate::runtime::api_types::AgentType) -> bool {
+        self.agent_factory.supports_type(agent_type)
+    }
+
+    /// Remove an agent by ID
+    pub async fn remove_agent(&self, agent_id: &str) -> Result<(), AgentFactoryError> {
+        self.agent_factory.remove_agent(agent_id).await
+    }
+
+    /// Check if an agent exists by ID
+    pub async fn has_agent(&self, agent_id: &str) -> bool {
+        self.agent_factory.has_agent(agent_id).await
+    }
+
+    /// List all agent IDs
+    pub async fn list_agent_ids(&self) -> Vec<String> {
+        self.agent_factory.list_agent_ids().await
+    }
+
+    /// Get agent count
+    pub async fn agent_count(&self) -> usize {
+        self.agent_factory.agent_count().await
+    }
+
+    /// Add an agent instance to the runtime (legacy method for backward compatibility)
     pub async fn add_agent<A>(&self, agent_id: String, agent: A) -> Result<(), String>
     where
         A: Agent + Send + Sync + 'static,
@@ -128,12 +170,15 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         A::Action: ToString,
     {
         let coordinator = Coordinator::new(agent, (*self.tool_registry).clone());
-        let instance = AgentInstance {
-            coordinator: Box::new(coordinator),
-        };
+        let agent_instance = crate::runtime::agent_instance::AgentInstance::new(
+            crate::runtime::agent_instance::AgentId::new(agent_id.clone())
+                .map_err(|e| e.to_string())?,
+            std::any::type_name::<A>().to_string(),
+            Box::new(coordinator),
+        );
 
         let mut agents = self.agents.write().await;
-        agents.insert(agent_id, instance);
+        agents.insert(agent_id, agent_instance);
         Ok(())
     }
 }

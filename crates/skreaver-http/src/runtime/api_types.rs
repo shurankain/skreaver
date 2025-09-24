@@ -259,7 +259,7 @@ pub struct AgentSpec {
 }
 
 /// Supported agent types with compile-time guarantees
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentType {
     /// Simple echo agent for testing

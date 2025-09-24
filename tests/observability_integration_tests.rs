@@ -4,9 +4,9 @@
 //! in end-to-end scenarios as specified in DEVELOPMENT_PLAN.md Phase 0.3.
 
 use skreaver_observability::{
-    init_observability, ObservabilityConfig,
+    ObservabilityConfig, init_observability,
     metrics::MetricsRegistry,
-    tags::{AgentId, ToolName, SessionId, CardinalTags, ErrorKind, MemoryOp},
+    tags::{AgentId, CardinalTags, ErrorKind, MemoryOp, SessionId, ToolName},
 };
 use std::time::Duration;
 
@@ -26,7 +26,10 @@ async fn test_observability_initialization() {
     // Note: This may fail if called multiple times due to singleton nature
     // In production, observability would be initialized once at startup
     if result.is_err() {
-        println!("Observability initialization failed (expected in tests): {:?}", result);
+        println!(
+            "Observability initialization failed (expected in tests): {:?}",
+            result
+        );
     }
 }
 
@@ -35,39 +38,47 @@ async fn test_observability_initialization() {
 async fn test_core_metrics_collection() {
     // Create registry directly to avoid global singleton issues
     let namespace = "test_metrics";
-    let registry = MetricsRegistry::new(&namespace)
-        .expect("Registry creation should succeed");
+    let registry = MetricsRegistry::new(namespace).expect("Registry creation should succeed");
 
     // Test agent session tracking
     let agent_id = AgentId::new("test-agent").expect("Valid agent ID");
     let session_id = SessionId::generate();
     let tags = CardinalTags::for_agent_session(agent_id, session_id);
 
-    registry.record_agent_session_start(&tags).expect("Should record session start");
+    registry
+        .record_agent_session_start(&tags)
+        .expect("Should record session start");
     assert_eq!(registry.core_metrics().agent_sessions_active.get(), 1.0);
 
-    registry.record_agent_session_end(&tags).expect("Should record session end");
+    registry
+        .record_agent_session_end(&tags)
+        .expect("Should record session end");
     assert_eq!(registry.core_metrics().agent_sessions_active.get(), 0.0);
 
     // Test tool execution metrics
     let tool_name = ToolName::new("test_tool").expect("Valid tool name");
     let duration = Duration::from_millis(150);
 
-    registry.record_tool_execution(&tool_name, duration).expect("Should record tool execution");
+    registry
+        .record_tool_execution(&tool_name, duration)
+        .expect("Should record tool execution");
 
     // Test error recording
-    registry.record_agent_error(&ErrorKind::Tool).expect("Should record error");
+    registry
+        .record_agent_error(&ErrorKind::Tool)
+        .expect("Should record error");
 
     // Test memory operations
-    registry.record_memory_operation(&MemoryOp::Write).expect("Should record memory op");
+    registry
+        .record_memory_operation(&MemoryOp::Write)
+        .expect("Should record memory op");
 }
 
 /// Test cardinality enforcement as specified in DEVELOPMENT_PLAN.md
 #[tokio::test]
 async fn test_cardinality_enforcement() {
     let namespace = "test_cardinality";
-    let registry = MetricsRegistry::new(namespace)
-        .expect("Registry creation should succeed");
+    let registry = MetricsRegistry::new(namespace).expect("Registry creation should succeed");
 
     // Test tool cardinality limit (≤20)
     for i in 0..20 {
@@ -82,7 +93,9 @@ async fn test_cardinality_enforcement() {
     assert!(result.is_err(), "Should reject tool exceeding limit");
 
     // Check cardinality stats
-    let stats = registry.cardinality_stats().expect("Should get cardinality stats");
+    let stats = registry
+        .cardinality_stats()
+        .expect("Should get cardinality stats");
     assert_eq!(stats.tool_names_count, 20);
     assert_eq!(stats.error_kinds_count, 10);
     assert_eq!(stats.memory_ops_count, 4);
@@ -93,8 +106,7 @@ async fn test_cardinality_enforcement() {
 async fn test_metrics_collector() {
     let namespace = "test_collector";
     let registry = std::sync::Arc::new(
-        MetricsRegistry::new(&namespace)
-            .expect("Registry creation should succeed")
+        MetricsRegistry::new(namespace).expect("Registry creation should succeed"),
     );
     let collector = skreaver_observability::metrics::MetricsCollector::new(registry);
 
@@ -108,18 +120,21 @@ async fn test_metrics_collector() {
     timer.finish().expect("Timer should finish successfully");
 
     // Test error recording
-    collector.record_error(ErrorKind::Network).expect("Should record error");
+    collector
+        .record_error(ErrorKind::Network)
+        .expect("Should record error");
 
     // Test memory operation recording
-    collector.record_memory_op(MemoryOp::Read).expect("Should record memory op");
+    collector
+        .record_memory_op(MemoryOp::Read)
+        .expect("Should record memory op");
 }
 
 /// Test HTTP metrics (important for HTTP runtime integration)
 #[tokio::test]
 async fn test_http_metrics() {
     let namespace = "test_http";
-    let registry = MetricsRegistry::new(namespace)
-        .expect("Registry creation should succeed");
+    let registry = MetricsRegistry::new(namespace).expect("Registry creation should succeed");
 
     // Record HTTP requests
     let routes = ["/health", "/metrics", "/agents"];
@@ -128,14 +143,18 @@ async fn test_http_metrics() {
     for route in &routes {
         for method in &methods {
             let duration = Duration::from_millis(25);
-            registry.record_http_request(route, method, duration)
+            registry
+                .record_http_request(route, method, duration)
                 .expect("Should record HTTP request");
         }
     }
 
     // Verify cardinality tracking for HTTP
     let stats = registry.cardinality_stats().expect("Should get stats");
-    assert!(stats.http_routes_count <= 30, "Should respect HTTP route limit");
+    assert!(
+        stats.http_routes_count <= 30,
+        "Should respect HTTP route limit"
+    );
 }
 
 /// Test session correlation via tags
@@ -146,11 +165,8 @@ async fn test_session_correlation() {
     let tool_name = ToolName::new("correlation_tool").expect("Valid tool name");
 
     // Create tags for tool execution with session correlation
-    let tags = CardinalTags::for_tool_execution(
-        agent_id.clone(),
-        session_id.clone(),
-        tool_name.clone(),
-    );
+    let tags =
+        CardinalTags::for_tool_execution(agent_id.clone(), session_id.clone(), tool_name.clone());
 
     assert_eq!(tags.agent_id, Some(agent_id));
     assert_eq!(tags.session_id, Some(session_id));
@@ -170,9 +186,15 @@ fn test_latency_buckets_compliance() {
 
     // Verify exact buckets as specified in plan
     let expected = &[0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.5, 5.0, 10.0];
-    assert_eq!(LATENCY_BUCKETS, expected, "Latency buckets should match development plan");
+    assert_eq!(
+        LATENCY_BUCKETS, expected,
+        "Latency buckets should match development plan"
+    );
 
     // Verify coverage from microseconds to 10+ seconds
     assert!(LATENCY_BUCKETS[0] <= 0.01, "Should cover millisecond range");
-    assert!(LATENCY_BUCKETS.last().unwrap() >= &10.0, "Should cover 10+ second range");
+    assert!(
+        LATENCY_BUCKETS.last().unwrap() >= &10.0,
+        "Should cover 10+ second range"
+    );
 }
