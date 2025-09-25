@@ -148,6 +148,23 @@ impl MockToolRegistry {
             .with_failure_tool("fail_tool")
     }
 
+    /// Add mock implementations for all StandardTool variants
+    pub fn with_standard_tool_mocks(self) -> Self {
+        use skreaver_core::StandardTool;
+
+        let mut registry = self;
+
+        // Add mock implementations for all standard tools
+        for standard_tool in StandardTool::all() {
+            let tool_name = standard_tool.name();
+            let mock_tool = MockTool::new(tool_name)
+                .with_default_response(format!("Mock {} response", tool_name));
+            registry = registry.with_tool(mock_tool);
+        }
+
+        registry
+    }
+
     /// Get a reference to a mock tool for inspection
     pub fn get_mock_tool(&self, name: &str) -> Option<Arc<MockTool>> {
         let tool_name = ToolName::new(name).ok()?;

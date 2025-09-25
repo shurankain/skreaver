@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 skreaver = { path = "../crates/skreaver" }
+skreaver-testing = { path = "../crates/skreaver-testing" }
 serde_json = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }

@@ -7,3 +7,4 @@ Cargo.lock
 *.log
 *.tmp
 DEVELOPMENT_PLAN.md
+.vibe-ensemble-mcp

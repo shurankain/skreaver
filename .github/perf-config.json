@@ -1,0 +1,32 @@
+{
+  "performance_targets": {
+    "p50_ms": 30.0,
+    "p95_ms": 200.0,
+    "p99_ms": 400.0,
+    "memory_mb": 128.0
+  },
+  "regression_thresholds": {
+    "mean_percent": 10.0,
+    "p95_percent": 15.0,
+    "p99_percent": 20.0,
+    "memory_percent": 15.0
+  },
+  "benchmark_config": {
+    "min_samples_for_regression": 5,
+    "warmup_iterations": 3,
+    "measurement_iterations": 10,
+    "confidence_level": 0.95
+  },
+  "alert_config": {
+    "fail_on_regression": true,
+    "warn_on_degradation_percent": 5.0,
+    "create_pr_comment": true,
+    "create_issue_on_regression": false
+  },
+  "baseline_config": {
+    "update_on_main_branch": true,
+    "auto_create_initial_baseline": true,
+    "max_baseline_history": 100,
+    "cleanup_old_baselines_days": 90
+  }
+}

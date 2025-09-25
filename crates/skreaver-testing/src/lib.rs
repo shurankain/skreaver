@@ -42,16 +42,46 @@
 
 /// Performance testing framework
 pub mod benchmarks;
+/// Command-line interface for regression detection
+pub mod cli;
+/// Criterion benchmark output parser
+pub mod criterion_parser;
+/// Golden test framework for tool output validation
+pub mod golden;
+/// Golden test harness for comprehensive tool testing
+pub mod golden_harness;
 /// Integration test utilities
 pub mod integration;
+/// Convenient macros for golden test creation
+pub mod macros;
 /// Mock tools for predictable testing
 pub mod mock_tools;
+/// Performance regression detection system
+pub mod regression;
 /// Agent test harness for controlled testing environments
 pub mod test_harness;
 
 pub use benchmarks::{BenchmarkRunner, PerformanceTest};
+pub use cli::{CliRunner, RegressionCli};
+pub use criterion_parser::{CriterionCli, CriterionParser};
+pub use golden::{
+    GoldenTestError, SnapshotCollection, SnapshotComparison, SnapshotManager, ToolCapture,
+    ToolSnapshot, compare_snapshots,
+};
+pub use golden_harness::{
+    GoldenTestConfig, GoldenTestHarness, GoldenTestHarnessBuilder, GoldenTestResult,
+    GoldenTestScenario, GoldenTestSummary,
+};
 pub use integration::{HttpRuntimeTester, IntegrationTest};
 pub use mock_tools::{MockTool, MockToolRegistry};
-pub use test_harness::{
-    AgentTestHarness, TestHarnessBuilder, TestResult, TestRunner, TestScenario,
+pub use regression::{
+    BaselineManager, PerformanceBaseline, PerformanceMeasurement, RegressionAnalysis,
+    RegressionConfig, RegressionError,
 };
+pub use test_harness::{
+    AgentTestHarness, CombinedTestSummary, TestHarnessBuilder, TestResult, TestRunner,
+    TestScenario, TestSummary,
+};
+
+// Re-export commonly used types from skreaver-core for convenience
+pub use skreaver_core::{StandardTool, ToolCall, ToolDispatch};

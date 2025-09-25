@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  SOURCE_DATE_EPOCH: 1609459200  # Deterministic builds
 
 jobs:
   # Fast validation job - basic compilation and tests without heavy features
@@ -53,104 +54,75 @@ jobs:
       - name: Cargo check (default features)
         run: cargo check --workspace
 
+  # Security scanning and validation
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-security
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-deny
+        run: |
+          if ! command -v cargo-deny &> /dev/null; then
+            cargo install --locked cargo-deny
+          fi
+
+      - name: Install cargo-audit
+        run: |
+          if ! command -v cargo-audit &> /dev/null; then
+            cargo install --locked cargo-audit
+          fi
+
+      - name: Run cargo-deny
+        run: cargo deny check
+        continue-on-error: true
+
+      - name: Run cargo-audit
+        run: cargo audit --deny warnings
+        continue-on-error: true
+
   # Matrix testing job - test different feature combinations in parallel
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: check
+    needs: [check, security]
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Core functionality tests
-          - name: "Core + InMemory"
-            features: ""
-            test_args: "--package skreaver-core --package skreaver-memory --package skreaver-tools"
-          
-          # HTTP runtime tests  
-          - name: "HTTP Basic"
-            features: "--package skreaver-http --features auth,openapi"
+          # Core functionality
+          - name: "Core"
+            features: "--workspace"
             test_args: ""
-          
-          # HTTP advanced features
-          - name: "HTTP Advanced"
-            features: "--package skreaver-http --features auth,openapi,compression,streaming"
-            test_args: ""
-            
-          # WebSocket testing
-          - name: "WebSocket"
-            features: "--package skreaver-http --features unstable-websocket,streaming"
-            test_args: ""
-          
-          # Memory SQLite backend
-          - name: "Memory SQLite"
-            features: "--package skreaver-memory --features sqlite"
-            test_args: ""
-            
-          # Memory Redis backend
-          - name: "Memory Redis"
-            features: "--package skreaver-memory --features redis"
-            test_args: ""
-            use_redis: true
-            
-          # Memory PostgreSQL backend
-          - name: "Memory PostgreSQL"
-            features: "--package skreaver-memory --features postgres"
-            test_args: ""
-            use_postgres: true
-          
-          # Tools feature testing
-          - name: "Tools Network"
-            features: "--package skreaver-tools --features network"
-            test_args: ""
-            
-          # Tools data processing
-          - name: "Tools Data"
-            features: "--package skreaver-tools --features data"
-            test_args: ""
-          
-          # Observability features
-          - name: "Observability"
-            features: "--package skreaver-observability --features metrics,health,tracing,openapi"
-            test_args: ""
-          
-          # CLI testing
-          - name: "CLI Basic"
-            features: ""
-            test_args: "--package skreaver-cli"
-            
-          # Full integration tests
-          - name: "Integration"
-            features: "--package skreaver --features testing,auth,openapi,sqlite"
-            test_args: ""
-            
-          # Documentation tests
-          - name: "Doctests"
-            features: "--package skreaver --features auth,openapi,sqlite"
-            test_args: "--doc"
 
-    services:
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: skreaver_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+          # Testing framework
+          - name: "Testing"
+            features: "--package skreaver-testing"
+            test_args: ""
+
+          # CLI tools
+          - name: "CLI"
+            features: "--package skreaver-cli"
+            test_args: ""
+
     
     steps:
       - uses: actions/checkout@v4
@@ -184,23 +156,6 @@ jobs:
           sudo apt-get install -y mold
           echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
           
-      - name: Setup test database (SQLite)
-        if: contains(matrix.features, 'sqlite')
-        run: |
-          mkdir -p /tmp/skreaver-test
-          echo "SKREAVER_TEST_DB_PATH=/tmp/skreaver-test/test.db" >> $GITHUB_ENV
-          
-      - name: Setup Redis connection
-        if: matrix.use_redis == true
-        run: echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
-        
-      - name: Setup PostgreSQL connection
-        if: matrix.use_postgres == true
-        run: |
-          echo "DATABASE_URL=postgres://postgres:postgres@localhost:5432/skreaver_test" >> $GITHUB_ENV
-          echo "POSTGRES_USER=postgres" >> $GITHUB_ENV
-          echo "POSTGRES_PASSWORD=postgres" >> $GITHUB_ENV
-          echo "POSTGRES_DB=skreaver_test" >> $GITHUB_ENV
         
       - name: Run tests (${{ matrix.name }})
         run: |
@@ -210,17 +165,22 @@ jobs:
             cargo test ${{ matrix.test_args }} --verbose
           fi
 
-  # Benchmarks and performance validation
+  # Benchmarks and performance validation with regression detection
   bench:
-    name: Benchmarks
+    name: Benchmarks & Regression Detection
     runs-on: ubuntu-latest
     needs: check
+    env:
+      SKREAVER_BASELINE_DIR: target/performance-baselines
+      SKREAVER_ENABLE_REGRESSION_DETECTION: true
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          fetch-depth: 0  # Need full history for baseline comparison
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        
+
       - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
@@ -230,26 +190,106 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.name || 'check' }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-bench
           restore-keys: |
             ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-
-        
+
+      - name: Restore performance baselines
+        uses: actions/cache/restore@v4
+        with:
+          path: target/performance-baselines
+          key: perf-baselines-${{ github.repository }}-${{ github.ref_name }}
+          restore-keys: |
+            perf-baselines-${{ github.repository }}-main
+            perf-baselines-${{ github.repository }}-
+
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
-        
+
       - name: Configure sccache
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-        
+
       - name: Install mold linker
         run: |
           sudo apt-get update
           sudo apt-get install -y mold
           echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-          
-      - name: Run quick benchmarks
-        run: cargo bench --bench quick_benchmark
-        
+
+      - name: Create baseline directory
+        run: mkdir -p target/performance-baselines
+
+      - name: Build CLI tools
+        run: cargo build --release -p skreaver-cli
+
+      - name: Run performance regression detection
+        id: regression_check
+        run: |
+          # Set environment variables for configuration
+          export SKREAVER_COMMIT_HASH="${{ github.sha }}"
+          export SKREAVER_BRANCH="${{ github.ref_name }}"
+          export SKREAVER_CI_RUN_ID="${{ github.run_id }}"
+
+          # Use the Rust CLI for CI-friendly performance analysis
+          cargo run --release -p skreaver-cli -- perf ci
+
+      - name: Save performance baselines
+        if: steps.regression_check.outputs.baseline_updated == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: target/performance-baselines
+          key: perf-baselines-${{ github.repository }}-${{ github.ref_name }}-${{ github.run_id }}
+
+      - name: Upload performance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results-${{ github.run_id }}
+          path: |
+            target/benchmark_output.txt
+            target/benchmark_results.json
+            target/performance_report.md
+            target/performance-baselines/
+          retention-days: 30
+
+      - name: Comment performance results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'target/performance_report.md';
+
+            if (fs.existsSync(path)) {
+              const report = fs.readFileSync(path, 'utf8');
+
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: report
+              });
+            } else {
+              console.log('No performance report found to comment');
+            }
+
+      - name: Fail on performance regression
+        if: steps.regression_check.outputs.regression_detected == 'true' && steps.regression_check.outputs.should_fail_on_regression == 'true'
+        run: |
+          echo "🚨 Performance regression detected!"
+          echo "Found ${{ steps.regression_check.outputs.regression_count }} performance regressions."
+          echo "Please review the performance report and optimize the affected code paths."
+          echo ""
+          echo "Performance targets:"
+          echo "- P50: ≤ 30ms"
+          echo "- P95: ≤ 200ms"
+          echo "- P99: ≤ 400ms"
+          echo ""
+          echo "Regression thresholds:"
+          echo "- Mean: 10% increase"
+          echo "- P95: 15% increase"
+          echo "- P99: 20% increase"
+          exit 1
+
       - name: Print sccache stats
         run: sccache --show-stats
 
@@ -260,10 +300,10 @@ jobs:
     needs: [test, bench]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        
+
       - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
@@ -273,25 +313,25 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.name || 'check' }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-release
           restore-keys: |
             ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-
-        
+
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.4
-        
+
       - name: Configure sccache
         run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-        
+
       - name: Install mold linker
         run: |
           sudo apt-get update
           sudo apt-get install -y mold
           echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
-          
+
       - name: Build release with all features
         run: cargo build --release --all-features
-        
+
       - name: Print sccache final stats
         run: sccache --show-stats

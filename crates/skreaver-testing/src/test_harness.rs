@@ -4,7 +4,8 @@
 //! scenarios, assertions, and comprehensive result tracking.
 
 use crate::MockToolRegistry;
-use skreaver_core::Agent;
+use crate::golden_harness::{GoldenTestHarness, GoldenTestResult, GoldenTestScenario};
+use skreaver_core::{Agent, StandardTool, ToolCall};
 use skreaver_http::runtime::Coordinator;
 use skreaver_tools::ToolRegistry;
 use std::fmt;
@@ -74,6 +75,30 @@ impl TestScenario {
     pub fn should_fail(mut self) -> Self {
         self.should_succeed = false;
         self
+    }
+
+    /// Convert to a golden test scenario for tool validation
+    /// This creates a golden test scenario that will validate tool calls made during agent execution
+    pub fn to_golden_scenario(&self, tool_call: ToolCall) -> GoldenTestScenario {
+        GoldenTestScenario::new(format!("agent_scenario_{}", self.name), tool_call)
+            .with_description(format!("Golden test for agent scenario: {}", self.name))
+    }
+
+    /// Create a golden test scenario for a standard tool
+    pub fn with_standard_tool(
+        name: impl Into<String>,
+        observation: impl Into<String>,
+        tool: StandardTool,
+        tool_input: impl Into<String>,
+    ) -> (Self, GoldenTestScenario) {
+        let scenario = Self::named(name, observation);
+        let golden_scenario = GoldenTestScenario::for_standard_tool(
+            format!("tool_{}", tool.name()),
+            tool,
+            tool_input,
+        );
+
+        (scenario, golden_scenario)
     }
 }
 
@@ -319,6 +344,7 @@ impl Default for TestHarnessBuilder {
 /// Test runner for executing multiple test suites
 pub struct TestRunner {
     pub results: Vec<TestResult>,
+    pub golden_results: Vec<GoldenTestResult>,
 }
 
 impl TestRunner {
@@ -326,6 +352,7 @@ impl TestRunner {
     pub fn new() -> Self {
         Self {
             results: Vec::new(),
+            golden_results: Vec::new(),
         }
     }
 
@@ -344,6 +371,40 @@ impl TestRunner {
         self.results.extend(test_results);
     }
 
+    /// Run golden tests and collect results
+    pub fn run_golden_tests(
+        &mut self,
+        golden_harness: &mut GoldenTestHarness,
+        scenarios: Vec<GoldenTestScenario>,
+    ) -> Result<(), crate::golden::GoldenTestError> {
+        let test_results = golden_harness.run_golden_scenarios(scenarios)?;
+        self.golden_results.extend(test_results);
+        Ok(())
+    }
+
+    /// Run combined agent and golden tests
+    pub fn run_combined_tests<A, R>(
+        &mut self,
+        agent_harness: &mut AgentTestHarness<A, R>,
+        golden_harness: &mut GoldenTestHarness,
+        agent_scenarios: Vec<TestScenario>,
+        golden_scenarios: Vec<GoldenTestScenario>,
+    ) -> Result<(), crate::golden::GoldenTestError>
+    where
+        A: Agent,
+        A::Observation: From<String> + std::fmt::Display,
+        A::Action: ToString,
+        R: ToolRegistry + Clone,
+    {
+        // Run agent tests
+        self.run_all_tests(agent_harness, agent_scenarios);
+
+        // Run golden tests
+        self.run_golden_tests(golden_harness, golden_scenarios)?;
+
+        Ok(())
+    }
+
     /// Get test summary
     pub fn summary(&self) -> TestSummary {
         let total = self.results.len();
@@ -359,29 +420,99 @@ impl TestRunner {
         }
     }
 
+    /// Get combined summary including golden tests
+    pub fn combined_summary(&self) -> CombinedTestSummary {
+        let agent_summary = self.summary();
+
+        let golden_total = self.golden_results.len();
+        let golden_passed = self.golden_results.iter().filter(|r| r.passed).count();
+        let golden_failed = golden_total - golden_passed;
+        let golden_time: Duration = self.golden_results.iter().map(|r| r.execution_time).sum();
+
+        CombinedTestSummary {
+            agent_summary,
+            golden_total,
+            golden_passed,
+            golden_failed,
+            golden_time,
+        }
+    }
+
     /// Print detailed results
     pub fn print_results(&self) {
-        println!("Test Results:");
-        println!("=============");
+        if !self.results.is_empty() {
+            println!("Agent Test Results:");
+            println!("==================");
 
-        for result in &self.results {
-            println!("{}", result);
+            for result in &self.results {
+                println!("{}", result);
 
-            for assertion in &result.assertion_results {
-                let status = if assertion.passed { "✓" } else { "✗" };
+                for assertion in &result.assertion_results {
+                    let status = if assertion.passed { "✓" } else { "✗" };
+                    println!(
+                        "  {} {}: expected '{}', got '{}'",
+                        status, assertion.description, assertion.expected, assertion.actual
+                    );
+                }
+            }
+
+            let summary = self.summary();
+            println!("\nAgent Test Summary:");
+            println!("  Total: {}", summary.total);
+            println!("  Passed: {}", summary.passed);
+            println!("  Failed: {}", summary.failed);
+            println!("  Total time: {}ms", summary.total_time.as_millis());
+        }
+
+        if !self.golden_results.is_empty() {
+            println!("\nGolden Test Results:");
+            println!("===================");
+
+            for result in &self.golden_results {
+                let status = if result.passed {
+                    "✓ PASS"
+                } else {
+                    "✗ FAIL"
+                };
+                let action = match result.action_taken {
+                    crate::golden_harness::GoldenTestAction::Created => "[NEW]",
+                    crate::golden_harness::GoldenTestAction::Updated => "[UPD]",
+                    crate::golden_harness::GoldenTestAction::Compared => "[CMP]",
+                    crate::golden_harness::GoldenTestAction::Skipped => "[SKIP]",
+                    crate::golden_harness::GoldenTestAction::Failed => "[ERR]",
+                };
+
                 println!(
-                    "  {} {}: expected '{}', got '{}'",
-                    status, assertion.description, assertion.expected, assertion.actual
+                    "{} {} {} ({}ms)",
+                    status,
+                    action,
+                    result.scenario_name,
+                    result.execution_time.as_millis()
                 );
+
+                if let Some(ref error) = result.error {
+                    println!("    Error: {}", error);
+                }
+
+                if let Some(ref comparison) = result.snapshot_comparison
+                    && !comparison.matches
+                {
+                    println!("    {}", comparison.summary());
+                }
             }
         }
 
-        let summary = self.summary();
-        println!("\nSummary:");
-        println!("  Total: {}", summary.total);
-        println!("  Passed: {}", summary.passed);
-        println!("  Failed: {}", summary.failed);
-        println!("  Total time: {}ms", summary.total_time.as_millis());
+        // Print combined summary if we have both types of results
+        if !self.results.is_empty() && !self.golden_results.is_empty() {
+            let combined = self.combined_summary();
+            println!("\n{}", combined);
+        }
+    }
+
+    /// Clear all results
+    pub fn clear_results(&mut self) {
+        self.results.clear();
+        self.golden_results.clear();
     }
 }
 
@@ -398,6 +529,52 @@ pub struct TestSummary {
     pub passed: usize,
     pub failed: usize,
     pub total_time: Duration,
+}
+
+/// Combined summary of agent and golden test results
+#[derive(Debug)]
+pub struct CombinedTestSummary {
+    pub agent_summary: TestSummary,
+    pub golden_total: usize,
+    pub golden_passed: usize,
+    pub golden_failed: usize,
+    pub golden_time: Duration,
+}
+
+impl std::fmt::Display for CombinedTestSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Combined Test Summary:")?;
+        writeln!(f, "=====================")?;
+        writeln!(f, "Agent Tests:")?;
+        writeln!(f, "  Total: {}", self.agent_summary.total)?;
+        writeln!(f, "  Passed: {}", self.agent_summary.passed)?;
+        writeln!(f, "  Failed: {}", self.agent_summary.failed)?;
+        writeln!(f, "  Time: {}ms", self.agent_summary.total_time.as_millis())?;
+
+        writeln!(f, "Golden Tests:")?;
+        writeln!(f, "  Total: {}", self.golden_total)?;
+        writeln!(f, "  Passed: {}", self.golden_passed)?;
+        writeln!(f, "  Failed: {}", self.golden_failed)?;
+        writeln!(f, "  Time: {}ms", self.golden_time.as_millis())?;
+
+        let overall_total = self.agent_summary.total + self.golden_total;
+        let overall_passed = self.agent_summary.passed + self.golden_passed;
+        let overall_failed = self.agent_summary.failed + self.golden_failed;
+        let overall_time = self.agent_summary.total_time + self.golden_time;
+
+        writeln!(f, "Overall:")?;
+        writeln!(f, "  Total: {}", overall_total)?;
+        writeln!(f, "  Passed: {}", overall_passed)?;
+        writeln!(f, "  Failed: {}", overall_failed)?;
+        writeln!(
+            f,
+            "  Success Rate: {:.1}%",
+            (overall_passed as f64 / overall_total as f64) * 100.0
+        )?;
+        write!(f, "  Total Time: {}ms", overall_time.as_millis())?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
