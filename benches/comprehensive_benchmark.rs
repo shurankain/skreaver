@@ -14,12 +14,21 @@ use tempfile::TempDir;
 fn bench_memory_realistic(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_realistic");
 
-    group.sample_size(1000);
-    group.measurement_time(Duration::from_secs(10));
+    // CI-aware configuration
+    let is_ci = std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok();
 
-    // Create large pre-populated memory (simulating real app state)
+    if is_ci {
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(3));
+    } else {
+        group.sample_size(1000);
+        group.measurement_time(Duration::from_secs(10));
+    }
+
+    // Create pre-populated memory (simulating real app state)
     let mut memory = InMemoryMemory::new();
-    for i in 0..5000 {
+    let data_count = if is_ci { 500 } else { 5000 }; // Reduced for CI
+    for i in 0..data_count {
         let key = format!("user_session_{}", i);
         let value = serde_json::json!({
             "user_id": i,
@@ -85,20 +94,38 @@ fn bench_memory_realistic(c: &mut Criterion) {
 fn bench_file_io_comprehensive(c: &mut Criterion) {
     let mut group = c.benchmark_group("file_io_comprehensive");
 
-    group.sample_size(300);
-    group.measurement_time(Duration::from_secs(12));
+    // CI-aware configuration
+    let is_ci = std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok();
+
+    if is_ci {
+        // Reduced settings for CI
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(3));
+    } else {
+        // Full settings for local development
+        group.sample_size(300);
+        group.measurement_time(Duration::from_secs(12));
+    }
 
     let temp_dir = TempDir::new().unwrap();
     let file_write_tool = FileWriteTool::new();
     let file_read_tool = FileReadTool::new();
 
-    // Test different file sizes (realistic agent data)
-    let sizes = vec![
-        ("small_100b", 100),
-        ("medium_10kb", 10 * 1024),
-        ("large_100kb", 100 * 1024),
-        ("xlarge_1mb", 1024 * 1024),
-    ];
+    // Test different file sizes (CI-aware)
+    let sizes = if is_ci {
+        vec![
+            ("small_100b", 100),
+            ("medium_10kb", 10 * 1024),
+            ("large_50kb", 50 * 1024), // Reduced from 100KB and 1MB
+        ]
+    } else {
+        vec![
+            ("small_100b", 100),
+            ("medium_10kb", 10 * 1024),
+            ("large_100kb", 100 * 1024),
+            ("xlarge_1mb", 1024 * 1024),
+        ]
+    };
 
     for (size_name, byte_count) in sizes {
         let test_data = "x".repeat(byte_count);
@@ -159,8 +186,16 @@ fn bench_file_io_comprehensive(c: &mut Criterion) {
 fn bench_json_comprehensive(c: &mut Criterion) {
     let mut group = c.benchmark_group("json_comprehensive");
 
-    group.sample_size(800);
-    group.measurement_time(Duration::from_secs(10));
+    // CI-aware configuration
+    let is_ci = std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok();
+
+    if is_ci {
+        group.sample_size(100);
+        group.measurement_time(Duration::from_secs(3));
+    } else {
+        group.sample_size(800);
+        group.measurement_time(Duration::from_secs(10));
+    }
 
     let json_tool = JsonParseTool::new();
 
@@ -256,8 +291,16 @@ fn bench_json_comprehensive(c: &mut Criterion) {
 fn bench_realistic_workflows(c: &mut Criterion) {
     let mut group = c.benchmark_group("realistic_workflows");
 
-    group.sample_size(200);
-    group.measurement_time(Duration::from_secs(15));
+    // CI-aware configuration
+    let is_ci = std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok();
+
+    if is_ci {
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(5));
+    } else {
+        group.sample_size(200);
+        group.measurement_time(Duration::from_secs(15));
+    }
 
     let temp_dir = TempDir::new().unwrap();
     let file_write_tool = FileWriteTool::new();

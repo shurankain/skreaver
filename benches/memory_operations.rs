@@ -326,15 +326,32 @@ fn bench_memory_value_sizes(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_value_sizes");
 
     group.throughput(Throughput::Elements(1));
-    group.sample_size(1000);
-    group.measurement_time(Duration::from_secs(10));
 
-    let value_sizes = vec![
-        ("small_10b", "x".repeat(10)),
-        ("medium_1kb", "x".repeat(1024)),
-        ("large_10kb", "x".repeat(10 * 1024)),
-        ("xlarge_100kb", "x".repeat(100 * 1024)),
-    ];
+    // CI-aware configuration
+    let is_ci = std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok();
+
+    if is_ci {
+        group.sample_size(200);
+        group.measurement_time(Duration::from_secs(3));
+    } else {
+        group.sample_size(1000);
+        group.measurement_time(Duration::from_secs(10));
+    }
+
+    let value_sizes = if is_ci {
+        vec![
+            ("small_10b", "x".repeat(10)),
+            ("medium_1kb", "x".repeat(1024)),
+            ("large_5kb", "x".repeat(5 * 1024)), // Reduced from 10KB and 100KB
+        ]
+    } else {
+        vec![
+            ("small_10b", "x".repeat(10)),
+            ("medium_1kb", "x".repeat(1024)),
+            ("large_10kb", "x".repeat(10 * 1024)),
+            ("xlarge_100kb", "x".repeat(100 * 1024)),
+        ]
+    };
 
     for (size_name, value) in value_sizes {
         group.bench_with_input(

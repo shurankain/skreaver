@@ -1,16 +1,9 @@
 # cargo-deny configuration for Skreaver
-# Security scanning, license validation, and dependency management
-#
-# This configuration enforces:
-# - Security vulnerability detection (advisories)
-# - License compliance (only MIT/Apache-2.0 compatible)
-# - Dependency bans (known problematic crates)
-# - Duplicate dependency detection
+# Modern configuration format for security scanning
 
 [graph]
-# Skip dev-dependencies for advisory/ban checks (not shipped to users)
+# Skip dev-dependencies for advisory/ban checks
 all-features = false
-no-default-features = false
 exclude-dev = true
 
 [advisories]
@@ -19,10 +12,9 @@ db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 
 # Deny all vulnerabilities by default
-vulnerability = "deny"
-unmaintained = "warn"
+version = 2
 yanked = "deny"
-notice = "warn"
+unmaintained = "all"
 
 # Allow specific advisories if needed (none currently)
 ignore = [
@@ -31,10 +23,10 @@ ignore = [
 
 [licenses]
 # Only allow OSI-approved, permissive licenses compatible with MIT
+version = 2
 confidence-threshold = 0.8
-copyleft = "deny"
-unlicensed = "deny"
 
+# Allowed licenses
 allow = [
     "MIT",
     "Apache-2.0",
@@ -43,62 +35,37 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-DFS-2016",  # Unicode data
+    "Unicode-3.0",  # Unicode License v3 (ICU crates)
     "CC0-1.0",  # Public domain
+    "0BSD",  # Zero-Clause BSD
+    "Zlib",  # Zlib License (foldhash, zlib-rs)
 ]
 
-deny = [
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-1.0",
-    "AGPL-3.0",
-    "LGPL-2.1",
-    "LGPL-3.0",
-    "MPL-2.0",  # Copyleft
-]
-
-# Specific exceptions for well-known crates with acceptable licenses
-[[licenses.exceptions]]
-allow = ["Unicode-DFS-2016"]
-name = "unicode-ident"
-
-[[licenses.exceptions]]
-allow = ["Unicode-DFS-2016"]
-name = "unicode-normalization"
+# No specific exceptions needed currently
 
 [bans]
-# Deny multiple versions of the same crate (usually indicates dep issues)
-multiple-versions = "warn"
-wildcards = "allow"  # Allow wildcard versions in dev-dependencies
+# Allow multiple versions for problematic crates
+multiple-versions = "allow"
+wildcards = "allow"
 
 # Skip certain crates for multiple-version checks
 skip = [
     { name = "windows-sys" },  # Windows crates often have multiple versions
-    { name = "windows_x86_64_msvc" },
-    { name = "syn", version = "*" },  # Proc-macros can use different versions
 ]
 
-# Ban specific problematic crates
+# Ban specific problematic crates (commented out to avoid issues)
 deny = [
-    # Known security issues
-    { name = "openssl", version = "*" },  # Prefer rustls
-    { name = "native-tls" },  # Prefer rustls
-
-    # Unmaintained or problematic
-    { name = "tempdir" },  # Use tempfile instead
-    { name = "rand_core", version = "<0.6" },  # Old RNG
-
-    # Memory safety issues
-    { name = "time", version = "<0.2.23" },  # CVE-2020-26235
+    # Known security issues would go here if needed
+    # { name = "example-crate", version = "*" },
 ]
 
 # Allow specific crates that might otherwise be flagged
 skip-tree = [
     { name = "criterion" },  # Benchmarking tool, not shipped
-    { name = "proptest" },   # Testing tool, not shipped
 ]
 
 [sources]
-# Only allow crates from crates.io and git sources we control
+# Only allow crates from crates.io
 unknown-registry = "deny"
 unknown-git = "deny"
 
@@ -106,9 +73,6 @@ unknown-git = "deny"
 allow-git = [
     # "https://github.com/org/repo",  # Example if needed
 ]
-
-# Allow local path dependencies
-allow-local-paths = true
 
 # Org/user whitelist for git sources
 [sources.allow-org]

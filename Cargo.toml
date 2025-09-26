@@ -105,6 +105,9 @@ opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.30.0", features = ["grpc-tonic"] }
 tracing-opentelemetry = "0.31.0"
 
+# Platform dependencies - force consistent versions
+windows-sys = "0.61"
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -177,6 +180,12 @@ members = [
   "crates/skreaver",
 ]
 resolver = "2"
+
+# Linting configuration
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+too_many_arguments = "allow"
+type_complexity = "allow"
 
 # Benchmark configuration
 [[bench]]

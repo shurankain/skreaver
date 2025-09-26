@@ -276,12 +276,25 @@ fn create_complex_registry() -> MockToolRegistry {
         .with_tool(MockTool::new("slow_tool").with_default_response("Slow response"))
 }
 
+fn production_config() -> Criterion {
+    let is_ci = std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok();
+
+    if is_ci {
+        Criterion::default()
+            .sample_size(10)
+            .measurement_time(Duration::from_secs(5))
+            .warm_up_time(Duration::from_secs(1))
+    } else {
+        Criterion::default()
+            .sample_size(50)
+            .measurement_time(Duration::from_secs(30))
+            .warm_up_time(Duration::from_secs(5))
+    }
+}
+
 criterion_group! {
     name = production_benchmarks;
-    config = Criterion::default()
-        .sample_size(50)
-        .measurement_time(Duration::from_secs(30))
-        .warm_up_time(Duration::from_secs(5));
+    config = production_config();
     targets = production_benchmark, enhanced_production_benchmark
 }
 
