@@ -173,6 +173,13 @@ jobs:
     env:
       SKREAVER_BASELINE_DIR: target/performance-baselines
       SKREAVER_ENABLE_REGRESSION_DETECTION: true
+      # Reduce Criterion disk usage
+      CRITERION_OUTPUT_DIRECTORY: target/criterion-ci
+      CRITERION_DISABLE_HTML: "1"
+      CRITERION_DISABLE_GNUPLOT: "1"
+      CRITERION_SAMPLE_SIZE: "10"
+      CRITERION_MEASUREMENT_TIME: "5"
+      CRITERION_WARM_UP_TIME: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -189,9 +196,11 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-bench
+            target/debug/deps
+            target/release/deps
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-bench-v2
           restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-bench-v2
             ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-
 
@@ -216,11 +225,41 @@ jobs:
           sudo apt-get install -y mold
           echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> $GITHUB_ENV
 
+      - name: Check initial disk space
+        run: |
+          echo "=== Initial Disk Usage ==="
+          df -h
+          echo "=== Target directory size ==="
+          du -sh target/ 2>/dev/null || echo "No target directory yet"
+
+      - name: Clean up disk space
+        run: |
+          # Remove unnecessary packages to free space
+          sudo apt-get clean
+          sudo apt-get autoremove -y
+
+          # Remove unnecessary Docker images and containers
+          docker system prune -af 2>/dev/null || true
+
+          # Clean any existing criterion data
+          rm -rf target/criterion 2>/dev/null || true
+
+          echo "=== Disk space after cleanup ==="
+          df -h
+
       - name: Create baseline directory
         run: mkdir -p target/performance-baselines
 
       - name: Build CLI tools
-        run: cargo build --release -p skreaver-cli
+        run: |
+          # Use minimal profile for CI builds to save disk space
+          export CARGO_PROFILE_RELEASE_DEBUG=false
+          export CARGO_PROFILE_RELEASE_STRIP=true
+          cargo build --release -p skreaver-cli
+
+          # Clean build artifacts we don't need
+          find target/release -name "*.rlib" -delete 2>/dev/null || true
+          find target/release -name "*.rmeta" -delete 2>/dev/null || true
 
       - name: Run performance regression detection
         id: regression_check
@@ -230,8 +269,38 @@ jobs:
           export SKREAVER_BRANCH="${{ github.ref_name }}"
           export SKREAVER_CI_RUN_ID="${{ github.run_id }}"
 
+          # Configure Criterion to minimize disk usage
+          export CRITERION_OUTPUT_DIRECTORY="target/criterion-minimal"
+          export CRITERION_DISABLE_HTML=1
+          export CRITERION_DISABLE_GNUPLOT=1
+
+          # Monitor disk space during execution
+          echo "=== Disk space before benchmarks ==="
+          df -h
+
           # Use the Rust CLI for CI-friendly performance analysis
           cargo run --release -p skreaver-cli -- perf ci
+
+          echo "=== Disk space after benchmarks ==="
+          df -h
+
+      - name: Clean up benchmark artifacts
+        run: |
+          # Clean up large criterion files but keep essential data
+          find target/criterion* -name "*.png" -delete 2>/dev/null || true
+          find target/criterion* -name "*.svg" -delete 2>/dev/null || true
+          find target/criterion* -name "raw.csv" -delete 2>/dev/null || true
+          find target/criterion* -name "sample.json" -delete 2>/dev/null || true
+
+          # Clean up build dependencies we don't need anymore
+          rm -rf target/release/deps 2>/dev/null || true
+          rm -rf target/release/build 2>/dev/null || true
+
+          # Compress large log files
+          find target -name "*.log" -size +1M -exec gzip {} \; 2>/dev/null || true
+
+          echo "=== Disk space after cleanup ==="
+          df -h
 
       - name: Save performance baselines
         if: steps.regression_check.outputs.baseline_updated == 'true'

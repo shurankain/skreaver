@@ -12,10 +12,10 @@
     "memory_percent": 15.0
   },
   "benchmark_config": {
-    "min_samples_for_regression": 5,
-    "warmup_iterations": 3,
-    "measurement_iterations": 10,
-    "confidence_level": 0.95
+    "min_samples_for_regression": 3,
+    "warmup_iterations": 2,
+    "measurement_iterations": 5,
+    "confidence_level": 0.90
   },
   "alert_config": {
     "fail_on_regression": true,

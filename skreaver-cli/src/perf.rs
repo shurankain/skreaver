@@ -26,12 +26,12 @@ fn load_config_from_file() -> RegressionConfig {
 
     let mut config = RegressionConfig::default();
 
-    if let Ok(content) = fs::read_to_string(config_path) {
-        if let Ok(perf_config) = serde_json::from_str::<PerformanceConfig>(&content) {
-            config.mean_threshold_percent = perf_config.regression_thresholds.mean_percent;
-            config.p95_threshold_percent = perf_config.regression_thresholds.p95_percent;
-            config.p99_threshold_percent = perf_config.regression_thresholds.p99_percent;
-        }
+    if let Ok(content) = fs::read_to_string(config_path)
+        && let Ok(perf_config) = serde_json::from_str::<PerformanceConfig>(&content)
+    {
+        config.mean_threshold_percent = perf_config.regression_thresholds.mean_percent;
+        config.p95_threshold_percent = perf_config.regression_thresholds.p95_percent;
+        config.p99_threshold_percent = perf_config.regression_thresholds.p99_percent;
     }
 
     config
