@@ -40,7 +40,10 @@ impl<M> NamespacedMemory<M> {
         let fallback_key = MemoryKey::new("fallback_namespaced").unwrap();
         MemoryKey::new(&wrapped_key_str).map_err(|e| MemoryError::StoreFailed {
             key: fallback_key,
-            reason: format!("Invalid namespaced key: {}", e),
+            backend: skreaver_core::error::MemoryBackend::InMemory,
+            kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                validation_error: format!("Invalid namespaced key: {}", e),
+            },
         })
     }
 

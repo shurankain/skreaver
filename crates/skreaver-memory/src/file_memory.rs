@@ -86,7 +86,10 @@ impl SnapshotableMemory for FileMemory {
         // Parse the JSON snapshot
         let new_cache: HashMap<String, String> =
             serde_json::from_str(snapshot).map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("JSON parsing failed: {}", e),
+                backend: skreaver_core::error::MemoryBackend::File,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("JSON parsing failed: {}", e),
+                },
             })?;
 
         // Replace the current cache

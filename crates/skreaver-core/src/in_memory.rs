@@ -147,7 +147,10 @@ impl SnapshotableMemory for InMemoryMemory {
         let serializable_store: HashMap<String, String> =
             serde_json::from_str(snapshot).map_err(|e| {
                 crate::error::MemoryError::RestoreFailed {
-                    reason: format!("JSON parsing failed: {}", e),
+                    backend: crate::error::MemoryBackend::InMemory,
+                    kind: crate::error::MemoryErrorKind::SerializationError {
+                        details: format!("JSON parsing failed: {}", e),
+                    },
                 }
             })?;
 
@@ -156,7 +159,10 @@ impl SnapshotableMemory for InMemoryMemory {
         for (key_str, value) in serializable_store {
             let memory_key =
                 MemoryKey::new(&key_str).map_err(|e| crate::error::MemoryError::RestoreFailed {
-                    reason: format!("Invalid key '{}': {}", key_str, e),
+                    backend: crate::error::MemoryBackend::InMemory,
+                    kind: crate::error::MemoryErrorKind::InvalidKey {
+                        validation_error: format!("Invalid key '{}': {}", key_str, e),
+                    },
                 })?;
             self.store.insert(memory_key, value);
         }

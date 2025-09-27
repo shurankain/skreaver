@@ -211,3 +211,11 @@ harness = false
 [[bench]]
 name = "production_benchmark"
 harness = false
+
+[[bench]]
+name = "standard_benchmark"
+harness = false
+
+[[bench]]
+name = "memory_operations"
+harness = false

@@ -591,7 +591,10 @@ mod tests {
                     Ok(())
                 }
                 Err(err) => Err(crate::error::MemoryError::RestoreFailed {
-                    reason: format!("JSON parsing failed: {}", err),
+                    backend: crate::error::MemoryBackend::InMemory,
+                    kind: crate::error::MemoryErrorKind::SerializationError {
+                        details: format!("JSON parsing failed: {}", err),
+                    },
                 }),
             }
         }

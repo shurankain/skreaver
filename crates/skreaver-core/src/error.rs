@@ -179,32 +179,141 @@ impl std::fmt::Display for InputValidationError {
 
 impl std::error::Error for InputValidationError {}
 
+/// Strongly-typed memory backend types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryBackend {
+    InMemory,
+    File,
+    Redis,
+    Sqlite,
+    Postgres,
+}
+
+impl std::fmt::Display for MemoryBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MemoryBackend::InMemory => write!(f, "in-memory"),
+            MemoryBackend::File => write!(f, "file"),
+            MemoryBackend::Redis => write!(f, "redis"),
+            MemoryBackend::Sqlite => write!(f, "sqlite"),
+            MemoryBackend::Postgres => write!(f, "postgres"),
+        }
+    }
+}
+
+/// Strongly-typed memory operation types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryOperation {
+    Store,
+    Load,
+    Delete,
+    List,
+    Snapshot,
+    Restore,
+    Connect,
+    Disconnect,
+}
+
+impl std::fmt::Display for MemoryOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MemoryOperation::Store => write!(f, "store"),
+            MemoryOperation::Load => write!(f, "load"),
+            MemoryOperation::Delete => write!(f, "delete"),
+            MemoryOperation::List => write!(f, "list"),
+            MemoryOperation::Snapshot => write!(f, "snapshot"),
+            MemoryOperation::Restore => write!(f, "restore"),
+            MemoryOperation::Connect => write!(f, "connect"),
+            MemoryOperation::Disconnect => write!(f, "disconnect"),
+        }
+    }
+}
+
+/// Strongly-typed memory error categories
+#[derive(Debug, Clone)]
+pub enum MemoryErrorKind {
+    /// Key validation failed
+    InvalidKey { validation_error: String },
+
+    /// Value validation failed
+    InvalidValue { validation_error: String },
+
+    /// Key not found during load operation
+    KeyNotFound,
+
+    /// Key already exists during store operation
+    KeyAlreadyExists,
+
+    /// Network connectivity issues
+    NetworkError { details: String },
+
+    /// Disk I/O issues
+    IoError { details: String },
+
+    /// Serialization/deserialization issues
+    SerializationError { details: String },
+
+    /// Resource constraints (memory, disk space, etc.)
+    ResourceExhausted { resource: String, limit: String },
+
+    /// Backend-specific authentication/authorization
+    AccessDenied { reason: String },
+
+    /// Backend service unavailable
+    ServiceUnavailable { retry_after_ms: Option<u64> },
+
+    /// Internal backend error
+    InternalError { backend_error: String },
+}
+
 /// Errors that can occur during memory operations.
 #[derive(Debug, Clone)]
 pub enum MemoryError {
     /// Failed to store data in memory.
     StoreFailed {
         key: crate::memory::MemoryKey,
-        reason: String,
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
     },
 
     /// Failed to load data from memory.
     LoadFailed {
         key: crate::memory::MemoryKey,
-        reason: String,
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    },
+
+    /// Failed to delete data from memory.
+    DeleteFailed {
+        key: crate::memory::MemoryKey,
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
     },
 
     /// Snapshot creation failed.
-    SnapshotFailed { reason: String },
+    SnapshotFailed {
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    },
 
     /// Snapshot restoration failed.
-    RestoreFailed { reason: String },
+    RestoreFailed {
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    },
 
     /// Memory backend connection failed.
-    ConnectionFailed { backend: String, reason: String },
+    ConnectionFailed {
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    },
 
-    /// Serialization/deserialization error.
-    SerializationError { reason: String },
+    /// Generic operation failed with structured information.
+    OperationFailed {
+        operation: MemoryOperation,
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    },
 }
 
 /// Errors that can occur during transactional memory operations.
@@ -320,23 +429,104 @@ impl fmt::Display for ToolError {
 impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MemoryError::StoreFailed { key, reason } => {
-                write!(f, "Failed to store key '{}': {}", key.as_str(), reason)
+            MemoryError::StoreFailed { key, backend, kind } => {
+                write!(
+                    f,
+                    "Failed to store key '{}' on {} backend: {}",
+                    key.as_str(),
+                    backend,
+                    kind
+                )
             }
-            MemoryError::LoadFailed { key, reason } => {
-                write!(f, "Failed to load key '{}': {}", key.as_str(), reason)
+            MemoryError::LoadFailed { key, backend, kind } => {
+                write!(
+                    f,
+                    "Failed to load key '{}' from {} backend: {}",
+                    key.as_str(),
+                    backend,
+                    kind
+                )
             }
-            MemoryError::SnapshotFailed { reason } => {
-                write!(f, "Snapshot creation failed: {}", reason)
+            MemoryError::DeleteFailed { key, backend, kind } => {
+                write!(
+                    f,
+                    "Failed to delete key '{}' from {} backend: {}",
+                    key.as_str(),
+                    backend,
+                    kind
+                )
             }
-            MemoryError::RestoreFailed { reason } => {
-                write!(f, "Snapshot restoration failed: {}", reason)
+            MemoryError::SnapshotFailed { backend, kind } => {
+                write!(
+                    f,
+                    "Snapshot creation failed on {} backend: {}",
+                    backend, kind
+                )
             }
-            MemoryError::ConnectionFailed { backend, reason } => {
-                write!(f, "Connection to {} backend failed: {}", backend, reason)
+            MemoryError::RestoreFailed { backend, kind } => {
+                write!(
+                    f,
+                    "Snapshot restoration failed on {} backend: {}",
+                    backend, kind
+                )
             }
-            MemoryError::SerializationError { reason } => {
-                write!(f, "Serialization error: {}", reason)
+            MemoryError::ConnectionFailed { backend, kind } => {
+                write!(f, "Connection to {} backend failed: {}", backend, kind)
+            }
+            MemoryError::OperationFailed {
+                operation,
+                backend,
+                kind,
+            } => {
+                write!(
+                    f,
+                    "Memory {} operation failed on {} backend: {}",
+                    operation, backend, kind
+                )
+            }
+        }
+    }
+}
+
+impl fmt::Display for MemoryErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemoryErrorKind::InvalidKey { validation_error } => {
+                write!(f, "invalid key: {}", validation_error)
+            }
+            MemoryErrorKind::InvalidValue { validation_error } => {
+                write!(f, "invalid value: {}", validation_error)
+            }
+            MemoryErrorKind::KeyNotFound => {
+                write!(f, "key not found")
+            }
+            MemoryErrorKind::KeyAlreadyExists => {
+                write!(f, "key already exists")
+            }
+            MemoryErrorKind::NetworkError { details } => {
+                write!(f, "network error: {}", details)
+            }
+            MemoryErrorKind::IoError { details } => {
+                write!(f, "I/O error: {}", details)
+            }
+            MemoryErrorKind::SerializationError { details } => {
+                write!(f, "serialization error: {}", details)
+            }
+            MemoryErrorKind::ResourceExhausted { resource, limit } => {
+                write!(f, "{} exhausted (limit: {})", resource, limit)
+            }
+            MemoryErrorKind::AccessDenied { reason } => {
+                write!(f, "access denied: {}", reason)
+            }
+            MemoryErrorKind::ServiceUnavailable { retry_after_ms } => {
+                if let Some(retry_ms) = retry_after_ms {
+                    write!(f, "service unavailable (retry after {}ms)", retry_ms)
+                } else {
+                    write!(f, "service unavailable")
+                }
+            }
+            MemoryErrorKind::InternalError { backend_error } => {
+                write!(f, "internal error: {}", backend_error)
             }
         }
     }
@@ -450,7 +640,10 @@ impl From<crate::memory::InvalidMemoryKey> for TransactionError {
         let fallback_key = crate::memory::MemoryKey::new("fallback").expect("fallback is valid");
         TransactionError::MemoryError(MemoryError::StoreFailed {
             key: fallback_key,
-            reason: err.to_string(),
+            backend: MemoryBackend::InMemory,
+            kind: MemoryErrorKind::InvalidKey {
+                validation_error: err.to_string(),
+            },
         })
     }
 }
@@ -574,6 +767,136 @@ pub type CoordinatorResult<T> = Result<T, CoordinatorError>;
 
 /// Result type alias for transaction operations.
 pub type TransactionResult<T> = Result<T, TransactionError>;
+
+impl MemoryError {
+    /// Create a store failed error with structured information.
+    pub fn store_failed(
+        key: crate::memory::MemoryKey,
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    ) -> Self {
+        MemoryError::StoreFailed { key, backend, kind }
+    }
+
+    /// Create a load failed error with structured information.
+    pub fn load_failed(
+        key: crate::memory::MemoryKey,
+        backend: MemoryBackend,
+        kind: MemoryErrorKind,
+    ) -> Self {
+        MemoryError::LoadFailed { key, backend, kind }
+    }
+
+    /// Create a key not found error.
+    pub fn key_not_found(key: crate::memory::MemoryKey, backend: MemoryBackend) -> Self {
+        MemoryError::LoadFailed {
+            key,
+            backend,
+            kind: MemoryErrorKind::KeyNotFound,
+        }
+    }
+
+    /// Create a network error.
+    pub fn network_error(
+        operation: MemoryOperation,
+        backend: MemoryBackend,
+        details: String,
+    ) -> Self {
+        MemoryError::OperationFailed {
+            operation,
+            backend,
+            kind: MemoryErrorKind::NetworkError { details },
+        }
+    }
+
+    /// Create an I/O error.
+    pub fn io_error(operation: MemoryOperation, backend: MemoryBackend, details: String) -> Self {
+        MemoryError::OperationFailed {
+            operation,
+            backend,
+            kind: MemoryErrorKind::IoError { details },
+        }
+    }
+
+    /// Create a serialization error.
+    pub fn serialization_error(
+        operation: MemoryOperation,
+        backend: MemoryBackend,
+        details: String,
+    ) -> Self {
+        MemoryError::OperationFailed {
+            operation,
+            backend,
+            kind: MemoryErrorKind::SerializationError { details },
+        }
+    }
+
+    /// Create a connection failed error.
+    pub fn connection_failed(backend: MemoryBackend, kind: MemoryErrorKind) -> Self {
+        MemoryError::ConnectionFailed { backend, kind }
+    }
+
+    /// Create a snapshot failed error.
+    pub fn snapshot_failed(backend: MemoryBackend, kind: MemoryErrorKind) -> Self {
+        MemoryError::SnapshotFailed { backend, kind }
+    }
+
+    /// Create a restore failed error.
+    pub fn restore_failed(backend: MemoryBackend, kind: MemoryErrorKind) -> Self {
+        MemoryError::RestoreFailed { backend, kind }
+    }
+
+    /// Get the backend associated with this error.
+    pub fn backend(&self) -> MemoryBackend {
+        match self {
+            MemoryError::StoreFailed { backend, .. }
+            | MemoryError::LoadFailed { backend, .. }
+            | MemoryError::DeleteFailed { backend, .. }
+            | MemoryError::SnapshotFailed { backend, .. }
+            | MemoryError::RestoreFailed { backend, .. }
+            | MemoryError::ConnectionFailed { backend, .. }
+            | MemoryError::OperationFailed { backend, .. } => *backend,
+        }
+    }
+
+    /// Get the error kind associated with this error.
+    pub fn kind(&self) -> &MemoryErrorKind {
+        match self {
+            MemoryError::StoreFailed { kind, .. }
+            | MemoryError::LoadFailed { kind, .. }
+            | MemoryError::DeleteFailed { kind, .. }
+            | MemoryError::SnapshotFailed { kind, .. }
+            | MemoryError::RestoreFailed { kind, .. }
+            | MemoryError::ConnectionFailed { kind, .. }
+            | MemoryError::OperationFailed { kind, .. } => kind,
+        }
+    }
+
+    /// Check if this error is retryable.
+    pub fn is_retryable(&self) -> bool {
+        match self.kind() {
+            MemoryErrorKind::NetworkError { .. }
+            | MemoryErrorKind::ServiceUnavailable { .. }
+            | MemoryErrorKind::ResourceExhausted { .. } => true,
+            MemoryErrorKind::InvalidKey { .. }
+            | MemoryErrorKind::InvalidValue { .. }
+            | MemoryErrorKind::KeyNotFound
+            | MemoryErrorKind::KeyAlreadyExists
+            | MemoryErrorKind::AccessDenied { .. }
+            | MemoryErrorKind::SerializationError { .. }
+            | MemoryErrorKind::IoError { .. }
+            | MemoryErrorKind::InternalError { .. } => false,
+        }
+    }
+
+    /// Get retry delay in milliseconds, if applicable.
+    pub fn retry_after_ms(&self) -> Option<u64> {
+        match self.kind() {
+            MemoryErrorKind::ServiceUnavailable { retry_after_ms } => *retry_after_ms,
+            _ => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

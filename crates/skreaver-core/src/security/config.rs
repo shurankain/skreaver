@@ -7,6 +7,95 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Strongly-typed log level configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        Self::Info
+    }
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Error => write!(f, "ERROR"),
+            LogLevel::Warn => write!(f, "WARN"),
+            LogLevel::Info => write!(f, "INFO"),
+            LogLevel::Debug => write!(f, "DEBUG"),
+            LogLevel::Trace => write!(f, "TRACE"),
+        }
+    }
+}
+
+/// Strongly-typed log format configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    Structured,
+    Json,
+    Text,
+    Compact,
+}
+
+impl Default for LogFormat {
+    fn default() -> Self {
+        Self::Structured
+    }
+}
+
+/// Strongly-typed alert level configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum AlertLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl AlertLevel {
+    /// Get all alert levels as a vector
+    pub fn all() -> Vec<Self> {
+        vec![Self::Low, Self::Medium, Self::High, Self::Critical]
+    }
+
+    /// Check if this alert level is high priority
+    pub fn is_high_priority(&self) -> bool {
+        matches!(self, Self::High | Self::Critical)
+    }
+}
+
+/// Strongly-typed lockdown trigger configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LockdownTrigger {
+    RepeatedViolations,
+    ResourceExhaustion,
+    SuspiciousPatterns,
+    ManualOverride,
+    ExternalThreat,
+}
+
+impl LockdownTrigger {
+    /// Get default lockdown triggers
+    pub fn defaults() -> Vec<Self> {
+        vec![
+            Self::RepeatedViolations,
+            Self::ResourceExhaustion,
+            Self::SuspiciousPatterns,
+        ]
+    }
+}
+
 /// Main security configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
@@ -36,9 +125,9 @@ pub struct AuditConfig {
     pub redact_secrets: bool,
     pub secret_patterns: Vec<String>,
     pub retain_logs_days: u32,
-    pub log_level: String,
+    pub log_level: LogLevel,
     pub include_stack_traces: bool,
-    pub log_format: String,
+    pub log_format: LogFormat,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +145,7 @@ pub struct AlertingConfig {
     pub violation_window_minutes: u32,
     pub webhook_url: Option<String>,
     pub email_recipients: Vec<String>,
-    pub alert_levels: Vec<String>,
+    pub alert_levels: Vec<AlertLevel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,7 +162,7 @@ pub struct EmergencyConfig {
     pub lockdown_enabled: bool,
     pub lockdown_allowed_tools: Vec<String>,
     pub security_contact: String,
-    pub auto_lockdown_triggers: Vec<String>,
+    pub auto_lockdown_triggers: Vec<LockdownTrigger>,
 }
 
 impl SecurityConfig {
@@ -194,6 +283,26 @@ impl SecurityConfig {
             .lockdown_allowed_tools
             .contains(&tool_name.to_string())
     }
+
+    /// Check if a specific lockdown trigger is enabled
+    pub fn has_lockdown_trigger(&self, trigger: LockdownTrigger) -> bool {
+        self.emergency.auto_lockdown_triggers.contains(&trigger)
+    }
+
+    /// Check if alert level should trigger notification
+    pub fn should_alert(&self, level: AlertLevel) -> bool {
+        self.alerting.enabled && self.alerting.alert_levels.contains(&level)
+    }
+
+    /// Get effective log level for tool operations
+    pub fn get_log_level(&self) -> LogLevel {
+        self.audit.log_level
+    }
+
+    /// Get effective log format for tool operations
+    pub fn get_log_format(&self) -> LogFormat {
+        self.audit.log_format
+    }
 }
 
 impl Default for AuditConfig {
@@ -207,9 +316,9 @@ impl Default for AuditConfig {
                 r"(?i)(bearer|authorization).*[:=]\s*['\x22]?([^\x22\s]{20,})".to_string(),
             ],
             retain_logs_days: 90,
-            log_level: "INFO".to_string(),
+            log_level: LogLevel::Info,
             include_stack_traces: false,
-            log_format: "structured".to_string(),
+            log_format: LogFormat::Structured,
         }
     }
 }
@@ -233,7 +342,7 @@ impl Default for AlertingConfig {
             violation_window_minutes: 15,
             webhook_url: None,
             email_recipients: Vec::new(),
-            alert_levels: vec!["HIGH".to_string(), "CRITICAL".to_string()],
+            alert_levels: vec![AlertLevel::High, AlertLevel::Critical],
         }
     }
 }
@@ -256,11 +365,7 @@ impl Default for EmergencyConfig {
             lockdown_enabled: false,
             lockdown_allowed_tools: vec!["memory".to_string(), "logging".to_string()],
             security_contact: "security@example.com".to_string(),
-            auto_lockdown_triggers: vec![
-                "repeated_violations".to_string(),
-                "resource_exhaustion".to_string(),
-                "suspicious_patterns".to_string(),
-            ],
+            auto_lockdown_triggers: LockdownTrigger::defaults(),
         }
     }
 }

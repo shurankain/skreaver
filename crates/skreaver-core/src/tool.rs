@@ -259,7 +259,7 @@ impl std::fmt::Display for StandardTool {
 }
 
 /// Tool dispatch method for improved type safety and performance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolDispatch {
     /// Dispatch to a standard tool using compile-time validation.
     Standard(StandardTool),
@@ -291,7 +291,7 @@ impl ToolDispatch {
 /// `ToolCall` represents an agent's intent to use an external capability.
 /// The coordinator will route this call to the appropriate tool implementation
 /// based on the dispatch field.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolCall {
     /// The tool dispatch method (strongly-typed or custom).
     ///
@@ -650,6 +650,143 @@ pub trait Tool: Send + Sync {
     fn call(&self, input: String) -> ExecutionResult;
 }
 
+/// Non-empty queue of tool calls that prevents invalid states.
+///
+/// This type ensures that when an agent requests tool execution, there is always
+/// at least one tool to execute. It prevents the common error where agents
+/// expect tool results but provide an empty tool queue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmptyToolQueue {
+    first: ToolCall,
+    rest: Vec<ToolCall>,
+}
+
+impl NonEmptyToolQueue {
+    /// Create a new non-empty tool queue with a single tool call.
+    pub fn new(first: ToolCall) -> Self {
+        Self {
+            first,
+            rest: Vec::new(),
+        }
+    }
+
+    /// Create a non-empty tool queue from a vector of tool calls.
+    ///
+    /// Returns `None` if the vector is empty.
+    pub fn from_vec(mut tools: Vec<ToolCall>) -> Option<Self> {
+        if tools.is_empty() {
+            None
+        } else {
+            let first = tools.remove(0);
+            Some(Self { first, rest: tools })
+        }
+    }
+
+    /// Create a non-empty tool queue from a vector, returning an error if empty.
+    pub fn try_from_vec(tools: Vec<ToolCall>) -> Result<Self, EmptyToolQueueError> {
+        Self::from_vec(tools).ok_or(EmptyToolQueueError)
+    }
+
+    /// Add a tool call to the queue.
+    pub fn push(&mut self, tool: ToolCall) {
+        self.rest.push(tool);
+    }
+
+    /// Get the first tool call in the queue.
+    pub fn first(&self) -> &ToolCall {
+        &self.first
+    }
+
+    /// Get all tool calls as a slice.
+    pub fn as_slice(&self) -> Vec<&ToolCall> {
+        std::iter::once(&self.first)
+            .chain(self.rest.iter())
+            .collect()
+    }
+
+    /// Get the number of tool calls in the queue.
+    pub fn len(&self) -> usize {
+        1 + self.rest.len()
+    }
+
+    /// NonEmptyToolQueue is never empty by design.
+    ///
+    /// This method always returns `false` since a NonEmptyToolQueue
+    /// is guaranteed to contain at least one tool call.
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// Check if the queue contains only one tool call.
+    pub fn is_single(&self) -> bool {
+        self.rest.is_empty()
+    }
+
+    /// Iterate over all tool calls in the queue.
+    pub fn iter(&self) -> impl Iterator<Item = &ToolCall> {
+        std::iter::once(&self.first).chain(self.rest.iter())
+    }
+
+    /// Convert to a vector of tool calls.
+    pub fn into_vec(self) -> Vec<ToolCall> {
+        std::iter::once(self.first).chain(self.rest).collect()
+    }
+
+    /// Get a mutable reference to the first tool call.
+    pub fn first_mut(&mut self) -> &mut ToolCall {
+        &mut self.first
+    }
+
+    /// Get mutable references to all tool calls.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut ToolCall> {
+        std::iter::once(&mut self.first).chain(self.rest.iter_mut())
+    }
+}
+
+impl IntoIterator for NonEmptyToolQueue {
+    type Item = ToolCall;
+    type IntoIter = std::iter::Chain<std::iter::Once<ToolCall>, std::vec::IntoIter<ToolCall>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once(self.first).chain(self.rest)
+    }
+}
+
+impl<'a> IntoIterator for &'a NonEmptyToolQueue {
+    type Item = &'a ToolCall;
+    type IntoIter = std::iter::Chain<std::iter::Once<&'a ToolCall>, std::slice::Iter<'a, ToolCall>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once(&self.first).chain(self.rest.iter())
+    }
+}
+
+impl From<ToolCall> for NonEmptyToolQueue {
+    fn from(tool: ToolCall) -> Self {
+        Self::new(tool)
+    }
+}
+
+impl TryFrom<Vec<ToolCall>> for NonEmptyToolQueue {
+    type Error = EmptyToolQueueError;
+
+    fn try_from(tools: Vec<ToolCall>) -> Result<Self, Self::Error> {
+        Self::try_from_vec(tools)
+    }
+}
+
+/// Error returned when trying to create a NonEmptyToolQueue from an empty vector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmptyToolQueueError;
+
+impl std::fmt::Display for EmptyToolQueueError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cannot create NonEmptyToolQueue from empty vector")
+    }
+}
+
+impl std::error::Error for EmptyToolQueueError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -764,5 +901,102 @@ mod tests {
         // Too long name
         let long_name = "a".repeat(65);
         assert!(ToolName::new(&long_name).is_err());
+    }
+
+    #[test]
+    fn test_non_empty_tool_queue_creation() {
+        let tool1 = ToolCall::new("tool1", "input1").unwrap();
+        let queue = NonEmptyToolQueue::new(tool1.clone());
+
+        assert_eq!(queue.len(), 1);
+        assert!(queue.is_single());
+        assert!(!queue.is_empty()); // NonEmptyToolQueue is never empty
+        assert_eq!(queue.first(), &tool1);
+    }
+
+    #[test]
+    fn test_non_empty_tool_queue_from_vec() {
+        let tool1 = ToolCall::new("tool1", "input1").unwrap();
+        let tool2 = ToolCall::new("tool2", "input2").unwrap();
+        let tools = vec![tool1.clone(), tool2.clone()];
+
+        let queue = NonEmptyToolQueue::from_vec(tools).unwrap();
+        assert_eq!(queue.len(), 2);
+        assert!(!queue.is_single());
+        assert_eq!(queue.first(), &tool1);
+
+        let all_tools: Vec<_> = queue.iter().collect();
+        assert_eq!(all_tools.len(), 2);
+        assert_eq!(all_tools[0], &tool1);
+        assert_eq!(all_tools[1], &tool2);
+    }
+
+    #[test]
+    fn test_non_empty_tool_queue_from_empty_vec() {
+        let empty_tools: Vec<ToolCall> = vec![];
+        let result = NonEmptyToolQueue::from_vec(empty_tools);
+        assert!(result.is_none());
+
+        let try_result = NonEmptyToolQueue::try_from_vec(vec![]);
+        assert!(try_result.is_err());
+        assert!(matches!(try_result.unwrap_err(), EmptyToolQueueError));
+    }
+
+    #[test]
+    fn test_non_empty_tool_queue_push() {
+        let tool1 = ToolCall::new("tool1", "input1").unwrap();
+        let tool2 = ToolCall::new("tool2", "input2").unwrap();
+
+        let mut queue = NonEmptyToolQueue::new(tool1.clone());
+        assert_eq!(queue.len(), 1);
+
+        queue.push(tool2.clone());
+        assert_eq!(queue.len(), 2);
+        assert!(!queue.is_single());
+
+        let tools: Vec<_> = queue.iter().cloned().collect();
+        assert_eq!(tools, vec![tool1, tool2]);
+    }
+
+    #[test]
+    fn test_non_empty_tool_queue_iteration() {
+        let tool1 = ToolCall::new("tool1", "input1").unwrap();
+        let tool2 = ToolCall::new("tool2", "input2").unwrap();
+        let tool3 = ToolCall::new("tool3", "input3").unwrap();
+
+        let queue =
+            NonEmptyToolQueue::from_vec(vec![tool1.clone(), tool2.clone(), tool3.clone()]).unwrap();
+
+        // Test iterator
+        let collected: Vec<_> = queue.iter().cloned().collect();
+        assert_eq!(collected, vec![tool1.clone(), tool2.clone(), tool3.clone()]);
+
+        // Test into_iter
+        let collected: Vec<_> = queue.clone().into_iter().collect();
+        assert_eq!(collected, vec![tool1.clone(), tool2.clone(), tool3.clone()]);
+
+        // Test into_vec
+        let vec_result = queue.into_vec();
+        assert_eq!(vec_result, vec![tool1, tool2, tool3]);
+    }
+
+    #[test]
+    fn test_non_empty_tool_queue_conversions() {
+        let tool = ToolCall::new("test_tool", "test_input").unwrap();
+
+        // Test From<ToolCall>
+        let queue: NonEmptyToolQueue = tool.clone().into();
+        assert_eq!(queue.first(), &tool);
+        assert!(queue.is_single());
+
+        // Test TryFrom<Vec<ToolCall>>
+        let tools = vec![tool.clone()];
+        let queue: NonEmptyToolQueue = tools.try_into().unwrap();
+        assert_eq!(queue.first(), &tool);
+
+        // Test TryFrom with empty vec fails
+        let empty_tools: Vec<ToolCall> = vec![];
+        let result: Result<NonEmptyToolQueue, _> = empty_tools.try_into();
+        assert!(result.is_err());
     }
 }

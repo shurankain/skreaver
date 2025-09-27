@@ -75,7 +75,10 @@ impl SimpleStatefulAgent<SimpleInitial> {
         let fallback_key = MemoryKey::new("context_fallback").unwrap();
         let key = MemoryKey::new("context").map_err(|_| MemoryError::LoadFailed {
             key: fallback_key,
-            reason: "Invalid key".to_string(),
+            backend: crate::error::MemoryBackend::InMemory,
+            kind: crate::error::MemoryErrorKind::InvalidKey {
+                validation_error: "Invalid key".to_string(),
+            },
         })?;
 
         Ok(if let Some(context_json) = self.memory.load(&key)? {
