@@ -164,20 +164,18 @@ impl AuditLogger {
             redact_secrets: config.redact_secrets,
             secret_patterns: config.secret_patterns.clone(),
             retain_logs_days: config.retain_logs_days,
-            log_level: match config.log_level.as_str() {
-                "DEBUG" => LogLevel::Debug,
-                "INFO" => LogLevel::Info,
-                "WARNING" => LogLevel::Warning,
-                "ERROR" => LogLevel::Error,
-                "CRITICAL" => LogLevel::Critical,
-                _ => LogLevel::Info,
+            log_level: match config.log_level {
+                super::config::LogLevel::Debug => LogLevel::Debug,
+                super::config::LogLevel::Info => LogLevel::Info,
+                super::config::LogLevel::Warn => LogLevel::Warning,
+                super::config::LogLevel::Error => LogLevel::Error,
+                super::config::LogLevel::Trace => LogLevel::Debug, // Map Trace to Debug
             },
             include_stack_traces: config.include_stack_traces,
-            log_format: match config.log_format.as_str() {
-                "json" => LogFormat::Json,
-                "text" => LogFormat::Text,
-                "structured" => LogFormat::Structured,
-                _ => LogFormat::Structured,
+            log_format: match config.log_format {
+                super::config::LogFormat::Json => LogFormat::Json,
+                super::config::LogFormat::Text => LogFormat::Text,
+                super::config::LogFormat::Structured => LogFormat::Structured,
             },
         };
 
