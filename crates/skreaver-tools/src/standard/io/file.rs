@@ -104,7 +104,17 @@ impl Tool for FileWriteTool {
     fn call(&self, input: String) -> ExecutionResult {
         let config: FileConfig = match serde_json::from_str(&input) {
             Ok(config) => config,
-            Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
+            Err(_) => {
+                // Fallback to simple "path:content" format
+                if let Some((path, content)) = input.split_once(':') {
+                    FileConfig::new(path).with_content(content)
+                } else {
+                    return ExecutionResult::failure(
+                        "Invalid input format. Expected JSON config or 'path:content' format"
+                            .to_string(),
+                    );
+                }
+            }
         };
 
         let content = match &config.content {
