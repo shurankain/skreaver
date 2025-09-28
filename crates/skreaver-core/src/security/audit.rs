@@ -452,6 +452,35 @@ impl AuditLogger {
                     }
                 }
             }
+            LogFormat::Compact => {
+                let message = format!(
+                    "{} {} {}:{} {:?}",
+                    audit_log.timestamp.format(&Rfc3339).unwrap(),
+                    match audit_log.severity {
+                        LogSeverity::Critical => "CRIT",
+                        LogSeverity::Error => "ERR",
+                        LogSeverity::Warning => "WARN",
+                        LogSeverity::Info => "INFO",
+                        LogSeverity::Debug => "DBG",
+                    },
+                    audit_log.agent_id.as_deref().unwrap_or("?"),
+                    audit_log.tool_name.as_deref().unwrap_or("?"),
+                    audit_log.event
+                );
+
+                match audit_log.severity {
+                    LogSeverity::Critical | LogSeverity::Error => {
+                        tracing::error!(target: "skreaver_security", "{}", message)
+                    }
+                    LogSeverity::Warning => {
+                        tracing::warn!(target: "skreaver_security", "{}", message)
+                    }
+                    LogSeverity::Info => tracing::info!(target: "skreaver_security", "{}", message),
+                    LogSeverity::Debug => {
+                        tracing::debug!(target: "skreaver_security", "{}", message)
+                    }
+                }
+            }
         }
     }
 
