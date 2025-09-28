@@ -155,6 +155,7 @@ pub enum LogFormat {
     Json,
     Text,
     Structured,
+    Compact,
 }
 
 impl AuditLogger {
@@ -176,6 +177,7 @@ impl AuditLogger {
                 super::config::LogFormat::Json => LogFormat::Json,
                 super::config::LogFormat::Text => LogFormat::Text,
                 super::config::LogFormat::Structured => LogFormat::Structured,
+                super::config::LogFormat::Compact => LogFormat::Compact,
             },
         };
 
