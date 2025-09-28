@@ -81,7 +81,11 @@ fn main() -> SkreverResult<()> {
     println!("\n❌ Example 4: Memory error example");
     let memory_error = MemoryError::StoreFailed {
         key: MemoryKey::new("test_key").unwrap(),
-        reason: "Disk full".to_string(),
+        backend: skreaver::error::MemoryBackend::File,
+        kind: skreaver::error::MemoryErrorKind::ResourceExhausted {
+            resource: "disk space".to_string(),
+            limit: "100GB".to_string(),
+        },
     };
 
     let skrever_error: SkreverError = memory_error.into();

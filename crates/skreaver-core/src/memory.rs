@@ -487,7 +487,10 @@ where
 ///         match serde_json::from_str(snapshot) {
 ///             Ok(data) => { self.store = data; Ok(()) }
 ///             Err(e) => Err(skreaver_core::error::MemoryError::RestoreFailed {
-///                 reason: e.to_string()
+///                 backend: skreaver_core::error::MemoryBackend::InMemory,
+///                 kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+///                     details: e.to_string(),
+///                 },
 ///             })
 ///         }
 ///     }
