@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod auth;
+pub mod collections;
 pub mod error;
 pub mod in_memory;
 pub mod memory;
@@ -22,6 +23,11 @@ pub use security::{
     SecurityConfig, SecurityContext, SecurityError, SecurityManager, SecurityPolicy,
 };
 pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
+
+// Re-export collections types
+pub use collections::{
+    NonEmptyQueue, NonEmptyVec, non_empty_queue::EmptyQueueError, non_empty_vec::EmptyVecError,
+};
 
 // Re-export auth types
 pub use auth::{

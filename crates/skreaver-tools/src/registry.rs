@@ -1,4 +1,5 @@
 use super::{ExecutionResult, ToolCall};
+use skreaver_core::collections::NonEmptyVec;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -55,6 +56,41 @@ pub trait ToolRegistry {
     fn try_dispatch(&self, call: &ToolCall) -> Result<ExecutionResult, String> {
         self.dispatch_ref(call)
             .ok_or(format!("Tool not found: {}", call.name()))
+    }
+
+    /// Dispatch multiple tool calls in sequence.
+    ///
+    /// This method uses `NonEmptyVec` to provide compile-time guarantees that at least
+    /// one tool call will be dispatched, preventing empty tool execution states.
+    ///
+    /// # Parameters
+    ///
+    /// * `calls` - Non-empty vector of tool calls to dispatch
+    ///
+    /// # Returns
+    ///
+    /// A `NonEmptyVec<ExecutionResult>` containing results in the same order as the calls.
+    /// Failed lookups are returned as `ExecutionResult::Error` with a message indicating
+    /// the tool was not found.
+    fn dispatch_batch(&self, calls: &NonEmptyVec<ToolCall>) -> NonEmptyVec<ExecutionResult> {
+        let head = self
+            .dispatch_ref(calls.head())
+            .unwrap_or_else(|| ExecutionResult::Failure {
+                error: format!("Tool not found: {}", calls.head().name()),
+            });
+
+        let tail: Vec<ExecutionResult> = calls
+            .tail()
+            .iter()
+            .map(|call| {
+                self.dispatch_ref(call)
+                    .unwrap_or_else(|| ExecutionResult::Failure {
+                        error: format!("Tool not found: {}", call.name()),
+                    })
+            })
+            .collect();
+
+        NonEmptyVec::new(head, tail)
     }
 }
 
@@ -288,5 +324,57 @@ mod tests {
         assert_eq!(upper.unwrap().output(), "SKREAVER");
         assert_eq!(reversed.unwrap().output(), "revaerks");
         assert!(missing.is_none());
+    }
+
+    #[test]
+    fn registry_dispatches_batch_with_nonempty_vec() {
+        use skreaver_core::collections::NonEmptyVec;
+
+        let registry = InMemoryToolRegistry::new()
+            .with_tool("uppercase", Arc::new(UppercaseTool))
+            .with_tool("reverse", Arc::new(ReverseTool));
+
+        // Create a non-empty vector of tool calls
+        let calls = NonEmptyVec::new(
+            ToolCall::new("uppercase", "hello").expect("Valid tool name"),
+            vec![
+                ToolCall::new("reverse", "world").expect("Valid tool name"),
+                ToolCall::new("uppercase", "test").expect("Valid tool name"),
+            ],
+        );
+
+        // Dispatch all calls at once
+        let results = registry.dispatch_batch(&calls);
+
+        // Verify all results
+        assert_eq!(results.len(), 3);
+        assert_eq!(results.head().output(), "HELLO");
+        assert_eq!(results.tail()[0].output(), "dlrow");
+        assert_eq!(results.tail()[1].output(), "TEST");
+    }
+
+    #[test]
+    fn registry_batch_handles_missing_tools() {
+        use skreaver_core::collections::NonEmptyVec;
+
+        let registry = InMemoryToolRegistry::new().with_tool("uppercase", Arc::new(UppercaseTool));
+
+        let calls = NonEmptyVec::new(
+            ToolCall::new("uppercase", "hello").expect("Valid tool name"),
+            vec![ToolCall::new("nonexistent", "world").expect("Valid tool name")],
+        );
+
+        let results = registry.dispatch_batch(&calls);
+
+        // First result should succeed
+        assert_eq!(results.head().output(), "HELLO");
+
+        // Second result should be an error
+        match &results.tail()[0] {
+            ExecutionResult::Failure { error } => {
+                assert!(error.contains("Tool not found: nonexistent"));
+            }
+            _ => panic!("Expected failure result"),
+        }
     }
 }

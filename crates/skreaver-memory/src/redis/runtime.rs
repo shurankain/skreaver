@@ -26,7 +26,10 @@ where
                 Some(
                     tokio::runtime::Runtime::new().map_err(|e| MemoryError::LoadFailed {
                         key: MemoryKey::new("runtime").unwrap(),
-                        reason: format!("Failed to create async runtime: {}", e),
+                        backend: skreaver_core::error::MemoryBackend::Redis,
+                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                            backend_error: format!("Failed to create async runtime: {}", e),
+                        },
                     })?,
                 );
         }

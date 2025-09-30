@@ -375,3 +375,270 @@ impl Default for SecurityConfig {
         Self::create_default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    #[test]
+    fn test_load_from_toml_valid_config() {
+        let toml_content = r#"
+[metadata]
+version = "0.1.0"
+created = "2025-09-08"
+description = "Test configuration"
+
+[fs]
+enabled = true
+allow_paths = ["/tmp"]
+deny_patterns = [".."]
+max_file_size_bytes = 16777216
+max_files_per_operation = 100
+follow_symlinks = false
+scan_content = true
+
+[http]
+enabled = true
+allow_domains = ["example.com"]
+deny_domains = ["localhost"]
+allow_methods = ["GET", "POST"]
+timeout_seconds = 30
+max_response_bytes = 33554432
+max_redirects = 3
+user_agent = "test-agent"
+allow_local = false
+default_headers = []
+
+[network]
+enabled = false
+allow_ports = []
+deny_ports = [22, 23]
+ttl_seconds = 300
+allow_private_networks = false
+
+[resources]
+max_memory_mb = 128
+max_cpu_percent = 50
+max_execution_time_seconds = 300
+max_concurrent_operations = 10
+max_open_files = 100
+max_disk_usage_mb = 512
+
+[audit]
+log_all_operations = true
+redact_secrets = true
+secret_patterns = ["pattern1"]
+retain_logs_days = 90
+log_level = "INFO"
+include_stack_traces = false
+log_format = "structured"
+
+[secrets]
+environment_only = true
+env_prefix = "TEST_"
+auto_rotate = false
+min_secret_length = 16
+
+[alerting]
+enabled = true
+violation_threshold = 5
+violation_window_minutes = 15
+alert_levels = ["HIGH", "CRITICAL"]
+email_recipients = []
+
+[development]
+enabled = false
+skip_domain_validation = false
+skip_path_validation = false
+skip_resource_limits = false
+dev_allow_domains = ["localhost"]
+
+[emergency]
+lockdown_enabled = false
+lockdown_allowed_tools = ["memory"]
+security_contact = "security@example.com"
+auto_lockdown_triggers = ["repeated_violations"]
+
+[tools]
+"#;
+
+        let config = SecurityConfig::load_from_toml(toml_content);
+        assert!(
+            config.is_ok(),
+            "Failed to parse valid TOML: {:?}",
+            config.err()
+        );
+
+        let config = config.unwrap();
+        assert_eq!(config.metadata.version, "0.1.0");
+        assert!(config.fs.enabled);
+        assert_eq!(config.fs.allow_paths, vec![PathBuf::from("/tmp")]);
+        assert_eq!(config.http.timeout.seconds(), 30);
+        assert_eq!(config.resources.max_memory_mb, 128);
+    }
+
+    #[test]
+    fn test_load_actual_security_toml() {
+        // Test with actual skreaver-security.toml file
+        let result = SecurityConfig::load_from_file("../../../skreaver-security.toml");
+
+        // Should either load successfully or give clear error
+        match result {
+            Ok(config) => {
+                assert_eq!(config.metadata.version, "0.1.0");
+                assert!(config.fs.enabled);
+                assert!(!config.fs.allow_paths.is_empty());
+            }
+            Err(e) => {
+                // File might not exist in test environment, that's okay
+                println!("Note: Could not load skreaver-security.toml: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_invalid_toml_syntax() {
+        let invalid_toml = r#"
+[metadata
+version = "broken
+"#;
+
+        let result = SecurityConfig::load_from_toml(invalid_toml);
+        assert!(result.is_err());
+
+        if let Err(SecurityError::ConfigError { message }) = result {
+            assert!(message.contains("parse"));
+        }
+    }
+
+    #[test]
+    fn test_missing_required_fields() {
+        let incomplete_toml = r#"
+[metadata]
+version = "0.1.0"
+"#;
+
+        let result = SecurityConfig::load_from_toml(incomplete_toml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_memory_limit() {
+        let mut config = SecurityConfig::create_default();
+        config.resources.max_memory_mb = 0;
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(SecurityError::ConfigError { message }) = result {
+            assert!(message.contains("Memory limit"));
+        }
+    }
+
+    #[test]
+    fn test_validate_zero_timeout() {
+        let mut config = SecurityConfig::create_default();
+        config.resources.max_execution_time = Duration::from_secs(0);
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(SecurityError::ConfigError { message }) = result {
+            assert!(message.contains("timeout"));
+        }
+    }
+
+    #[test]
+    fn test_validate_fs_enabled_no_paths() {
+        let mut config = SecurityConfig::create_default();
+        config.fs.enabled = true;
+        config.fs.allow_paths.clear();
+
+        let result = config.validate();
+        assert!(result.is_err());
+
+        if let Err(SecurityError::ConfigError { message }) = result {
+            assert!(message.contains("allowed paths"));
+        }
+    }
+
+    #[test]
+    fn test_get_tool_policy() {
+        let config = SecurityConfig::create_default();
+
+        // Test with non-existent tool
+        let policy = config.get_tool_policy("nonexistent");
+        assert_eq!(policy.fs_policy.enabled, config.fs.enabled);
+
+        // Test with tool that has custom settings
+        let mut config_with_tools = config.clone();
+        let tool_policy = ToolPolicy {
+            fs_enabled: Some(false),
+            ..Default::default()
+        };
+        config_with_tools
+            .tools
+            .insert("restricted_tool".to_string(), tool_policy);
+
+        let policy = config_with_tools.get_tool_policy("restricted_tool");
+        assert!(!policy.fs_policy.enabled);
+    }
+
+    #[test]
+    fn test_lockdown_mode() {
+        let mut config = SecurityConfig::create_default();
+        assert!(!config.is_lockdown_active());
+
+        config.emergency.lockdown_enabled = true;
+        assert!(config.is_lockdown_active());
+
+        assert!(config.is_tool_allowed_in_lockdown("memory"));
+        assert!(!config.is_tool_allowed_in_lockdown("http"));
+    }
+
+    #[test]
+    fn test_alert_levels() {
+        let config = SecurityConfig::create_default();
+
+        assert!(config.should_alert(AlertLevel::High));
+        assert!(config.should_alert(AlertLevel::Critical));
+        assert!(!config.should_alert(AlertLevel::Low));
+    }
+
+    #[test]
+    fn test_log_level_display() {
+        assert_eq!(LogLevel::Info.to_string(), "INFO");
+        assert_eq!(LogLevel::Error.to_string(), "ERROR");
+        assert_eq!(LogLevel::Debug.to_string(), "DEBUG");
+    }
+
+    #[test]
+    fn test_lockdown_triggers() {
+        let config = SecurityConfig::create_default();
+
+        assert!(config.has_lockdown_trigger(LockdownTrigger::RepeatedViolations));
+        assert!(config.has_lockdown_trigger(LockdownTrigger::ResourceExhaustion));
+        assert!(!config.has_lockdown_trigger(LockdownTrigger::ManualOverride));
+    }
+
+    #[test]
+    fn test_alert_level_priority() {
+        assert!(AlertLevel::Critical.is_high_priority());
+        assert!(AlertLevel::High.is_high_priority());
+        assert!(!AlertLevel::Medium.is_high_priority());
+        assert!(!AlertLevel::Low.is_high_priority());
+    }
+
+    #[test]
+    fn test_default_configs() {
+        let config = SecurityConfig::create_default();
+
+        assert_eq!(config.audit.log_level, LogLevel::Info);
+        assert_eq!(config.audit.log_format, LogFormat::Structured);
+        assert!(config.audit.redact_secrets);
+        assert_eq!(config.secrets.min_secret_length, 16);
+        assert_eq!(config.alerting.violation_threshold, 5);
+    }
+}

@@ -45,12 +45,12 @@ impl Drop for PooledConnection {
             let pool_size = self.pool_size;
 
             // Return connection to pool synchronously using try_lock to avoid blocking
-            if let Ok(mut pool_guard) = pool.try_lock() {
-                if pool_guard.len() < pool_size {
-                    pool_guard.push(client);
-                }
-                // If pool is full or locked, connection will be dropped
+            if let Ok(mut pool_guard) = pool.try_lock()
+                && pool_guard.len() < pool_size
+            {
+                pool_guard.push(client);
             }
+            // If pool is full or locked, connection will be dropped
             // If we can't get the lock immediately, just drop the connection
             // This prevents deadlocks in Drop implementations
         }
@@ -79,8 +79,10 @@ impl PostgresPool {
                     .connect(NoTls)
                     .await
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "postgres".to_string(),
-                        reason: Self::sanitize_error(&e),
+                        backend: skreaver_core::error::MemoryBackend::Postgres,
+                        kind: skreaver_core::error::MemoryErrorKind::IoError {
+                            details: Self::sanitize_error(&e),
+                        },
                     })?;
 
             // Spawn connection task
@@ -125,8 +127,10 @@ impl PostgresPool {
             .query_one("SELECT 1", &[])
             .await
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: Self::sanitize_error(&e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: Self::sanitize_error(&e),
+                },
             })?;
 
         Ok(())
@@ -162,11 +166,14 @@ impl PostgresPool {
         let current_active = *self.active_count.read().await;
         if current_active >= self.config.pool_size {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: format!(
-                    "Connection pool exhausted: {} active connections (max: {})",
-                    current_active, self.config.pool_size
-                ),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::ResourceExhausted {
+                    resource: "connection_pool".to_string(),
+                    limit: format!(
+                        "{} active connections (max: {})",
+                        current_active, self.config.pool_size
+                    ),
+                },
             });
         }
 
@@ -177,8 +184,10 @@ impl PostgresPool {
                 .connect(NoTls)
                 .await
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "postgres".to_string(),
-                    reason: Self::sanitize_error(&e),
+                    backend: skreaver_core::error::MemoryBackend::Postgres,
+                    kind: skreaver_core::error::MemoryErrorKind::IoError {
+                        details: Self::sanitize_error(&e),
+                    },
                 })?;
 
         // Spawn connection task

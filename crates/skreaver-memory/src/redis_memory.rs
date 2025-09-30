@@ -181,7 +181,10 @@ impl RedisMemory {
             self.update_metrics(false, start.elapsed());
             MemoryError::LoadFailed {
                 key: key.clone(),
-                reason: Self::sanitize_error(&e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                    details: Self::sanitize_error(&e),
+                },
             }
         })?;
 
@@ -207,7 +210,10 @@ impl RedisMemory {
             self.update_metrics(false, start.elapsed());
             MemoryError::LoadFailed {
                 key: MemoryKey::new("batch").unwrap(),
-                reason: Self::sanitize_error(&e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                    details: Self::sanitize_error(&e),
+                },
             }
         })?;
 
@@ -226,7 +232,10 @@ impl RedisMemory {
             self.update_metrics(false, start.elapsed());
             MemoryError::StoreFailed {
                 key: update.key.clone(),
-                reason: Self::sanitize_error(&e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                    details: Self::sanitize_error(&e),
+                },
             }
         })?;
 
@@ -255,7 +264,10 @@ impl RedisMemory {
             self.update_metrics(false, start.elapsed());
             MemoryError::StoreFailed {
                 key: MemoryKey::new("batch").unwrap(),
-                reason: Self::sanitize_error(&e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                    details: Self::sanitize_error(&e),
+                },
             }
         })?;
 
@@ -286,7 +298,10 @@ impl RedisMemory {
                 .await
                 .map_err(|e| MemoryError::LoadFailed {
                     key: MemoryKey::new("scan").unwrap(),
-                    reason: Self::sanitize_error(&e),
+                    backend: skreaver_core::error::MemoryBackend::Redis,
+                    kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                        details: Self::sanitize_error(&e),
+                    },
                 })?;
 
             all_keys.extend(keys);
@@ -307,7 +322,10 @@ impl RedisMemory {
                 .await
                 .map_err(|e| MemoryError::LoadFailed {
                     key: MemoryKey::new("snapshot").unwrap(),
-                    reason: Self::sanitize_error(&e),
+                    backend: skreaver_core::error::MemoryBackend::Redis,
+                    kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                        details: Self::sanitize_error(&e),
+                    },
                 })?;
 
         // Build snapshot data
@@ -329,7 +347,10 @@ impl RedisMemory {
         serde_json::to_string(&snapshot_data)
             .map(Some)
             .map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("Failed to serialize snapshot: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("Failed to serialize snapshot: {}", e),
+                },
             })
     }
 
@@ -338,7 +359,10 @@ impl RedisMemory {
         // Parse the JSON snapshot
         let snapshot_data: HashMap<String, String> =
             serde_json::from_str(snapshot).map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("JSON parsing failed: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("JSON parsing failed: {}", e),
+                },
             })?;
 
         let mut conn = self.get_connection().await?;
@@ -378,7 +402,10 @@ impl RedisMemory {
             .query_async(&mut *conn)
             .await
             .map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("Failed to restore snapshot: {}", Self::sanitize_error(&e)),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                    details: format!("Failed to restore snapshot: {}", Self::sanitize_error(&e)),
+                },
             })?;
 
         Ok(())
@@ -444,10 +471,10 @@ impl SnapshotableMemory for RedisMemory {
 
 #[cfg(feature = "redis")]
 impl RedisConnectionProvider for RedisMemory {
-    fn get_connection(
+    async fn get_connection(
         &self,
-    ) -> impl std::future::Future<Output = Result<PooledConnection, MemoryError>> + Send {
-        async move { RedisPoolUtils::get_connection(&self.pool, &self.metrics).await }
+    ) -> Result<PooledConnection, MemoryError> {
+        RedisPoolUtils::get_connection(&self.pool, &self.metrics).await
     }
 }
 

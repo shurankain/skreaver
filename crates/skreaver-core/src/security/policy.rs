@@ -363,6 +363,7 @@ pub struct FileSystemPolicy {
     pub enabled: bool,
     pub allow_paths: Vec<PathBuf>,
     pub deny_patterns: Vec<String>,
+    #[serde(alias = "max_file_size_bytes")]
     pub max_file_size: FileSizeLimit,
     pub max_files_per_operation: FileCountLimit,
     pub follow_symlinks: bool,
@@ -455,7 +456,9 @@ pub struct HttpPolicy {
     pub allow_domains: Vec<String>,
     pub deny_domains: Vec<String>,
     pub allow_methods: Vec<String>,
+    #[serde(alias = "timeout_seconds")]
     pub timeout: TimeoutSeconds,
+    #[serde(alias = "max_response_bytes")]
     pub max_response_size: ResponseSizeLimit,
     pub max_redirects: RedirectLimit,
     pub user_agent: String,
@@ -560,6 +563,7 @@ pub struct NetworkPolicy {
     pub enabled: bool,
     pub allow_ports: Vec<NetworkPort>,
     pub deny_ports: Vec<NetworkPort>,
+    #[serde(alias = "ttl_seconds")]
     pub ttl: TimeoutSeconds,
     pub allow_private_networks: bool,
 }

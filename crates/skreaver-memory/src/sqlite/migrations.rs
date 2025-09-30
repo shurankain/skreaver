@@ -78,8 +78,10 @@ impl MigrationEngine {
             [],
         )
         .map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to create migrations table: {}", e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to create migrations table: {}", e),
+            },
         })?;
 
         // Get current version
@@ -109,15 +111,19 @@ impl MigrationEngine {
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to start migration transaction: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to start migration transaction: {}", e),
+                },
             })?;
 
         // Execute migration
         tx.execute_batch(&migration.up)
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Migration {} failed: {}", migration.version, e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Migration {} failed: {}", migration.version, e),
+                },
             })?;
 
         // Record migration
@@ -126,13 +132,17 @@ impl MigrationEngine {
             params![migration.version, migration.description],
         )
         .map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to record migration {}: {}", migration.version, e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to record migration {}: {}", migration.version, e),
+            },
         })?;
 
         tx.commit().map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to commit migration {}: {}", migration.version, e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to commit migration {}: {}", migration.version, e),
+            },
         })?;
 
         Ok(())
@@ -161,17 +171,24 @@ impl MigrationEngine {
                 let tx =
                     conn.unchecked_transaction()
                         .map_err(|e| MemoryError::ConnectionFailed {
-                            backend: "sqlite".to_string(),
-                            reason: format!("Failed to start rollback transaction: {}", e),
+                            backend: skreaver_core::error::MemoryBackend::Sqlite,
+                            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                                backend_error: format!(
+                                    "Failed to start rollback transaction: {}",
+                                    e
+                                ),
+                            },
                         })?;
 
                 tx.execute_batch(down_sql)
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "sqlite".to_string(),
-                        reason: format!(
-                            "Rollback of migration {} failed: {}",
-                            migration.version, e
-                        ),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                            backend_error: format!(
+                                "Rollback of migration {} failed: {}",
+                                migration.version, e
+                            ),
+                        },
                     })?;
 
                 tx.execute(
@@ -179,24 +196,33 @@ impl MigrationEngine {
                     params![migration.version],
                 )
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!(
-                        "Failed to remove migration record {}: {}",
-                        migration.version, e
-                    ),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!(
+                            "Failed to remove migration record {}: {}",
+                            migration.version, e
+                        ),
+                    },
                 })?;
 
                 tx.commit().map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!("Failed to commit rollback {}: {}", migration.version, e),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!(
+                            "Failed to commit rollback {}: {}",
+                            migration.version, e
+                        ),
+                    },
                 })?;
             } else {
                 return Err(MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!(
-                        "Migration {} has no down migration defined",
-                        migration.version
-                    ),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!(
+                            "Migration {} has no down migration defined",
+                            migration.version
+                        ),
+                    },
                 });
             }
         }
@@ -229,8 +255,10 @@ impl MigrationEngine {
                 "SELECT version, description, applied_at FROM schema_migrations ORDER BY version",
             )
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to prepare migration query: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to prepare migration query: {}", e),
+                },
             })?;
 
         let applied_migrations: Vec<AppliedMigration> = stmt
@@ -242,13 +270,17 @@ impl MigrationEngine {
                 })
             })
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to query migrations: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to query migrations: {}", e),
+                },
             })?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to read migration data: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to read migration data: {}", e),
+                },
             })?;
 
         Ok(MigrationStatus {

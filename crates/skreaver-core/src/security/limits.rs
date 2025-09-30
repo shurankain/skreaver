@@ -14,7 +14,7 @@ pub struct ResourceLimits {
     /// Maximum CPU usage percentage
     pub max_cpu_percent: f64,
     /// Maximum execution time for single operation
-    #[serde(with = "duration_serde")]
+    #[serde(with = "duration_serde", alias = "max_execution_time_seconds")]
     pub max_execution_time: Duration,
     /// Maximum number of concurrent operations
     pub max_concurrent_operations: u32,

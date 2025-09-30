@@ -100,16 +100,20 @@ impl PostgresMigrationEngine {
                 .transaction()
                 .await
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "postgres".to_string(),
-                    reason: format!("Failed to start migration transaction: {}", e),
+                    backend: skreaver_core::error::MemoryBackend::Postgres,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!("Failed to start migration transaction: {}", e),
+                    },
                 })?;
 
         // Execute migration
         tx.batch_execute(&migration.up_sql)
             .await
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: format!("Migration {} failed: {}", migration.version, e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Migration {} failed: {}", migration.version, e),
+                },
             })?;
 
         // Record migration
@@ -119,15 +123,22 @@ impl PostgresMigrationEngine {
         )
         .await
         .map_err(|e| MemoryError::ConnectionFailed {
-            backend: "postgres".to_string(),
-            reason: format!("Failed to record migration {}: {}", migration.version, e),
+            backend: skreaver_core::error::MemoryBackend::Postgres,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to record migration {}: {}", migration.version, e),
+            },
         })?;
 
         tx.commit()
             .await
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: format!("Failed to commit migration {}: {}", migration.version, e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!(
+                        "Failed to commit migration {}: {}",
+                        migration.version, e
+                    ),
+                },
             })?;
 
         Ok(())

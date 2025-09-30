@@ -48,20 +48,22 @@ impl PostgresConfig {
         let config: Config = url
             .parse()
             .map_err(|e: PgError| MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: format!("Invalid database URL: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: format!("Invalid database URL: {}", e),
+                },
             })?;
 
         Ok(Self {
             host: config
                 .get_hosts()
-                .get(0)
+                .first()
                 .map(|h| match h {
                     tokio_postgres::config::Host::Tcp(s) => s.clone(),
                     tokio_postgres::config::Host::Unix(path) => path.to_string_lossy().to_string(),
                 })
                 .unwrap_or_else(|| "localhost".to_string()),
-            port: config.get_ports().get(0).copied().unwrap_or(5432),
+            port: config.get_ports().first().copied().unwrap_or(5432),
             database: config.get_dbname().unwrap_or("skreaver").to_string(),
             user: config.get_user().unwrap_or("skreaver").to_string(),
             password: config
@@ -81,37 +83,47 @@ impl PostgresConfig {
         // Basic validation
         if self.host.is_empty() {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Host cannot be empty".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Host cannot be empty".to_string(),
+                },
             });
         }
 
         if self.database.is_empty() {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Database name cannot be empty".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Database name cannot be empty".to_string(),
+                },
             });
         }
 
         if self.user.is_empty() {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Username cannot be empty".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Username cannot be empty".to_string(),
+                },
             });
         }
 
         if self.pool_size == 0 || self.pool_size > 100 {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Pool size must be between 1 and 100".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Pool size must be between 1 and 100".to_string(),
+                },
             });
         }
 
         // Security validations
         if self.host.contains("..") || self.host.contains("//") {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Invalid host: potential path traversal detected".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Invalid host: potential path traversal detected".to_string(),
+                },
             });
         }
 
@@ -122,8 +134,10 @@ impl PostgresConfig {
             .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Database name contains invalid characters".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Database name contains invalid characters".to_string(),
+                },
             });
         }
 

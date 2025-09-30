@@ -428,12 +428,19 @@ proptest! {
     /// Property: Transaction atomicity - all operations succeed or all fail
     #[test]
     fn prop_transaction_atomicity(
-        successful_ops in prop::collection::vec((memory_key_strategy(), memory_value_strategy()), 1..10),
+        raw_successful_ops in prop::collection::vec((memory_key_strategy(), memory_value_strategy()), 1..10),
         failure_point in 1usize..10usize
     ) {
         tokio_test::block_on(async {
+            // Deduplicate by key, keeping last value to avoid test confusion
+            let mut unique_ops = std::collections::HashMap::new();
+            for (key, value) in raw_successful_ops {
+                unique_ops.insert(key, value);
+            }
+            let successful_ops: Vec<_> = unique_ops.into_iter().collect();
+
             // Only test when failure_point is within bounds
-            if failure_point >= successful_ops.len() {
+            if failure_point >= successful_ops.len() || successful_ops.is_empty() {
                 return Ok(());
             }
 

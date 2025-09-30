@@ -87,8 +87,10 @@ impl RedisConnection<Disconnected> {
             }
             Err(e) => {
                 let error = MemoryError::ConnectionFailed {
-                    backend: "redis".to_string(),
-                    reason: format!("Failed to get connection from pool: {}", e),
+                    backend: skreaver_core::error::MemoryBackend::Redis,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!("Failed to get connection from pool: {}", e),
+                    },
                 };
                 Err((self, error))
             }
@@ -145,7 +147,10 @@ impl RedisConnection<Connected> {
         let conn = self.connection();
         let result = f(conn).await.map_err(|e| MemoryError::LoadFailed {
             key: skreaver_core::memory::MemoryKey::new("redis_operation").unwrap(),
-            reason: format!("Redis operation failed: {}", e),
+            backend: skreaver_core::error::MemoryBackend::Redis,
+            kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                details: format!("Redis operation failed: {}", e),
+            },
         })?;
 
         self.update_activity();
@@ -165,7 +170,10 @@ impl RedisConnection<Connected> {
             Err(redis_error) => {
                 let error = MemoryError::LoadFailed {
                     key: skreaver_core::memory::MemoryKey::new("ping").unwrap(),
-                    reason: format!("Ping failed: {}", redis_error),
+                    backend: skreaver_core::error::MemoryBackend::Redis,
+                    kind: skreaver_core::error::MemoryErrorKind::NetworkError {
+                        details: format!("Ping failed: {}", redis_error),
+                    },
                 };
                 let disconnected = RedisConnection {
                     connection: None,
@@ -250,11 +258,13 @@ impl StatefulConnectionManager {
         }
 
         Err(MemoryError::ConnectionFailed {
-            backend: "redis".to_string(),
-            reason: format!(
-                "Failed to connect after {} attempts",
-                self.max_retry_attempts
-            ),
+            backend: skreaver_core::error::MemoryBackend::Redis,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!(
+                    "Failed to connect after {} attempts",
+                    self.max_retry_attempts
+                ),
+            },
         })
     }
 
@@ -306,11 +316,13 @@ impl StatefulConnectionManager {
         }
 
         Err(MemoryError::ConnectionFailed {
-            backend: "redis".to_string(),
-            reason: format!(
-                "Failed to reconnect after {} attempts",
-                self.max_retry_attempts
-            ),
+            backend: skreaver_core::error::MemoryBackend::Redis,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!(
+                    "Failed to reconnect after {} attempts",
+                    self.max_retry_attempts
+                ),
+            },
         })
     }
 }

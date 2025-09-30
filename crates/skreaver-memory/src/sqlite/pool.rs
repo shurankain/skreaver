@@ -10,7 +10,7 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use skreaver_core::error::MemoryError;
+use skreaver_core::error::{MemoryError, MemoryBackend, MemoryErrorKind};
 
 /// Connection pool for SQLite with configurable size and thread safety
 pub struct SqlitePool {
@@ -71,8 +71,10 @@ impl SqlitePool {
         // Prevent dangerous path patterns
         if path_str.contains("..") || path_str.contains("//") {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Invalid database path: path traversal detected".to_string(),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InvalidValue {
+                    validation_error: "Invalid database path: path traversal detected".to_string(),
+                },
             });
         }
 
@@ -80,15 +82,20 @@ impl SqlitePool {
         if let Some(ext) = canonical_path.extension() {
             if ext != "db" && ext != "sqlite" && ext != "sqlite3" {
                 return Err(MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: "Invalid database path: only .db, .sqlite, and .sqlite3 files allowed"
-                        .to_string(),
+                    backend: MemoryBackend::Sqlite,
+                    kind: MemoryErrorKind::InvalidValue {
+                        validation_error:
+                            "Invalid database path: only .db, .sqlite, and .sqlite3 files allowed"
+                                .to_string(),
+                    },
                 });
             }
         } else {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Invalid database path: file extension required".to_string(),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InvalidValue {
+                    validation_error: "Invalid database path: file extension required".to_string(),
+                },
             });
         }
 
@@ -100,15 +107,19 @@ impl SqlitePool {
         // Check length limits
         if namespace.is_empty() {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace cannot be empty".to_string(),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InvalidValue {
+                    validation_error: "Namespace cannot be empty".to_string(),
+                },
             });
         }
 
         if namespace.len() > 64 {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace too long (max 64 characters)".to_string(),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InvalidValue {
+                    validation_error: "Namespace too long (max 64 characters)".to_string(),
+                },
             });
         }
 
@@ -118,9 +129,12 @@ impl SqlitePool {
             .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
-                    .to_string(),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InvalidValue {
+                    validation_error:
+                        "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
+                            .to_string(),
+                },
             });
         }
 
@@ -134,8 +148,10 @@ impl SqlitePool {
             || lower.contains("alter")
         {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace contains forbidden SQL keywords".to_string(),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InvalidValue {
+                    validation_error: "Namespace contains forbidden SQL keywords".to_string(),
+                },
             });
         }
 
@@ -200,8 +216,10 @@ impl SqlitePool {
         config: &ConnectionConfig,
     ) -> Result<Connection, MemoryError> {
         let conn = Connection::open(path).map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: Self::sanitize_error(&e),
+            backend: MemoryBackend::Sqlite,
+            kind: MemoryErrorKind::InternalError {
+                backend_error: Self::sanitize_error(&e),
+            },
         })?;
 
         // Configure connection based on config
@@ -221,8 +239,10 @@ impl SqlitePool {
         let pragma_batch = pragmas.join("\n");
         conn.execute_batch(&pragma_batch)
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to configure SQLite: {}", e),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to configure SQLite: {}", e),
+                },
             })?;
 
         Ok(conn)
@@ -234,8 +254,10 @@ impl SqlitePool {
         // Simple connectivity test - just check if SQLite responds
         conn.execute("SELECT 1", [])
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: Self::sanitize_error(&e),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InternalError {
+                    backend_error: Self::sanitize_error(&e),
+                },
             })?;
 
         Ok(())
@@ -249,8 +271,10 @@ impl SqlitePool {
                 self.available_connections
                     .lock()
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "sqlite".to_string(),
-                        reason: format!("Failed to lock connection pool: {}", e),
+                        backend: MemoryBackend::Sqlite,
+                        kind: MemoryErrorKind::InternalError {
+                            backend_error: format!("Failed to lock connection pool: {}", e),
+                        },
                     })?;
 
             if let Some(conn) = available.pop() {
@@ -264,8 +288,13 @@ impl SqlitePool {
                     self.active_connections
                         .lock()
                         .map_err(|e| MemoryError::ConnectionFailed {
-                            backend: "sqlite".to_string(),
-                            reason: format!("Failed to lock active connection counter: {}", e),
+                            backend: MemoryBackend::Sqlite,
+                            kind: MemoryErrorKind::InternalError {
+                                backend_error: format!(
+                                    "Failed to lock active connection counter: {}",
+                                    e
+                                ),
+                            },
                         })?;
                 *active_count -= 1;
 
@@ -284,17 +313,19 @@ impl SqlitePool {
             self.active_connections
                 .lock()
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!("Failed to lock active connection counter: {}", e),
+                    backend: MemoryBackend::Sqlite,
+                    kind: MemoryErrorKind::InternalError {
+                        backend_error: format!("Failed to lock active connection counter: {}", e),
+                    },
                 })?;
 
         if *active_count >= self.pool_size {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!(
-                    "Connection pool exhausted: {} active connections (max: {})",
-                    *active_count, self.pool_size
-                ),
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::ResourceExhausted {
+                    resource: "connection pool".to_string(),
+                    limit: format!("{} connections", self.pool_size),
+                },
             });
         }
 
@@ -318,8 +349,10 @@ impl SqlitePool {
                 self.available_connections
                     .lock()
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "sqlite".to_string(),
-                        reason: format!("Failed to lock pool for health check: {}", e),
+                        backend: MemoryBackend::Sqlite,
+                        kind: MemoryErrorKind::InternalError {
+                            backend_error: format!("Failed to lock pool for health check: {}", e),
+                        },
                     })?;
             available.len()
         };
@@ -366,13 +399,13 @@ impl Drop for PooledConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.connection.take() {
             // Return connection to pool if there's space, otherwise drop it
-            if let Ok(mut pool) = self.pool.lock() {
-                if pool.len() < self.max_pool_size {
-                    pool.push(conn);
-                    // Increment active connection count when returning to pool
-                    if let Ok(mut active_count) = self.active_connections.lock() {
-                        *active_count += 1;
-                    }
+            if let Ok(mut pool) = self.pool.lock()
+                && pool.len() < self.max_pool_size
+            {
+                pool.push(conn);
+                // Increment active connection count when returning to pool
+                if let Ok(mut active_count) = self.active_connections.lock() {
+                    *active_count += 1;
                 }
             }
         }

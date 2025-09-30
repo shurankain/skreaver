@@ -58,8 +58,10 @@ impl SqlitePool {
         // Prevent dangerous path patterns
         if path_str.contains("..") || path_str.contains("//") {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Invalid database path: path traversal detected".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Invalid database path: path traversal detected".to_string(),
+                },
             });
         }
 
@@ -67,15 +69,20 @@ impl SqlitePool {
         if let Some(ext) = canonical_path.extension() {
             if ext != "db" && ext != "sqlite" && ext != "sqlite3" {
                 return Err(MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: "Invalid database path: only .db, .sqlite, and .sqlite3 files allowed"
-                        .to_string(),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                        validation_error:
+                            "Invalid database path: only .db, .sqlite, and .sqlite3 files allowed"
+                                .to_string(),
+                    },
                 });
             }
         } else {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Invalid database path: file extension required".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Invalid database path: file extension required".to_string(),
+                },
             });
         }
 
@@ -87,15 +94,19 @@ impl SqlitePool {
         // Check length limits
         if namespace.is_empty() {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace cannot be empty".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Namespace cannot be empty".to_string(),
+                },
             });
         }
 
         if namespace.len() > 64 {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace too long (max 64 characters)".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Namespace too long (max 64 characters)".to_string(),
+                },
             });
         }
 
@@ -105,9 +116,12 @@ impl SqlitePool {
             .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
-                    .to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error:
+                        "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
+                            .to_string(),
+                },
             });
         }
 
@@ -121,8 +135,10 @@ impl SqlitePool {
             || lower.contains("alter")
         {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: "Namespace contains forbidden SQL keywords".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Namespace contains forbidden SQL keywords".to_string(),
+                },
             });
         }
 
@@ -187,8 +203,10 @@ impl SqlitePool {
         config: &ConnectionConfig,
     ) -> Result<Connection, MemoryError> {
         let conn = Connection::open(path).map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: Self::sanitize_error(&e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::IoError {
+                details: Self::sanitize_error(&e),
+            },
         })?;
 
         // Configure connection based on config
@@ -208,8 +226,10 @@ impl SqlitePool {
         let pragma_batch = pragmas.join("\n");
         conn.execute_batch(&pragma_batch)
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to configure SQLite: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to configure SQLite: {}", e),
+                },
             })?;
 
         Ok(conn)
@@ -221,8 +241,10 @@ impl SqlitePool {
         // Simple connectivity test - just check if SQLite responds
         conn.execute("SELECT 1", [])
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: Self::sanitize_error(&e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: Self::sanitize_error(&e),
+                },
             })?;
 
         Ok(())
@@ -236,8 +258,10 @@ impl SqlitePool {
                 self.available_connections
                     .lock()
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "sqlite".to_string(),
-                        reason: format!("Failed to lock connection pool: {}", e),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                            backend_error: format!("Failed to lock connection pool: {}", e),
+                        },
                     })?;
 
             if let Some(conn) = available.pop() {
@@ -251,8 +275,13 @@ impl SqlitePool {
                     self.active_connections
                         .lock()
                         .map_err(|e| MemoryError::ConnectionFailed {
-                            backend: "sqlite".to_string(),
-                            reason: format!("Failed to lock active connection counter: {}", e),
+                            backend: skreaver_core::error::MemoryBackend::Sqlite,
+                            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                                backend_error: format!(
+                                    "Failed to lock active connection counter: {}",
+                                    e
+                                ),
+                            },
                         })?;
                 *active_count -= 1;
 
@@ -271,17 +300,22 @@ impl SqlitePool {
             self.active_connections
                 .lock()
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!("Failed to lock active connection counter: {}", e),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!("Failed to lock active connection counter: {}", e),
+                    },
                 })?;
 
         if *active_count >= self.pool_size {
             return Err(MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!(
-                    "Connection pool exhausted: {} active connections (max: {})",
-                    *active_count, self.pool_size
-                ),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::ResourceExhausted {
+                    resource: "connection_pool".to_string(),
+                    limit: format!(
+                        "{} active connections (max: {})",
+                        *active_count, self.pool_size
+                    ),
+                },
             });
         }
 
@@ -306,8 +340,10 @@ impl SqlitePool {
                 self.available_connections
                     .lock()
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "sqlite".to_string(),
-                        reason: format!("Failed to lock pool for health check: {}", e),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                            backend_error: format!("Failed to lock pool for health check: {}", e),
+                        },
                     })?;
             available.len()
         };
@@ -530,8 +566,10 @@ impl MigrationEngine {
             [],
         )
         .map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to create migrations table: {}", e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to create migrations table: {}", e),
+            },
         })?;
 
         // Get current version
@@ -561,15 +599,19 @@ impl MigrationEngine {
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to start migration transaction: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to start migration transaction: {}", e),
+                },
             })?;
 
         // Execute migration
         tx.execute_batch(&migration.up)
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Migration {} failed: {}", migration.version, e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Migration {} failed: {}", migration.version, e),
+                },
             })?;
 
         // Record migration
@@ -578,13 +620,17 @@ impl MigrationEngine {
             params![migration.version, migration.description],
         )
         .map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to record migration {}: {}", migration.version, e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to record migration {}: {}", migration.version, e),
+            },
         })?;
 
         tx.commit().map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to commit migration {}: {}", migration.version, e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to commit migration {}: {}", migration.version, e),
+            },
         })?;
 
         Ok(())
@@ -614,17 +660,24 @@ impl MigrationEngine {
                 let tx =
                     conn.unchecked_transaction()
                         .map_err(|e| MemoryError::ConnectionFailed {
-                            backend: "sqlite".to_string(),
-                            reason: format!("Failed to start rollback transaction: {}", e),
+                            backend: skreaver_core::error::MemoryBackend::Sqlite,
+                            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                                backend_error: format!(
+                                    "Failed to start rollback transaction: {}",
+                                    e
+                                ),
+                            },
                         })?;
 
                 tx.execute_batch(down_sql)
                     .map_err(|e| MemoryError::ConnectionFailed {
-                        backend: "sqlite".to_string(),
-                        reason: format!(
-                            "Rollback of migration {} failed: {}",
-                            migration.version, e
-                        ),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                            backend_error: format!(
+                                "Rollback of migration {} failed: {}",
+                                migration.version, e
+                            ),
+                        },
                     })?;
 
                 tx.execute(
@@ -632,24 +685,33 @@ impl MigrationEngine {
                     params![migration.version],
                 )
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!(
-                        "Failed to remove migration record {}: {}",
-                        migration.version, e
-                    ),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!(
+                            "Failed to remove migration record {}: {}",
+                            migration.version, e
+                        ),
+                    },
                 })?;
 
                 tx.commit().map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!("Failed to commit rollback {}: {}", migration.version, e),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!(
+                            "Failed to commit rollback {}: {}",
+                            migration.version, e
+                        ),
+                    },
                 })?;
             } else {
                 return Err(MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!(
-                        "Migration {} has no down migration defined",
-                        migration.version
-                    ),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!(
+                            "Migration {} has no down migration defined",
+                            migration.version
+                        ),
+                    },
                 });
             }
         }
@@ -683,8 +745,10 @@ impl MigrationEngine {
                 "SELECT version, description, applied_at FROM schema_migrations ORDER BY version",
             )
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to query applied migrations: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to query applied migrations: {}", e),
+                },
             })?;
 
         let applied_migrations: Result<Vec<AppliedMigration>, _> = stmt
@@ -700,14 +764,18 @@ impl MigrationEngine {
                 })
             })
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "sqlite".to_string(),
-                reason: format!("Failed to query applied migrations: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to query applied migrations: {}", e),
+                },
             })?
             .collect();
 
         let applied_migrations = applied_migrations.map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to parse applied migrations: {}", e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to parse applied migrations: {}", e),
+            },
         })?;
 
         Ok(MigrationStatus {
@@ -766,17 +834,24 @@ impl SqliteMemory {
 
     /// Create snapshot with proper error handling (internal method)
     fn create_snapshot(&mut self) -> Result<String, MemoryError> {
-        let conn = self.pool.acquire().map_err(|e| MemoryError::LoadFailed {
-            key: MemoryKey::new("snapshot").unwrap(),
-            reason: format!("Failed to acquire connection for snapshot: {}", e),
-        })?;
+        let conn = self
+            .pool
+            .acquire()
+            .map_err(|e| MemoryError::SnapshotFailed {
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to acquire connection for snapshot: {}", e),
+                },
+            })?;
 
         let mut stmt = conn
             .as_ref()
             .prepare("SELECT key, value FROM memory")
-            .map_err(|e| MemoryError::LoadFailed {
-                key: MemoryKey::new("snapshot").unwrap(),
-                reason: SqlitePool::sanitize_error(&e),
+            .map_err(|e| MemoryError::SnapshotFailed {
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: SqlitePool::sanitize_error(&e),
+                },
             })?;
 
         let mut snapshot = std::collections::HashMap::new();
@@ -784,22 +859,28 @@ impl SqliteMemory {
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(|e| MemoryError::LoadFailed {
-                key: MemoryKey::new("snapshot").unwrap(),
-                reason: SqlitePool::sanitize_error(&e),
+            .map_err(|e| MemoryError::SnapshotFailed {
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: SqlitePool::sanitize_error(&e),
+                },
             })?;
 
         for row in rows {
-            let (key, value) = row.map_err(|e| MemoryError::LoadFailed {
-                key: MemoryKey::new("snapshot").unwrap(),
-                reason: SqlitePool::sanitize_error(&e),
+            let (key, value) = row.map_err(|e| MemoryError::SnapshotFailed {
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: SqlitePool::sanitize_error(&e),
+                },
             })?;
             snapshot.insert(key, value);
         }
 
-        serde_json::to_string(&snapshot).map_err(|e| MemoryError::LoadFailed {
-            key: MemoryKey::new("snapshot").unwrap(),
-            reason: format!("Failed to serialize snapshot: {}", e),
+        serde_json::to_string(&snapshot).map_err(|e| MemoryError::SnapshotFailed {
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                details: format!("Failed to serialize snapshot: {}", e),
+            },
         })
     }
 }
@@ -818,7 +899,10 @@ impl MemoryReader for SqliteMemory {
             .optional()
             .map_err(|e| MemoryError::LoadFailed {
                 key: key.clone(),
-                reason: e.to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: e.to_string(),
+                },
             })
     }
 
@@ -840,7 +924,10 @@ impl MemoryReader for SqliteMemory {
             .prepare(&query)
             .map_err(|e| MemoryError::LoadFailed {
                 key: MemoryKey::new("batch").unwrap(),
-                reason: e.to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: e.to_string(),
+                },
             })?;
 
         let mut results = std::collections::HashMap::new();
@@ -855,13 +942,19 @@ impl MemoryReader for SqliteMemory {
             })
             .map_err(|e| MemoryError::LoadFailed {
                 key: MemoryKey::new("batch").unwrap(),
-                reason: e.to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: e.to_string(),
+                },
             })?;
 
         for row in rows {
             let (k, v) = row.map_err(|e| MemoryError::LoadFailed {
                 key: MemoryKey::new("batch").unwrap(),
-                reason: e.to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: e.to_string(),
+                },
             })?;
             results.insert(k, v);
         }
@@ -882,14 +975,17 @@ impl MemoryWriter for SqliteMemory {
         conn.as_ref()
             .execute(
                 "INSERT INTO memory (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET 
+             ON CONFLICT(key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = strftime('%s', 'now')",
                 params![namespaced_key, update.value],
             )
             .map_err(|e| MemoryError::StoreFailed {
                 key: update.key.clone(),
-                reason: e.to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: e.to_string(),
+                },
             })?;
 
         Ok(())
@@ -906,21 +1002,26 @@ impl MemoryWriter for SqliteMemory {
             conn.as_mut()
                 .unchecked_transaction()
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!("Failed to begin transaction: {}", e),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!("Failed to begin transaction: {}", e),
+                    },
                 })?;
 
         {
             let mut stmt = tx
                 .prepare(
                     "INSERT INTO memory (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET 
+                 ON CONFLICT(key) DO UPDATE SET
                     value = excluded.value,
                     updated_at = strftime('%s', 'now')",
                 )
                 .map_err(|e| MemoryError::StoreFailed {
                     key: MemoryKey::new("batch").unwrap(),
-                    reason: e.to_string(),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::IoError {
+                        details: e.to_string(),
+                    },
                 })?;
 
             for update in updates {
@@ -928,14 +1029,19 @@ impl MemoryWriter for SqliteMemory {
                 stmt.execute(params![namespaced_key, update.value])
                     .map_err(|e| MemoryError::StoreFailed {
                         key: update.key.clone(),
-                        reason: e.to_string(),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::IoError {
+                            details: e.to_string(),
+                        },
                     })?;
             }
         }
 
         tx.commit().map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to commit transaction: {}", e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to commit transaction: {}", e),
+            },
         })?;
 
         Ok(())
@@ -957,7 +1063,10 @@ impl SnapshotableMemory for SqliteMemory {
     fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
         let data: std::collections::HashMap<String, String> = serde_json::from_str(snapshot)
             .map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("Invalid snapshot format: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("Invalid snapshot format: {}", e),
+                },
             })?;
 
         let mut conn = self.pool.acquire()?;
@@ -966,14 +1075,19 @@ impl SnapshotableMemory for SqliteMemory {
             conn.as_mut()
                 .unchecked_transaction()
                 .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: "sqlite".to_string(),
-                    reason: format!("Failed to begin restore transaction: {}", e),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: format!("Failed to begin restore transaction: {}", e),
+                    },
                 })?;
 
         // Clear existing data
         tx.execute("DELETE FROM memory", [])
             .map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("Failed to clear existing data: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!("Failed to clear existing data: {}", e),
+                },
             })?;
 
         // Insert snapshot data
@@ -981,20 +1095,28 @@ impl SnapshotableMemory for SqliteMemory {
             let mut stmt = tx
                 .prepare("INSERT INTO memory (key, value) VALUES (?1, ?2)")
                 .map_err(|e| MemoryError::RestoreFailed {
-                    reason: e.to_string(),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::IoError {
+                        details: e.to_string(),
+                    },
                 })?;
 
             for (key, value) in data {
                 stmt.execute(params![key, value])
                     .map_err(|e| MemoryError::RestoreFailed {
-                        reason: format!("Failed to restore key {}: {}", key, e),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::IoError {
+                            details: format!("Failed to restore key {}: {}", key, e),
+                        },
                     })?;
             }
         }
 
         tx.commit().map_err(|e| MemoryError::ConnectionFailed {
-            backend: "sqlite".to_string(),
-            reason: format!("Failed to commit restore: {}", e),
+            backend: skreaver_core::error::MemoryBackend::Sqlite,
+            kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                backend_error: format!("Failed to commit restore: {}", e),
+            },
         })?;
 
         Ok(())
@@ -1075,7 +1197,10 @@ impl MemoryAdmin for SqliteMemory {
             Some(s) => s,
             None => {
                 return Err(MemoryError::SnapshotFailed {
-                    reason: "Failed to create snapshot for backup".to_string(),
+                    backend: skreaver_core::error::MemoryBackend::Sqlite,
+                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                        backend_error: "Failed to create snapshot for backup".to_string(),
+                    },
                 });
             }
         };
@@ -1097,12 +1222,18 @@ impl MemoryAdmin for SqliteMemory {
             BackupFormat::Json => {
                 let snapshot =
                     String::from_utf8(handle.data).map_err(|e| MemoryError::RestoreFailed {
-                        reason: format!("Invalid UTF-8 in backup data: {}", e),
+                        backend: skreaver_core::error::MemoryBackend::Sqlite,
+                        kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                            details: format!("Invalid UTF-8 in backup data: {}", e),
+                        },
                     })?;
                 self.restore(&snapshot)
             }
             BackupFormat::SqliteDump => Err(MemoryError::RestoreFailed {
-                reason: "SQLite dump format not yet supported".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "SQLite dump format not yet supported".to_string(),
+                },
             }),
         }
     }
@@ -1170,7 +1301,6 @@ impl Clone for SqliteMemory {
 }
 
 // Add uuid dependency
-use uuid;
 
 #[cfg(test)]
 mod tests {

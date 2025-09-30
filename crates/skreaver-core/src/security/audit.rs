@@ -600,7 +600,11 @@ impl SecretRedactor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::security::config::AuditConfig as ConfigAuditConfig;
+    use crate::security::config::{
+        AuditConfig as ConfigAuditConfig,
+        LogLevel as ConfigLogLevel,
+        LogFormat as ConfigLogFormat,
+    };
 
     #[test]
     fn test_audit_logger_creation() {
@@ -609,9 +613,9 @@ mod tests {
             redact_secrets: true,
             secret_patterns: vec!["test_pattern".to_string()],
             retain_logs_days: 90,
-            log_level: "INFO".to_string(),
+            log_level: ConfigLogLevel::Info,
             include_stack_traces: false,
-            log_format: "structured".to_string(),
+            log_format: ConfigLogFormat::Structured,
         };
 
         let logger = AuditLogger::new(&config);

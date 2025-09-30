@@ -30,13 +30,13 @@ impl RedisPoolUtils {
     ) -> Result<(Pool, Option<Arc<ClusterClient>>), MemoryError> {
         match config.deployment() {
             RedisDeploymentV2::Standalone(standalone) => {
-                Self::create_standalone_pool(&standalone, config).await
+                Self::create_standalone_pool(standalone, config).await
             }
             RedisDeploymentV2::Cluster(cluster) => {
-                Self::create_cluster_pool(&cluster, config).await
+                Self::create_cluster_pool(cluster, config).await
             }
             RedisDeploymentV2::Sentinel(sentinel) => {
-                Self::create_sentinel_pool(&sentinel, config).await
+                Self::create_sentinel_pool(sentinel, config).await
             }
         }
     }
@@ -50,8 +50,10 @@ impl RedisPoolUtils {
         let pool = pool_config
             .create_pool(Some(deadpool_redis::Runtime::Tokio1))
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "redis".to_string(),
-                reason: format!("Failed to create connection pool: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to create connection pool: {}", e),
+                },
             })?;
 
         Ok((pool, None))
@@ -71,8 +73,10 @@ impl RedisPoolUtils {
 
         let cluster_client =
             ClusterClient::new(urls).map_err(|e| MemoryError::ConnectionFailed {
-                backend: "redis".to_string(),
-                reason: format!("Failed to create cluster client: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to create cluster client: {}", e),
+                },
             })?;
 
         // For cluster, use the first node for pool creation
@@ -80,8 +84,10 @@ impl RedisPoolUtils {
         let pool = pool_config
             .create_pool(Some(deadpool_redis::Runtime::Tokio1))
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "redis".to_string(),
-                reason: format!("Failed to create cluster pool: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to create cluster pool: {}", e),
+                },
             })?;
 
         Ok((pool, Some(Arc::new(cluster_client))))
@@ -98,8 +104,10 @@ impl RedisPoolUtils {
         let pool = pool_config
             .create_pool(Some(deadpool_redis::Runtime::Tokio1))
             .map_err(|e| MemoryError::ConnectionFailed {
-                backend: "redis".to_string(),
-                reason: format!("Failed to create sentinel pool: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to create sentinel pool: {}", e),
+                },
             })?;
 
         Ok((pool, None))
@@ -115,8 +123,10 @@ impl RedisPoolUtils {
         let conn = pool.get().await.map_err(|e| {
             Self::update_metrics(metrics, false, start.elapsed());
             MemoryError::ConnectionFailed {
-                backend: "redis".to_string(),
-                reason: format!("Failed to get connection from pool: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to get connection from pool: {}", e),
+                },
             }
         })?;
 

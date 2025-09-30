@@ -340,8 +340,10 @@ impl RedisConfigBuilder {
         let deployment = self
             .deployment
             .ok_or_else(|| MemoryError::ConnectionFailed {
-                backend: "redis".to_string(),
-                reason: "Redis deployment must be specified".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "Redis deployment must be specified".to_string(),
+                },
             })?;
 
         let pool_size = self.pool_size.unwrap_or_else(|| PoolSize::new(10).unwrap());

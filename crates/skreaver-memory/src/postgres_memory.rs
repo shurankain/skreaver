@@ -59,15 +59,19 @@ impl PostgresMemory {
     fn validate_namespace(namespace: &str) -> Result<(), MemoryError> {
         if namespace.is_empty() {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Namespace cannot be empty".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Namespace cannot be empty".to_string(),
+                },
             });
         }
 
         if namespace.len() > 64 {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Namespace too long (max 64 characters)".to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error: "Namespace too long (max 64 characters)".to_string(),
+                },
             });
         }
 
@@ -77,9 +81,12 @@ impl PostgresMemory {
             .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
         {
             return Err(MemoryError::ConnectionFailed {
-                backend: "postgres".to_string(),
-                reason: "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
-                    .to_string(),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                    validation_error:
+                        "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
+                            .to_string(),
+                },
             });
         }
 
@@ -108,7 +115,10 @@ impl PostgresMemory {
             .await
             .map_err(|e| MemoryError::LoadFailed {
                 key: key.clone(),
-                reason: format!("Database error: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!("Database error: {}", e),
+                },
             })?;
 
         match row {
@@ -143,7 +153,10 @@ impl PostgresMemory {
             .await
             .map_err(|e| MemoryError::StoreFailed {
                 key: update.key.clone(),
-                reason: format!("Database error: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!("Database error: {}", e),
+                },
             })?;
 
         Ok(())
@@ -166,7 +179,10 @@ impl PostgresMemory {
             .await
             .map_err(|e| MemoryError::LoadFailed {
                 key: MemoryKey::new("snapshot").unwrap(),
-                reason: format!("Database error: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!("Database error: {}", e),
+                },
             })?;
 
         let mut data = std::collections::HashMap::new();
@@ -205,7 +221,10 @@ impl PostgresMemory {
             .await
             .map_err(|e| MemoryError::StoreFailed {
                 key: MemoryKey::new("clear_all").unwrap(),
-                reason: format!("Database error: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!("Database error: {}", e),
+                },
             })?;
 
         Ok(())
@@ -281,7 +300,10 @@ impl SnapshotableMemory for PostgresMemory {
         // Parse snapshot and restore all data
         let data: std::collections::HashMap<String, String> = serde_json::from_str(snapshot)
             .map_err(|e| MemoryError::RestoreFailed {
-                reason: format!("Failed to parse snapshot: {}", e),
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("Failed to parse snapshot: {}", e),
+                },
             })?;
 
         let rt = tokio::runtime::Handle::current();
@@ -290,7 +312,10 @@ impl SnapshotableMemory for PostgresMemory {
             self.clear_all_data().await?;
             for (key, value) in data {
                 let memory_key = MemoryKey::new(&key).map_err(|e| MemoryError::RestoreFailed {
-                    reason: format!("Invalid key in snapshot: {}", e),
+                    backend: skreaver_core::error::MemoryBackend::Postgres,
+                    kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
+                        validation_error: format!("Invalid key in snapshot: {}", e),
+                    },
                 })?;
                 let update = MemoryUpdate::from_validated(memory_key, value);
                 self.store(update)?;
