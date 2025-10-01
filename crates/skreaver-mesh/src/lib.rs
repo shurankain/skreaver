@@ -41,17 +41,26 @@
 //! }
 //! ```
 
+pub mod backpressure;
+pub mod dlq;
 pub mod error;
 pub mod mesh;
 pub mod message;
+pub mod metrics;
 pub mod types;
 
 #[cfg(feature = "redis")]
 pub mod redis;
 
+pub use backpressure::{
+    BackpressureConfig, BackpressureMonitor, BackpressureQueue, BackpressureSignal,
+    BackpressureStats,
+};
+pub use dlq::{DeadLetterQueue, DlqConfig, DlqEntry, DlqStats};
 pub use error::{MeshError, MeshResult};
 pub use mesh::AgentMesh;
 pub use message::{Message, MessageBuilder, MessageId, MessageMetadata, MessagePayload};
+pub use metrics::{MeshMetrics, MeshMetricsCollector};
 pub use types::{AgentId, Topic};
 
 #[cfg(feature = "redis")]
