@@ -14,10 +14,13 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - Built-in tool registry system
 - Multiple memory backends (File, Redis, SQLite, PostgreSQL)
 - **HTTP runtime with RESTful API endpoints**
+- **Multi-agent communication with Redis Pub/Sub messaging**
+- **Coordination patterns (Supervisor/Worker, Request/Reply, Broadcast/Gather, Pipeline)**
 - **Standard tool library (HTTP, File, JSON, Text processing)**
 - **Production-grade benchmarking framework with CI integration**
 - **Comprehensive observability framework (metrics, tracing, health checks)**
 - **Enterprise-grade security framework with threat modeling and audit logging**
+- **Built-in backpressure and dead letter queue support**
 - Designed for performance and modularity
 
 ---
@@ -51,6 +54,8 @@ Modern AI agents suffer from:
 [Memory] ← [ContextUpdate]
    ↓
 [Coordinator Runtime]
+   ↓
+[Agent Mesh] ← [Redis Pub/Sub] → [Other Agents]
 ````
 
 Skreaver gives you the scaffolding. You build the logic.
@@ -67,11 +72,14 @@ Core components implemented:
 * Support for multiple tool calls per step
 * Multiple memory backends (`FileMemory`, `RedisMemory`, SQLite, PostgreSQL)
 * **Axum-based HTTP runtime with RESTful endpoints**
+* **Multi-agent communication layer (`skreaver-mesh`) with Redis Pub/Sub backend**
+* **Coordination patterns: Supervisor/Worker, Request/Reply, Broadcast/Gather, Pipeline**
+* **Agent messaging with backpressure monitoring and dead letter queues**
 * **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
 * **Production benchmarking framework with resource monitoring and CI integration**
 * **Comprehensive observability framework with Prometheus metrics, distributed tracing, and health checks**
 * **Enterprise security framework with threat modeling, input validation, and audit logging**
-* Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`)
+* Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`, `mesh_ping_pong`, `mesh_broadcast`, `mesh_task_coordinator`)
 * Self-hosted CI pipeline
 
 Next steps:
@@ -142,6 +150,48 @@ curl -X POST http://localhost:3000/agents/demo-agent-1/observe \
 ```
 
 The HTTP runtime supports all standard tools and provides full agent lifecycle management.
+
+---
+
+## 🕸️ Multi-Agent Communication
+
+Skreaver includes a production-ready multi-agent messaging layer for coordinating distributed agent systems:
+
+```bash
+cargo run --example mesh_ping_pong
+cargo run --example mesh_broadcast
+cargo run --example mesh_task_coordinator
+```
+
+**Features:**
+- **Redis Pub/Sub Backend**: Reliable agent-to-agent messaging with connection pooling
+- **Typed Messages**: Strongly-typed schemas (Text/JSON/Binary) with automatic serialization
+- **Coordination Patterns**: Request/Reply (RPC-style), Supervisor/Worker (task distribution), Broadcast/Gather (scatter-gather), Pipeline (sequential processing)
+- **Reliability**: Dead letter queues with TTL, automatic retry, and backpressure monitoring
+- **Observability**: Cardinality-safe metrics (≤20 topics) and distributed tracing
+
+**Example Usage:**
+```rust
+use skreaver_mesh::{AgentMesh, RedisMesh, Message, AgentId};
+
+// Connect to mesh
+let mesh = RedisMesh::new("redis://localhost:6379").await?;
+
+// Point-to-point messaging
+mesh.send(&AgentId::from("worker-1"), Message::new("task data")).await?;
+
+// Broadcast to all agents
+mesh.broadcast(Message::new("shutdown")).await?;
+
+// Supervisor pattern with load balancing
+let supervisor = Supervisor::new(mesh.clone(), config);
+supervisor.submit_task(message).await;
+```
+
+**Performance:**
+- 45 tests covering all patterns and reliability features
+- Redis integration tested with connection pooling
+- Backpressure with 3-level signals (Normal/Warning/Critical)
 
 ---
 
@@ -287,6 +337,10 @@ cargo run --example standard_tools
 # HTTP server (RESTful agent runtime)
 cargo run --example http_server
 # Then test with: curl http://localhost:3000/health
+
+# Multi-agent communication
+cargo run --example mesh_ping_pong
+cargo run --example mesh_task_coordinator
 
 # Performance benchmarks
 cargo bench --bench quick_benchmark
