@@ -15,8 +15,8 @@
 //! ```
 
 use skreaver_mesh::{
-    patterns::supervisor::{Supervisor, SupervisorConfig},
     AgentId, AgentMesh, Message, RedisMesh, Topic,
+    patterns::supervisor::{Supervisor, SupervisorConfig},
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -43,7 +43,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task_timeout: Duration::from_secs(30),
     };
     let supervisor = Arc::new(Supervisor::new(mesh.clone(), supervisor_config));
-
 
     // Spawn 3 worker agents
     let worker_ids = vec![
@@ -159,8 +158,8 @@ async fn run_worker(
 
             // Send success response if there's a correlation ID (request/reply pattern)
             if let Some(correlation_id) = &message.correlation_id {
-                let response = Message::new("Task completed successfully")
-                    .with_correlation_id(correlation_id);
+                let response =
+                    Message::new("Task completed successfully").with_correlation_id(correlation_id);
 
                 if let Some(reply_to) = &message.from {
                     let _ = mesh.send(reply_to, response).await;
@@ -171,8 +170,7 @@ async fn run_worker(
 
             // Send failure response
             if let Some(correlation_id) = &message.correlation_id {
-                let response = Message::new("Task failed")
-                    .with_correlation_id(correlation_id);
+                let response = Message::new("Task failed").with_correlation_id(correlation_id);
 
                 if let Some(reply_to) = &message.from {
                     let _ = mesh.send(reply_to, response).await;
