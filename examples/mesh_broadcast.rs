@@ -101,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Coordinator sends announcements
     info!("Coordinator: Starting to send announcements");
 
-    let announcements = vec![
+    let announcements = [
         "System startup complete",
         "All workers online",
         "Ready for operations",
@@ -110,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (i, announcement) in announcements.iter().enumerate() {
         let msg = Message::new(announcement.to_string())
             .from(coordinator_id.clone())
-            .with_metadata("sequence", &(i + 1).to_string())
+            .with_metadata("sequence", (i + 1).to_string())
             .with_metadata("type", "announcement");
 
         mesh.publish(&announcements_topic, msg).await?;

@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Send ping message
         let msg = Message::new("ping")
             .from(agent1_id.clone())
-            .with_metadata("round", &i.to_string());
+            .with_metadata("round", i.to_string());
 
         mesh.send(&agent2_id, msg.clone()).await?;
         info!("Agent 1 sent: 'ping' (round {})", i + 1);
