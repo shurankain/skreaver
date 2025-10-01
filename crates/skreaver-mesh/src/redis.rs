@@ -84,10 +84,7 @@ impl RedisMesh {
     /// Create a new Redis mesh with custom configuration
     pub async fn with_config(config: RedisConfig) -> MeshResult<Self> {
         // Create Redis pool configuration
-        let redis_config = deadpool_redis::Config {
-            url: Some(config.url.clone()),
-            ..Default::default()
-        };
+        let redis_config = deadpool_redis::Config::from_url(&config.url);
 
         let pool = redis_config
             .create_pool(Some(deadpool_redis::Runtime::Tokio1))
