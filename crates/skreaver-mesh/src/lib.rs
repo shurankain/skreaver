@@ -47,6 +47,7 @@ pub mod error;
 pub mod mesh;
 pub mod message;
 pub mod metrics;
+pub mod patterns;
 pub mod types;
 
 #[cfg(feature = "redis")]
@@ -61,6 +62,10 @@ pub use error::{MeshError, MeshResult};
 pub use mesh::AgentMesh;
 pub use message::{Message, MessageBuilder, MessageId, MessageMetadata, MessagePayload};
 pub use metrics::{MeshMetrics, MeshMetricsCollector};
+pub use patterns::{
+    BroadcastGather, GatherConfig, GatherResult, Pipeline, PipelineStage, RequestReply,
+    RequestReplyConfig, Supervisor, SupervisorConfig, TaskStatus, WorkerPool,
+};
 pub use types::{AgentId, Topic};
 
 #[cfg(feature = "redis")]
