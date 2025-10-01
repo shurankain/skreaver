@@ -15,6 +15,12 @@ use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 
+// Import shared admin types
+use crate::admin::{
+    AppliedMigration, BackupFormat, BackupHandle, HealthStatus, MemoryAdmin, MigrationStatus,
+    PoolHealth,
+};
+
 /// Connection pool for SQLite with configurable size and thread safety
 pub struct SqlitePool {
     available_connections: Arc<Mutex<Vec<Connection>>>,
@@ -351,7 +357,7 @@ impl SqlitePool {
         Ok(PoolHealth {
             healthy_connections: available_count,
             total_connections: self.pool_size,
-            last_check: std::time::Instant::now(),
+            last_check: std::time::SystemTime::now(),
         })
     }
 }
@@ -424,96 +430,13 @@ impl Drop for PooledConnection {
     }
 }
 
-/// Health status for the connection pool
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct PoolHealth {
-    pub healthy_connections: usize,
-    pub total_connections: usize,
-    pub last_check: std::time::Instant,
-}
-
-/// Administrative operations trait for memory backends
-#[allow(dead_code)]
-pub trait MemoryAdmin {
-    /// Create a backup handle for the memory backend
-    fn backup(&self) -> Result<BackupHandle, MemoryError>;
-
-    /// Restore from a backup handle
-    fn restore_from_backup(&mut self, handle: BackupHandle) -> Result<(), MemoryError>;
-
-    /// Run schema migrations to a specific version
-    fn migrate_to_version(&mut self, version: u32) -> Result<(), MemoryError>;
-
-    /// Get structured health status
-    fn health_status(&self) -> Result<HealthStatus, MemoryError>;
-
-    /// Get migration status information
-    fn migration_status(&self) -> Result<MigrationStatus, MemoryError>;
-}
-
-/// Handle for backup operations
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct BackupHandle {
-    pub id: String,
-    pub created_at: std::time::SystemTime,
-    pub size_bytes: u64,
-    pub format: BackupFormat,
-    pub data: Vec<u8>,
-}
-
-/// Backup format types
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
-pub enum BackupFormat {
-    Json,
-    SqliteDump,
-}
-
-/// Structured health status
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub enum HealthStatus {
-    Healthy {
-        details: String,
-        pool_status: PoolHealth,
-    },
-    Degraded {
-        reason: String,
-        pool_status: PoolHealth,
-    },
-    Unhealthy {
-        reason: String,
-        error_count: u32,
-    },
-}
-
-/// Migration status information
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct MigrationStatus {
-    pub current_version: u32,
-    pub latest_version: u32,
-    pub pending_migrations: Vec<u32>,
-    pub applied_migrations: Vec<AppliedMigration>,
-}
-
-/// Applied migration information
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct AppliedMigration {
-    pub version: u32,
-    pub description: String,
-    pub applied_at: std::time::SystemTime,
-}
-
 /// Migration engine for SQLite
 pub struct MigrationEngine {
     migrations: Vec<Migration>,
 }
 
 /// Individual migration definition
+#[derive(Debug, Clone)]
 pub struct Migration {
     pub version: u32,
     pub description: String,
@@ -1235,12 +1158,18 @@ impl MemoryAdmin for SqliteMemory {
                     backend_error: "SQLite dump format not yet supported".to_string(),
                 },
             }),
+            BackupFormat::PostgresDump | BackupFormat::Binary => Err(MemoryError::RestoreFailed {
+                backend: skreaver_core::error::MemoryBackend::Sqlite,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Unsupported backup format: {:?}", handle.format),
+                },
+            }),
         }
     }
 
-    fn migrate_to_version(&mut self, version: u32) -> Result<(), MemoryError> {
+    fn migrate_to_version(&mut self, version: Option<u32>) -> Result<(), MemoryError> {
         let conn = self.pool.acquire()?;
-        self.migration_engine.migrate(conn.as_ref(), Some(version))
+        self.migration_engine.migrate(conn.as_ref(), version)
     }
 
     fn health_status(&self) -> Result<HealthStatus, MemoryError> {

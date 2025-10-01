@@ -28,5 +28,10 @@ pub use skreaver_tools::*;
 #[cfg(feature = "openapi")]
 pub use openapi::*;
 
+// Note: websocket module has its own 'handlers' module that conflicts with runtime::handlers
+// We selectively re-export websocket types to avoid ambiguity
 #[cfg(feature = "unstable-websocket")]
-pub use websocket::*;
+pub use websocket::{
+    ConnectionInfo, WebSocketConfig, WebSocketManager, WsError, WsMessage, handlers as ws_handlers,
+    protocol,
+};

@@ -66,11 +66,11 @@ pub async fn websocket_upgrade_handler(
     );
 
     // Validate client information
-    if let Some(client) = &query.client {
-        if !is_valid_client_name(client) {
-            warn!("Invalid client name from {}: {}", addr, client);
-            return (StatusCode::BAD_REQUEST, "Invalid client name").into_response();
-        }
+    if let Some(client) = &query.client
+        && !is_valid_client_name(client)
+    {
+        warn!("Invalid client name from {}: {}", addr, client);
+        return (StatusCode::BAD_REQUEST, "Invalid client name").into_response();
     }
 
     // Check connection limits before upgrade
@@ -136,14 +136,13 @@ async fn handle_websocket_connection(
         }),
     );
 
-    if let Ok(welcome_json) = serde_json::to_string(&welcome) {
-        if ws_sender
+    if let Ok(welcome_json) = serde_json::to_string(&welcome)
+        && ws_sender
             .send(axum::extract::ws::Message::Text(welcome_json.into()))
             .await
             .is_err()
-        {
-            warn!("Failed to send welcome message to {}", conn_id);
-        }
+    {
+        warn!("Failed to send welcome message to {}", conn_id);
     }
 
     // Auto-authenticate if token provided

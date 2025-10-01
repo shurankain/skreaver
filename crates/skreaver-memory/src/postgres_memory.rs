@@ -15,6 +15,12 @@ use skreaver_core::memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 
+// Import shared admin types
+use crate::admin::{
+    AppliedMigration, BackupFormat, BackupHandle, HealthStatus, MemoryAdmin, MigrationStatus,
+    PoolHealth,
+};
+
 // Use the modular components
 use crate::postgres::{
     PostgresConfig, PostgresMigrationEngine, PostgresPool, PostgresTransactionalMemory,
@@ -369,6 +375,252 @@ impl TransactionalMemory for PostgresMemory {
                     Err(e)
                 }
             }
+        })
+    }
+}
+
+// MemoryAdmin implementation for PostgresMemory
+impl MemoryAdmin for PostgresMemory {
+    fn backup(&self) -> Result<BackupHandle, MemoryError> {
+        // Block on async operation since trait is sync
+        let rt =
+            tokio::runtime::Handle::try_current().map_err(|_| MemoryError::SnapshotFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "No tokio runtime available".to_string(),
+                },
+            })?;
+
+        rt.block_on(async {
+            let conn = self.pool.acquire().await?;
+
+            // Query all entries
+            let rows = conn
+                .client()
+                .query("SELECT key, value FROM memory_entries ORDER BY key", &[])
+                .await
+                .map_err(|e| MemoryError::SnapshotFailed {
+                    backend: skreaver_core::error::MemoryBackend::Postgres,
+                    kind: skreaver_core::error::MemoryErrorKind::IoError {
+                        details: format!("Failed to query entries: {}", e),
+                    },
+                })?;
+
+            // Convert to JSON format
+            let mut data_map = std::collections::HashMap::new();
+            for row in rows {
+                let key: String = row.get(0);
+                let value: serde_json::Value = row.get(1);
+                // Convert JSONB to string
+                data_map.insert(key, value.to_string());
+            }
+
+            let json = serde_json::to_vec(&data_map).map_err(|e| MemoryError::SnapshotFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("Failed to serialize backup: {}", e),
+                },
+            })?;
+
+            Ok(BackupHandle::new(BackupFormat::Json, json))
+        })
+    }
+
+    fn restore_from_backup(&mut self, handle: BackupHandle) -> Result<(), MemoryError> {
+        match handle.format {
+            BackupFormat::Json => {
+                let rt = tokio::runtime::Handle::try_current().map_err(|_| {
+                    MemoryError::RestoreFailed {
+                        backend: skreaver_core::error::MemoryBackend::Postgres,
+                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                            backend_error: "No tokio runtime available".to_string(),
+                        },
+                    }
+                })?;
+
+                rt.block_on(async {
+                    let data_map: std::collections::HashMap<String, String> =
+                        serde_json::from_slice(&handle.data).map_err(|e| {
+                            MemoryError::RestoreFailed {
+                                backend: skreaver_core::error::MemoryBackend::Postgres,
+                                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                                    details: format!("Failed to deserialize backup: {}", e),
+                                },
+                            }
+                        })?;
+
+                    let conn = self.pool.acquire().await?;
+                    let client = conn.client();
+
+                    // Clear existing data (without transaction for simplicity)
+                    client
+                        .execute("DELETE FROM memory_entries", &[])
+                        .await
+                        .map_err(|e| MemoryError::RestoreFailed {
+                            backend: skreaver_core::error::MemoryBackend::Postgres,
+                            kind: skreaver_core::error::MemoryErrorKind::IoError {
+                                details: format!("Failed to clear entries: {}", e),
+                            },
+                        })?;
+
+                    // Restore data
+                    for (key, value) in data_map {
+                        let value_json: serde_json::Value = serde_json::from_str(&value)
+                            .unwrap_or(serde_json::Value::String(value));
+
+                        client
+                            .execute(
+                                "INSERT INTO memory_entries (key, value) VALUES ($1, $2)",
+                                &[&key, &value_json],
+                            )
+                            .await
+                            .map_err(|e| MemoryError::RestoreFailed {
+                                backend: skreaver_core::error::MemoryBackend::Postgres,
+                                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                                    details: format!("Failed to insert key {}: {}", key, e),
+                                },
+                            })?;
+                    }
+
+                    Ok(())
+                })
+            }
+            BackupFormat::PostgresDump => Err(MemoryError::RestoreFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "PostgreSQL dump format not yet supported".to_string(),
+                },
+            }),
+            BackupFormat::SqliteDump | BackupFormat::Binary => Err(MemoryError::RestoreFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Unsupported backup format: {:?}", handle.format),
+                },
+            }),
+        }
+    }
+
+    fn migrate_to_version(&mut self, version: Option<u32>) -> Result<(), MemoryError> {
+        let rt =
+            tokio::runtime::Handle::try_current().map_err(|_| MemoryError::ConnectionFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "No tokio runtime available".to_string(),
+                },
+            })?;
+
+        rt.block_on(async {
+            let migration_engine = PostgresMigrationEngine::new();
+            migration_engine.migrate(&self.pool, version).await
+        })
+    }
+
+    fn health_status(&self) -> Result<HealthStatus, MemoryError> {
+        let rt =
+            tokio::runtime::Handle::try_current().map_err(|_| MemoryError::ConnectionFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "No tokio runtime available".to_string(),
+                },
+            })?;
+
+        rt.block_on(async {
+            let health = self.pool.health_check().await?;
+
+            let pool_health = PoolHealth {
+                healthy_connections: health.active_connections,
+                total_connections: health.total_connections,
+                last_check: std::time::SystemTime::now(),
+            };
+
+            // Check if pool is healthy (all connections active)
+            let is_healthy = health.active_connections > 0
+                && health.active_connections == health.total_connections;
+
+            if is_healthy {
+                Ok(HealthStatus::Healthy {
+                    details: format!(
+                        "PostgreSQL pool healthy: {}/{} connections (server: {})",
+                        health.active_connections, health.total_connections, health.server_version
+                    ),
+                    pool_status: pool_health,
+                })
+            } else {
+                Ok(HealthStatus::Degraded {
+                    reason: format!(
+                        "Pool degraded: {}/{} connections active",
+                        health.active_connections, health.total_connections
+                    ),
+                    pool_status: pool_health,
+                })
+            }
+        })
+    }
+
+    fn migration_status(&self) -> Result<MigrationStatus, MemoryError> {
+        let rt =
+            tokio::runtime::Handle::try_current().map_err(|_| MemoryError::ConnectionFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: "No tokio runtime available".to_string(),
+                },
+            })?;
+
+        rt.block_on(async {
+            let conn = self.pool.acquire().await?;
+
+            // Get current version
+            let current_version: i32 = conn
+                .client()
+                .query_one(
+                    "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                    &[],
+                )
+                .await
+                .map(|row| row.get(0))
+                .unwrap_or(0);
+
+            // Get applied migrations
+            let rows = conn
+                .client()
+                .query(
+                    "SELECT version, description, applied_at FROM schema_migrations ORDER BY version",
+                    &[],
+                )
+                .await
+                .map_err(|e| MemoryError::ConnectionFailed {
+                    backend: skreaver_core::error::MemoryBackend::Postgres,
+                    kind: skreaver_core::error::MemoryErrorKind::IoError {
+                        details: format!("Failed to query migrations: {}", e),
+                    },
+                })?;
+
+            let mut applied_migrations = Vec::new();
+            for row in rows {
+                let version: i32 = row.get(0);
+                let description: String = row.get(1);
+                let applied_at: chrono::DateTime<chrono::Utc> = row.get(2);
+
+                applied_migrations.push(AppliedMigration {
+                    version: version as u32,
+                    description,
+                    applied_at: applied_at.into(),
+                });
+            }
+
+            // Get latest available version from migration engine
+            let migration_engine = PostgresMigrationEngine::new();
+            let latest_version = migration_engine.latest_version();
+
+            // Calculate pending migrations
+            let pending_migrations: Vec<u32> = ((current_version as u32 + 1)..=latest_version).collect();
+
+            Ok(MigrationStatus {
+                current_version: current_version as u32,
+                latest_version,
+                pending_migrations,
+                applied_migrations,
+            })
         })
     }
 }

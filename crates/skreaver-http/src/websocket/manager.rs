@@ -409,10 +409,10 @@ impl WebSocketManager {
             for &conn_id in subscribers {
                 if let Some(state) = connections.get(&conn_id) {
                     // If event is user-specific, check user ID
-                    if let Some(target_user) = &event.user_id {
-                        if state.user_id.as_ref() != Some(target_user) {
-                            continue;
-                        }
+                    if let Some(target_user) = &event.user_id
+                        && state.user_id.as_ref() != Some(target_user)
+                    {
+                        continue;
                     }
 
                     if let Err(e) = state.sender.send(message.clone()).await {

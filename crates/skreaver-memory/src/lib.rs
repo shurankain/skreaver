@@ -37,6 +37,13 @@
 // Re-export core memory traits
 pub use skreaver_core::memory::*;
 
+// Admin operations (shared across backends)
+pub mod admin;
+pub use admin::{
+    AppliedMigration, BackupFormat, BackupHandle, HealthStatus, MemoryAdmin, MigrationStatus,
+    PoolHealth,
+};
+
 // Always available memory backends
 mod file_memory;
 pub use file_memory::FileMemory;

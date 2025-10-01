@@ -27,6 +27,11 @@ impl PostgresMigrationEngine {
         }
     }
 
+    /// Get the latest available migration version
+    pub fn latest_version(&self) -> u32 {
+        self.migrations.iter().map(|m| m.version).max().unwrap_or(0)
+    }
+
     fn default_migrations() -> Vec<PostgresMigration> {
         vec![PostgresMigration {
             version: 1,
