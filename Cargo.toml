@@ -122,11 +122,14 @@ libc = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true, features = ["cors"] }
 chrono = { workspace = true }
+tracing-subscriber = { workspace = true }
+futures = { workspace = true }
 # Core crates
 skreaver-core = { path = "crates/skreaver-core" }
 skreaver-memory = { path = "crates/skreaver-memory" }
 skreaver-tools = { path = "crates/skreaver-tools" }
 skreaver-http = { path = "crates/skreaver-http" }
+skreaver-mesh = { path = "crates/skreaver-mesh", features = ["redis"] }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
 
@@ -177,6 +180,7 @@ members = [
   "crates/skreaver-http",
   "crates/skreaver-testing",
   "crates/skreaver-observability",
+  "crates/skreaver-mesh",
   "crates/skreaver",
 ]
 resolver = "2"

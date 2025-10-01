@@ -471,9 +471,7 @@ impl SnapshotableMemory for RedisMemory {
 
 #[cfg(feature = "redis")]
 impl RedisConnectionProvider for RedisMemory {
-    async fn get_connection(
-        &self,
-    ) -> Result<PooledConnection, MemoryError> {
+    async fn get_connection(&self) -> Result<PooledConnection, MemoryError> {
         RedisPoolUtils::get_connection(&self.pool, &self.metrics).await
     }
 }

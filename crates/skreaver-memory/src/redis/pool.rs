@@ -32,9 +32,7 @@ impl RedisPoolUtils {
             RedisDeploymentV2::Standalone(standalone) => {
                 Self::create_standalone_pool(standalone, config).await
             }
-            RedisDeploymentV2::Cluster(cluster) => {
-                Self::create_cluster_pool(cluster, config).await
-            }
+            RedisDeploymentV2::Cluster(cluster) => Self::create_cluster_pool(cluster, config).await,
             RedisDeploymentV2::Sentinel(sentinel) => {
                 Self::create_sentinel_pool(sentinel, config).await
             }

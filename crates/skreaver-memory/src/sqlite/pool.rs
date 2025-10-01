@@ -10,7 +10,7 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use skreaver_core::error::{MemoryError, MemoryBackend, MemoryErrorKind};
+use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 
 /// Connection pool for SQLite with configurable size and thread safety
 pub struct SqlitePool {

@@ -601,9 +601,7 @@ impl SecretRedactor {
 mod tests {
     use super::*;
     use crate::security::config::{
-        AuditConfig as ConfigAuditConfig,
-        LogLevel as ConfigLogLevel,
-        LogFormat as ConfigLogFormat,
+        AuditConfig as ConfigAuditConfig, LogFormat as ConfigLogFormat, LogLevel as ConfigLogLevel,
     };
 
     #[test]

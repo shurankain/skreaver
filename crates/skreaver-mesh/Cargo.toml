@@ -1,0 +1,35 @@
+[package]
+name = "skreaver-mesh"
+version = "0.1.0"
+edition = "2021"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Multi-agent communication layer for Skreaver"
+repository = "https://github.com/shurankain/skreaver"
+keywords = ["agent", "messaging", "pubsub", "communication"]
+categories = ["development-tools", "ai"]
+
+[features]
+default = []
+redis = ["dep:redis", "dep:deadpool-redis"]
+
+[dependencies]
+# Core dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+base64 = { workspace = true }
+
+# Redis backend (optional)
+redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster"] }
+deadpool-redis = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+tempfile = { workspace = true }
