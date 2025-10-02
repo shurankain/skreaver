@@ -2,7 +2,7 @@
 
 use super::{
     ConnectionInfo, WebSocketManager, WsError, WsMessage,
-    protocol::{MessageEnvelope, MessagePayload, channels, events},
+    protocol::{MessageEnvelope, MessagePayload, ResponseData, channels, events},
 };
 use axum::{
     Json,
@@ -326,22 +326,21 @@ async fn send_protocol_message(
             code: data.error.code,
             message: data.error.message,
         },
-        MessagePayload::Response(data) => {
-            if let Some(result) = data.result {
-                WsMessage::Success {
-                    message: serde_json::to_string(&result).unwrap_or_default(),
-                }
-            } else if let Some(error) = data.error {
-                WsMessage::Error {
-                    code: error.code,
-                    message: error.message,
-                }
-            } else {
-                WsMessage::Success {
-                    message: "OK".to_string(),
-                }
-            }
-        }
+        MessagePayload::Response(data) => match data {
+            ResponseData::Success { result } => WsMessage::Success {
+                message: serde_json::to_string(&result).unwrap_or_default(),
+            },
+            ResponseData::Error { error } => WsMessage::Error {
+                code: error.code,
+                message: error.message,
+            },
+            ResponseData::Pending => WsMessage::Success {
+                message: "Pending".to_string(),
+            },
+            ResponseData::Cancelled => WsMessage::Success {
+                message: "Cancelled".to_string(),
+            },
+        },
         MessagePayload::Pong(_) => WsMessage::Pong {
             timestamp: envelope.timestamp,
         },

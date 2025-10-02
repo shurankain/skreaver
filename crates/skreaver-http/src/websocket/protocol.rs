@@ -225,18 +225,30 @@ pub struct RequestData {
 }
 
 /// Response data for RPC-style communication
+/// Response data with type-safe status variants
+/// This design makes invalid states unrepresentable - you cannot have
+/// a Success response with an error, or an Error response with a result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResponseData {
-    /// Response status
-    pub status: ResponseStatus,
-    /// Response result (for success)
-    pub result: Option<serde_json::Value>,
-    /// Error information (for failure)
-    pub error: Option<ErrorInfo>,
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum ResponseData {
+    /// Request completed successfully with a result
+    Success {
+        /// The successful result value
+        result: serde_json::Value,
+    },
+    /// Request failed with an error
+    Error {
+        /// Error information
+        #[serde(flatten)]
+        error: ErrorInfo,
+    },
+    /// Request is still processing
+    Pending,
+    /// Request was cancelled
+    Cancelled,
 }
 
-/// Response status
+// Keep ResponseStatus for backward compatibility if needed elsewhere
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ResponseStatus {
@@ -395,23 +407,17 @@ impl MessageEnvelope {
 
     /// Create a success response message
     pub fn success_response(result: serde_json::Value) -> Self {
-        Self::new(MessagePayload::Response(ResponseData {
-            status: ResponseStatus::Success,
-            result: Some(result),
-            error: None,
-        }))
+        Self::new(MessagePayload::Response(ResponseData::Success { result }))
     }
 
     /// Create an error response message
     pub fn error_response(code: &str, message: &str) -> Self {
-        Self::new(MessagePayload::Response(ResponseData {
-            status: ResponseStatus::Error,
-            result: None,
-            error: Some(ErrorInfo {
+        Self::new(MessagePayload::Response(ResponseData::Error {
+            error: ErrorInfo {
                 code: code.to_string(),
                 message: message.to_string(),
                 details: None,
-            }),
+            },
         }))
     }
 
@@ -526,11 +532,10 @@ mod tests {
         let result = serde_json::json!({"result": "success"});
         let response = MessageEnvelope::success_response(result.clone());
 
-        if let MessagePayload::Response(resp_data) = response.payload {
-            assert!(matches!(resp_data.status, ResponseStatus::Success));
-            assert_eq!(resp_data.result, Some(result));
+        if let MessagePayload::Response(ResponseData::Success { result: res }) = response.payload {
+            assert_eq!(res, result);
         } else {
-            panic!("Expected Response payload");
+            panic!("Expected Success response");
         }
     }
 
@@ -547,11 +552,12 @@ mod tests {
 
         let error_response = MessageEnvelope::error_response("REQUEST_FAILED", "Request failed");
 
-        if let MessagePayload::Response(resp_data) = error_response.payload {
-            assert!(matches!(resp_data.status, ResponseStatus::Error));
-            assert!(resp_data.error.is_some());
+        if let MessagePayload::Response(ResponseData::Error { error: err }) = error_response.payload
+        {
+            assert_eq!(err.code, "REQUEST_FAILED");
+            assert_eq!(err.message, "Request failed");
         } else {
-            panic!("Expected Response payload");
+            panic!("Expected Error response");
         }
     }
 
