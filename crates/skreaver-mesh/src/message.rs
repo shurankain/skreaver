@@ -104,11 +104,18 @@ impl From<Vec<u8>> for MessagePayload {
 pub type MessageMetadata = HashMap<String, String>;
 
 /// A message sent between agents in the mesh
+///
+/// ## Routing Patterns
+/// Messages support four routing patterns through optional from/to fields:
+/// - **Unicast**: `from: Some, to: Some` - Direct message from agent A to agent B
+/// - **Broadcast**: `from: Some, to: None` - Broadcast from agent A to all listeners
+/// - **System**: `from: None, to: Some` - System message to a specific agent
+/// - **Anonymous**: `from: None, to: None` - System broadcast (rare, for infrastructure)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     /// Unique message identifier
     pub id: MessageId,
-    /// Sender agent ID (optional for broadcasts)
+    /// Sender agent ID (None for system messages)
     pub from: Option<AgentId>,
     /// Recipient agent ID (None for broadcasts)
     pub to: Option<AgentId>,
@@ -174,6 +181,28 @@ impl Message {
     /// Deserialize message from JSON
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
+    }
+
+    // Routing pattern helpers
+
+    /// Check if this is a unicast message (from agent to agent)
+    pub fn is_unicast(&self) -> bool {
+        self.from.is_some() && self.to.is_some()
+    }
+
+    /// Check if this is a broadcast message (from agent to all)
+    pub fn is_broadcast(&self) -> bool {
+        self.from.is_some() && self.to.is_none()
+    }
+
+    /// Check if this is a system message (to specific agent, no sender)
+    pub fn is_system(&self) -> bool {
+        self.from.is_none() && self.to.is_some()
+    }
+
+    /// Check if this is an anonymous message (no sender, no recipient)
+    pub fn is_anonymous(&self) -> bool {
+        self.from.is_none() && self.to.is_none()
     }
 }
 
@@ -269,5 +298,36 @@ mod tests {
 
         let binary_msg = Message::new(vec![1u8, 2, 3]);
         assert!(matches!(binary_msg.payload, MessagePayload::Binary(_)));
+    }
+
+    #[test]
+    fn test_message_routing_patterns() {
+        // Unicast: from agent to agent
+        let unicast = Message::new("test").from("agent-1").to("agent-2");
+        assert!(unicast.is_unicast());
+        assert!(!unicast.is_broadcast());
+        assert!(!unicast.is_system());
+        assert!(!unicast.is_anonymous());
+
+        // Broadcast: from agent to all
+        let broadcast = Message::new("announcement").from("agent-1");
+        assert!(!broadcast.is_unicast());
+        assert!(broadcast.is_broadcast());
+        assert!(!broadcast.is_system());
+        assert!(!broadcast.is_anonymous());
+
+        // System: to agent, no sender
+        let system = Message::new("config update").to("agent-1");
+        assert!(!system.is_unicast());
+        assert!(!system.is_broadcast());
+        assert!(system.is_system());
+        assert!(!system.is_anonymous());
+
+        // Anonymous: no sender, no recipient
+        let anonymous = Message::new("infrastructure message");
+        assert!(!anonymous.is_unicast());
+        assert!(!anonymous.is_broadcast());
+        assert!(!anonymous.is_system());
+        assert!(anonymous.is_anonymous());
     }
 }
