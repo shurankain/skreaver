@@ -70,30 +70,76 @@ pub enum BackupFormat {
     Binary,
 }
 
-/// Structured health status for memory backends
-#[derive(Debug, Clone)]
-pub enum HealthStatus {
+/// Health status severity level
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum HealthSeverity {
     /// Backend is fully operational
-    Healthy {
-        /// Additional details about the healthy state
-        details: String,
-        /// Connection pool health information
-        pool_status: PoolHealth,
-    },
+    Healthy,
     /// Backend is operational but experiencing issues
-    Degraded {
-        /// Reason for degraded status
-        reason: String,
-        /// Connection pool health information
-        pool_status: PoolHealth,
-    },
+    Degraded,
     /// Backend is not operational
-    Unhealthy {
-        /// Reason for unhealthy status
-        reason: String,
-        /// Number of errors encountered
-        error_count: u32,
-    },
+    Unhealthy,
+}
+
+/// Structured health status for memory backends with unified structure
+/// This design ensures pool_status is always consistently available when applicable
+#[derive(Debug, Clone)]
+pub struct HealthStatus {
+    /// Severity level of the health status
+    pub severity: HealthSeverity,
+    /// Description of the current state (details for Healthy, reason for Degraded/Unhealthy)
+    pub message: String,
+    /// Connection pool health information (None if pool unavailable)
+    pub pool_status: Option<PoolHealth>,
+    /// Number of errors encountered (relevant for Unhealthy status)
+    pub error_count: u32,
+}
+
+impl HealthStatus {
+    /// Create a healthy status
+    pub fn healthy(message: impl Into<String>, pool_status: PoolHealth) -> Self {
+        Self {
+            severity: HealthSeverity::Healthy,
+            message: message.into(),
+            pool_status: Some(pool_status),
+            error_count: 0,
+        }
+    }
+
+    /// Create a degraded status
+    pub fn degraded(reason: impl Into<String>, pool_status: PoolHealth) -> Self {
+        Self {
+            severity: HealthSeverity::Degraded,
+            message: reason.into(),
+            pool_status: Some(pool_status),
+            error_count: 0,
+        }
+    }
+
+    /// Create an unhealthy status
+    pub fn unhealthy(reason: impl Into<String>, error_count: u32) -> Self {
+        Self {
+            severity: HealthSeverity::Unhealthy,
+            message: reason.into(),
+            pool_status: None,
+            error_count,
+        }
+    }
+
+    /// Check if the backend is healthy
+    pub fn is_healthy(&self) -> bool {
+        self.severity == HealthSeverity::Healthy
+    }
+
+    /// Check if the backend is degraded
+    pub fn is_degraded(&self) -> bool {
+        self.severity == HealthSeverity::Degraded
+    }
+
+    /// Check if the backend is unhealthy
+    pub fn is_unhealthy(&self) -> bool {
+        self.severity == HealthSeverity::Unhealthy
+    }
 }
 
 /// Connection pool health information

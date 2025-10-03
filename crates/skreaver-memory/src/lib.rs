@@ -40,8 +40,8 @@ pub use skreaver_core::memory::*;
 // Admin operations (shared across backends)
 pub mod admin;
 pub use admin::{
-    AppliedMigration, BackupFormat, BackupHandle, HealthStatus, MemoryAdmin, MigrationStatus,
-    PoolHealth,
+    AppliedMigration, BackupFormat, BackupHandle, HealthSeverity, HealthStatus, MemoryAdmin,
+    MigrationStatus, PoolHealth,
 };
 
 // Always available memory backends

@@ -1187,26 +1187,23 @@ impl MemoryAdmin for SqliteMemory {
         };
 
         let status = if pool_health.healthy_connections == pool_health.total_connections {
-            HealthStatus::Healthy {
-                details: format!(
+            HealthStatus::healthy(
+                format!(
                     "All {} connections healthy, {} keys stored",
                     pool_health.total_connections, row_count
                 ),
-                pool_status: pool_health,
-            }
+                pool_health,
+            )
         } else if pool_health.healthy_connections > 0 {
-            HealthStatus::Degraded {
-                reason: format!(
+            HealthStatus::degraded(
+                format!(
                     "Only {}/{} connections healthy",
                     pool_health.healthy_connections, pool_health.total_connections
                 ),
-                pool_status: pool_health,
-            }
+                pool_health,
+            )
         } else {
-            HealthStatus::Unhealthy {
-                reason: "No healthy connections available".to_string(),
-                error_count: 1,
-            }
+            HealthStatus::unhealthy("No healthy connections available", 1)
         };
 
         Ok(status)
@@ -1316,12 +1313,8 @@ mod tests {
 
         // Test health status
         let health = memory.health_status().unwrap();
-        match health {
-            HealthStatus::Healthy { details, .. } => {
-                assert!(details.contains("connections healthy"));
-            }
-            _ => panic!("Expected healthy status"),
-        }
+        assert!(health.is_healthy());
+        assert!(health.message.contains("connections healthy"));
 
         // Test migration status
         let migration_status = memory.migration_status().unwrap();

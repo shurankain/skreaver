@@ -538,21 +538,21 @@ impl MemoryAdmin for PostgresMemory {
                 && health.active_connections == health.total_connections;
 
             if is_healthy {
-                Ok(HealthStatus::Healthy {
-                    details: format!(
+                Ok(HealthStatus::healthy(
+                    format!(
                         "PostgreSQL pool healthy: {}/{} connections (server: {})",
                         health.active_connections, health.total_connections, health.server_version
                     ),
-                    pool_status: pool_health,
-                })
+                    pool_health,
+                ))
             } else {
-                Ok(HealthStatus::Degraded {
-                    reason: format!(
+                Ok(HealthStatus::degraded(
+                    format!(
                         "Pool degraded: {}/{} connections active",
                         health.active_connections, health.total_connections
                     ),
-                    pool_status: pool_health,
-                })
+                    pool_health,
+                ))
             }
         })
     }
