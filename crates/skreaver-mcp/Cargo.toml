@@ -1,0 +1,36 @@
+[package]
+name = "skreaver-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Model Context Protocol (MCP) integration for Skreaver"
+license = "MIT"
+
+[dependencies]
+# MCP SDK
+rmcp = "0.2.0"
+
+# Skreaver crates
+skreaver-core = { path = "../skreaver-core", version = "0.3.0" }
+skreaver-tools = { path = "../skreaver-tools", version = "0.3.0" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async traits
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[lints]
+workspace = true

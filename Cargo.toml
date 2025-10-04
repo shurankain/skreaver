@@ -181,7 +181,7 @@ members = [
   "crates/skreaver-testing",
   "crates/skreaver-observability",
   "crates/skreaver-mesh",
-  "crates/skreaver",
+  "crates/skreaver", "crates/skreaver-mcp",
 ]
 resolver = "2"
 
