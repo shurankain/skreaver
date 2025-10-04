@@ -2,9 +2,11 @@ use clap::{Parser, Subcommand};
 
 mod agents;
 mod perf;
+mod scaffold;
 
 use agents::{run_echo_agent, run_multi_agent, run_reasoning_agent, run_standard_tools_agent};
 use perf::run_perf_command;
+use scaffold::{generate_agent, generate_tool};
 
 #[derive(Parser, Debug)]
 #[command(name = "skreaver", version = "0.3.0")]
@@ -25,6 +27,30 @@ enum Commands {
     Perf {
         #[command(subcommand)]
         perf_command: PerfCommands,
+    },
+    /// Create a new agent from template
+    New {
+        /// Agent name
+        #[arg(long)]
+        name: String,
+        /// Template type (reasoning, simple, multi-tool)
+        #[arg(long, default_value = "simple")]
+        template: String,
+        /// Output directory (default: current directory)
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Generate tool boilerplate
+    Generate {
+        /// What to generate (tool, config)
+        #[arg(long)]
+        r#type: String,
+        /// Template type (http-client, database, custom)
+        #[arg(long)]
+        template: String,
+        /// Output directory
+        #[arg(long)]
+        output: String,
     },
 }
 
@@ -122,6 +148,28 @@ fn main() {
         Commands::Perf { perf_command } => {
             if let Err(e) = run_perf_command(perf_command) {
                 tracing::error!(error = %e, "Performance command failed");
+                std::process::exit(1);
+            }
+        }
+        Commands::New {
+            name,
+            template,
+            output,
+        } => {
+            println!("🚀 Creating new {} agent: {}", template, name);
+            if let Err(e) = generate_agent(&name, &template, output.as_deref()) {
+                eprintln!("❌ Error: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Generate {
+            r#type,
+            template,
+            output,
+        } => {
+            println!("🔧 Generating {} tool from {} template", r#type, template);
+            if let Err(e) = generate_tool(&r#type, &template, &output) {
+                eprintln!("❌ Error: {}", e);
                 std::process::exit(1);
             }
         }
