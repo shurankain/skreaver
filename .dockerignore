@@ -1,0 +1,67 @@
+# Rust build artifacts
+target/
+**/target/
+
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Test artifacts
+coverage/
+*.profraw
+*.profdata
+
+# Benchmark results
+criterion/
+benchmarks/results/
+
+# Temporary files
+tmp/
+*.tmp
+*.bak
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Log files
+*.log
+
+# Environment files
+.env
+.env.*
+
+# Docker files (don't copy into container)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Example outputs
+examples/output/
+*.out
+
+# Performance baselines (not needed in container)
+performance_baselines/
+
