@@ -29,12 +29,12 @@
 //! }
 //! ```
 
+pub mod adapter;
+pub mod bridge;
 pub mod error;
 pub mod server;
-pub mod bridge;
-pub mod adapter;
 
+pub use adapter::ToolAdapter;
+pub use bridge::McpBridge;
 pub use error::{McpError, McpResult};
 pub use server::McpServer;
-pub use bridge::McpBridge;
-pub use adapter::ToolAdapter;

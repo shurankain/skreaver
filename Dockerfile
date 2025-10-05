@@ -4,12 +4,13 @@
 # ============================================================================
 # Stage 1: Build Application
 # ============================================================================
-FROM rust:1.83-slim-bookworm AS builder
+FROM rustlang/rust:nightly-bookworm-slim AS builder
 
 # Install system dependencies for compilation
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,11 +23,11 @@ COPY tests ./tests
 COPY examples ./examples
 COPY benches ./benches
 
-# Build the CLI binary in release mode
-RUN cargo build --release -p skreaver-cli
+# Build the CLI binary in release mode (requires nightly for edition2024)
+RUN cargo +nightly build --release -p skreaver-cli
 
 # Strip debug symbols to reduce binary size
-RUN strip /app/target/release/skreaver
+RUN strip /app/target/release/skreaver-cli
 
 
 # ============================================================================
@@ -35,7 +36,7 @@ RUN strip /app/target/release/skreaver
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/skreaver /usr/local/bin/skreaver
+COPY --from=builder /app/target/release/skreaver-cli /usr/local/bin/skreaver
 
 # Run as non-root user (already set in distroless/nonroot)
 USER nonroot:nonroot
