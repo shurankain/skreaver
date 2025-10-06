@@ -1,0 +1,185 @@
+# Default values for skreaver
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Number of replicas for the deployment
+replicaCount: 1
+
+image:
+  repository: skreaver
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532  # nonroot user from distroless
+  fsGroup: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+
+service:
+  type: ClusterIP
+  port: 8080
+  # HTTP server port (if using skreaver-http runtime)
+  targetPort: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: skreaver.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: skreaver-tls
+  #    hosts:
+  #      - skreaver.local
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Skreaver-specific configuration
+config:
+  # Logging level
+  logLevel: info
+
+  # Agent configuration
+  agent:
+    # Agent execution mode (http, cli, mesh)
+    mode: http
+    # Memory backend to use
+    memoryBackend: redis
+
+# Redis configuration (bitnami/redis chart)
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+  replica:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# PostgreSQL configuration (bitnami/postgresql chart)
+postgresql:
+  enabled: true
+  auth:
+    username: skreaver
+    password: skreaver
+    database: skreaver
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# ConfigMap data
+configMap:
+  data: {}
+    # Add any configuration files here
+    # config.toml: |
+    #   [server]
+    #   host = "0.0.0.0"
+    #   port = 3000
+
+# Environment variables
+env:
+  - name: RUST_LOG
+    value: "info"
+  - name: REDIS_URL
+    value: "redis://{{ include \"skreaver.fullname\" . }}-redis-master:6379"
+  - name: DATABASE_URL
+    value: "postgresql://skreaver:skreaver@{{ include \"skreaver.fullname\" . }}-postgresql:5432/skreaver"
+
+# Extra environment variables from secrets
+envFrom: []
+  # - secretRef:
+  #     name: skreaver-secrets
+
+# Probes configuration
+livenessProbe:
+  enabled: false
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: false
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Volume mounts
+volumeMounts: []
+  # - name: config
+  #   mountPath: /app/config
+  #   readOnly: true
+
+# Volumes
+volumes: []
+  # - name: config
+  #   configMap:
+  #     name: {{ include "skreaver.fullname" . }}-config
+
+# Init containers
+initContainers: []
+
+# Sidecar containers
+sidecars: []

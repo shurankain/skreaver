@@ -1,0 +1,34 @@
+apiVersion: v2
+name: skreaver
+description: A Helm chart for deploying Skreaver agent infrastructure on Kubernetes
+type: application
+version: 0.3.0
+appVersion: "0.3.0"
+
+keywords:
+  - agent
+  - infrastructure
+  - ai
+  - rust
+
+home: https://github.com/shurankain/skreaver
+sources:
+  - https://github.com/shurankain/skreaver
+
+maintainers:
+  - name: Oleksandr Husiev
+    email: ohusiev@icloud.com
+
+dependencies:
+  - name: redis
+    version: "~18.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: postgresql
+    version: "~13.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+
+annotations:
+  category: Infrastructure
+  licenses: MIT
