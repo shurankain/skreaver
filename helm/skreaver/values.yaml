@@ -136,9 +136,9 @@ env:
   - name: RUST_LOG
     value: "info"
   - name: REDIS_URL
-    value: "redis://{{ include \"skreaver.fullname\" . }}-redis-master:6379"
+    value: "redis://{{ .Release.Name }}-redis-master:6379"
   - name: DATABASE_URL
-    value: "postgresql://skreaver:skreaver@{{ include \"skreaver.fullname\" . }}-postgresql:5432/skreaver"
+    value: "postgresql://skreaver:skreaver@{{ .Release.Name }}-postgresql:5432/skreaver"
 
 # Extra environment variables from secrets
 envFrom: []
