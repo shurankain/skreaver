@@ -12,12 +12,16 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod api_key;
+pub mod blacklist;
 pub mod jwt;
 pub mod middleware;
 pub mod rbac;
 pub mod storage;
 
 pub use api_key::{ApiKey, ApiKeyConfig, ApiKeyManager};
+#[cfg(feature = "redis")]
+pub use blacklist::RedisBlacklist;
+pub use blacklist::{InMemoryBlacklist, TokenBlacklist};
 pub use jwt::{JwtClaims, JwtConfig, JwtManager, JwtToken};
 pub use middleware::{AuthMiddleware, AuthenticatedRequest};
 pub use rbac::{Permission, Role, RoleManager, ToolPolicy};

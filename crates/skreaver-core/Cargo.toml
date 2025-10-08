@@ -43,3 +43,6 @@ once_cell = { version = "1.19", optional = true }
 aes-gcm = "0.10"
 zeroize = { version = "1.7", features = ["derive"] }
 
+# Token revocation with Redis
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
+
