@@ -54,6 +54,118 @@ jobs:
       - name: Cargo check (default features)
         run: cargo check --workspace
 
+  # Semantic versioning validation
+  semver:
+    name: Semantic Versioning Check
+    runs-on: ubuntu-latest
+    needs: check
+    # Only run on PRs and main branch pushes
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for comparison
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-semver
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-semver-checks
+        run: |
+          if ! command -v cargo-semver-checks &> /dev/null; then
+            cargo install cargo-semver-checks --locked
+          fi
+
+      - name: Check semver compatibility (skreaver meta-crate)
+        run: |
+          # Check meta-crate for breaking changes
+          cd crates/skreaver
+          cargo semver-checks check-release || {
+            echo "⚠️  Breaking changes detected in skreaver meta-crate"
+            echo "This is the stable public API - breaking changes require a major version bump"
+            echo "See API_STABILITY.md for versioning policy"
+            exit 1
+          }
+        continue-on-error: true  # Report but don't fail build in pre-1.0
+
+      - name: Check semver compatibility (core)
+        run: |
+          cd crates/skreaver-core
+          cargo semver-checks check-release || echo "⚠️  Breaking changes in skreaver-core (internal API)"
+        continue-on-error: true
+
+      - name: Check semver compatibility (http)
+        run: |
+          cd crates/skreaver-http
+          cargo semver-checks check-release || echo "⚠️  Breaking changes in skreaver-http (internal API)"
+        continue-on-error: true
+
+      - name: Check semver compatibility (tools)
+        run: |
+          cd crates/skreaver-tools
+          cargo semver-checks check-release || echo "⚠️  Breaking changes in skreaver-tools (internal API)"
+        continue-on-error: true
+
+      - name: Check semver compatibility (memory)
+        run: |
+          cd crates/skreaver-memory
+          cargo semver-checks check-release || echo "⚠️  Breaking changes in skreaver-memory (internal API)"
+        continue-on-error: true
+
+      - name: Generate semver report
+        if: always()
+        run: |
+          echo "## 📊 SemVer Compatibility Report" > semver-report.md
+          echo "" >> semver-report.md
+          echo "**Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> semver-report.md
+          echo "**Branch**: ${{ github.ref_name }}" >> semver-report.md
+          echo "**Commit**: ${{ github.sha }}" >> semver-report.md
+          echo "" >> semver-report.md
+          echo "### Status" >> semver-report.md
+          echo "" >> semver-report.md
+          echo "Semver checks completed. See job logs for details." >> semver-report.md
+          echo "" >> semver-report.md
+          echo "⚠️  **Pre-1.0 Notice**: Breaking changes are allowed in minor releases" >> semver-report.md
+          echo "during the 0.x.x series. See [API_STABILITY.md](API_STABILITY.md) for details." >> semver-report.md
+
+      - name: Upload semver report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semver-report
+          path: semver-report.md
+          retention-days: 30
+
+      - name: Comment semver report on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('semver-report.md')) {
+              const report = fs.readFileSync('semver-report.md', 'utf8');
+
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: report
+              });
+            }
+
   # Security scanning and validation
   security:
     name: Security Scans
