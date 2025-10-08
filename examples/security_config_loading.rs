@@ -18,44 +18,15 @@
 
 use skreaver_core::security::SecurityConfig;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("\n🔒 Skreaver Security Configuration Loading Demo\n");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
-    // ============================================================================
-    // Step 1: Load Security Configuration from TOML
-    // ============================================================================
-
-    println!("📋 Step 1: Loading security configuration from TOML...\n");
-
-    let config = match SecurityConfig::load_from_file("examples/skreaver-security.toml") {
-        Ok(cfg) => {
-            println!(
-                "   ✅ Configuration loaded successfully from examples/skreaver-security.toml\n"
-            );
-            cfg
-        }
-        Err(e) => {
-            println!("   ⚠️  Could not load from examples/ ({})", e);
-            println!("   📋 Using default configuration instead\n");
-            SecurityConfig::create_default()
-        }
-    };
-
-    // ============================================================================
-    // Step 2: Display Configuration Metadata
-    // ============================================================================
-
+fn display_metadata(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("📊 Step 2: Configuration Metadata\n");
     println!("   Version: {}", config.metadata.version);
     println!("   Created: {}", config.metadata.created);
     println!("   Description: {}\n", config.metadata.description);
+}
 
-    // ============================================================================
-    // Step 3: Display File System Policy
-    // ============================================================================
-
+fn display_fs_policy(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("📁 Step 3: File System Policy\n");
     println!("   Enabled: {}", config.fs.enabled);
@@ -74,11 +45,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("   Follow Symlinks: {}", config.fs.follow_symlinks);
     println!("   Scan Content: {}\n", config.fs.scan_content);
+}
 
-    // ============================================================================
-    // Step 4: Display HTTP Policy
-    // ============================================================================
-
+fn display_http_policy(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("🌐 Step 4: HTTP Policy\n");
     println!("   Enabled: {}", config.http.enabled);
@@ -95,13 +64,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Max Redirects: {:?}", config.http.max_redirects);
     println!("   User Agent: {}", config.http.user_agent);
     println!("   Allow Local: {}\n", config.http.allow_local);
+}
 
-    // ============================================================================
-    // Step 5: Display Resource Limits
-    // ============================================================================
-
+fn display_network_policy(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    println!("⚙️  Step 5: Resource Limits\n");
+    println!("🔌 Step 5: Network Policy\n");
+    println!("   Enabled: {}", config.network.enabled);
+    println!("   Allowed Ports ({}):", config.network.allow_ports.len());
+    if !config.network.allow_ports.is_empty() {
+        print!("      ✅ ");
+        for (i, port) in config.network.allow_ports.iter().enumerate() {
+            if i > 0 {
+                print!(", ");
+            }
+            print!("{:?}", port);
+        }
+        println!();
+    }
+    println!("\n   Denied Ports ({}):", config.network.deny_ports.len());
+    if !config.network.deny_ports.is_empty() {
+        print!("      🚫 ");
+        for (i, port) in config.network.deny_ports.iter().enumerate() {
+            if i > 0 {
+                print!(", ");
+            }
+            print!("{:?}", port);
+        }
+        println!();
+    }
+    println!("\n   TTL: {:?}", config.network.ttl);
+    println!(
+        "   Allow Private Networks: {}\n",
+        config.network.allow_private_networks
+    );
+}
+
+fn display_resource_limits(config: &SecurityConfig) {
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    println!("⚙️  Step 6: Resource Limits\n");
     println!("   Max Memory: {} MB", config.resources.max_memory_mb);
     println!("   Max CPU: {:.1}%", config.resources.max_cpu_percent);
     println!(
@@ -117,30 +117,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "   Max Disk Usage: {} MB\n",
         config.resources.max_disk_usage_mb
     );
+}
 
-    // ============================================================================
-    // Step 6: Display Audit Configuration
-    // ============================================================================
-
+fn display_audit_config(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    println!("📊 Step 6: Audit Configuration\n");
+    println!("📊 Step 7: Audit Configuration\n");
     println!("   Log All Operations: {}", config.audit.log_all_operations);
     println!("   Redact Secrets: {}", config.audit.redact_secrets);
-    println!("   Secret Patterns: {:?}", config.audit.secret_patterns);
-    println!("   Retain Logs: {} days", config.audit.retain_logs_days);
+    println!(
+        "   Secret Patterns ({}):",
+        config.audit.secret_patterns.len()
+    );
+    for pattern in &config.audit.secret_patterns {
+        println!("      🔍 {}", pattern);
+    }
+    println!("\n   Retain Logs: {} days", config.audit.retain_logs_days);
     println!("   Log Level: {:?}", config.audit.log_level);
     println!(
         "   Include Stack Traces: {}",
         config.audit.include_stack_traces
     );
     println!("   Log Format: {:?}\n", config.audit.log_format);
+}
 
-    // ============================================================================
-    // Step 7: Display Alerting Configuration
-    // ============================================================================
-
+fn display_secrets_config(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    println!("🚨 Step 7: Alerting Configuration\n");
+    println!("🔑 Step 8: Secrets Configuration\n");
+    println!("   Environment Only: {}", config.secrets.environment_only);
+    println!("   Env Prefix: {}", config.secrets.env_prefix);
+    println!("   Auto Rotate: {}", config.secrets.auto_rotate);
+    println!(
+        "   Min Secret Length: {} bytes\n",
+        config.secrets.min_secret_length
+    );
+}
+
+fn display_alerting_config(config: &SecurityConfig) {
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    println!("🚨 Step 9: Alerting Configuration\n");
     println!("   Enabled: {}", config.alerting.enabled);
     println!(
         "   Violation Threshold: {}",
@@ -162,14 +176,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("   Webhook: {}", webhook);
     }
     println!();
+}
 
-    // ============================================================================
-    // Step 8: Display Emergency Configuration
-    // ============================================================================
-
+fn display_development_config(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    println!("🆘 Step 8: Emergency Lockdown Configuration\n");
+    println!("🔧 Step 10: Development Configuration\n");
+    println!("   Enabled: {}", config.development.enabled);
+    if config.development.enabled {
+        println!("   ⚠️  WARNING: Development mode is active!");
+        println!(
+            "   Skip Domain Validation: {}",
+            config.development.skip_domain_validation
+        );
+        println!(
+            "   Skip Path Validation: {}",
+            config.development.skip_path_validation
+        );
+        println!(
+            "   Skip Resource Limits: {}",
+            config.development.skip_resource_limits
+        );
+        if !config.development.dev_allow_domains.is_empty() {
+            println!("   Dev Allow Domains:");
+            for domain in &config.development.dev_allow_domains {
+                println!("      🔓 {}", domain);
+            }
+        }
+    } else {
+        println!("   ✅ Production mode active (development features disabled)");
+    }
+    println!();
+}
+
+fn display_emergency_config(config: &SecurityConfig) {
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    println!("🆘 Step 11: Emergency Lockdown Configuration\n");
     println!("   Lockdown Active: {}", config.emergency.lockdown_enabled);
+    if config.emergency.lockdown_enabled {
+        println!("   🚨 LOCKDOWN MODE ACTIVE - Most operations restricted!");
+    }
     println!("   Security Contact: {}", config.emergency.security_contact);
     println!(
         "   Auto Lockdown Triggers: {:?}",
@@ -183,30 +228,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("      ✅ {}", tool);
     }
     println!();
+}
 
-    // ============================================================================
-    // Step 9: Validate Configuration
-    // ============================================================================
-
+fn display_runtime_checks(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    println!("✅ Step 9: Validating Configuration\n");
-
-    match config.validate() {
-        Ok(()) => {
-            println!("   ✅ Configuration is valid and safe to use\n");
-        }
-        Err(e) => {
-            println!("   ❌ Configuration validation failed: {}\n", e);
-            return Err(e.into());
-        }
-    }
-
-    // ============================================================================
-    // Step 10: Demonstrate Runtime Usage
-    // ============================================================================
-
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    println!("🎯 Step 10: Runtime Policy Checks\n");
+    println!("🎯 Step 12: Runtime Policy Checks\n");
 
     // Example: Check if a tool is allowed during lockdown
     let tool_name = "file_read";
@@ -222,15 +248,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example: Get log level
     println!("   Current log level: {:?}\n", config.get_log_level());
+}
 
-    // ============================================================================
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("\n🔒 Skreaver Security Configuration Loading Demo\n");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+
+    // Step 1: Load configuration
+    println!("📋 Step 1: Loading security configuration from TOML...\n");
+
+    let config = match SecurityConfig::load_from_file("examples/skreaver-security.toml") {
+        Ok(cfg) => {
+            println!(
+                "   ✅ Configuration loaded successfully from examples/skreaver-security.toml\n"
+            );
+            cfg
+        }
+        Err(e) => {
+            println!("   ⚠️  Could not load from examples/ ({})", e);
+            println!("   📋 Using default configuration instead\n");
+            SecurityConfig::create_default()
+        }
+    };
+
+    // Display all configuration sections
+    display_metadata(&config);
+    display_fs_policy(&config);
+    display_http_policy(&config);
+    display_network_policy(&config);
+    display_resource_limits(&config);
+    display_audit_config(&config);
+    display_secrets_config(&config);
+    display_alerting_config(&config);
+    display_development_config(&config);
+    display_emergency_config(&config);
+
+    // Validate configuration
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    println!("✅ Step 13: Validating Configuration\n");
+
+    match config.validate() {
+        Ok(()) => {
+            println!("   ✅ Configuration is valid and safe to use\n");
+        }
+        Err(e) => {
+            println!("   ❌ Configuration validation failed: {}\n", e);
+            return Err(e.into());
+        }
+    }
+
+    // Demonstrate runtime checks
+    display_runtime_checks(&config);
+
     // Summary
-    // ============================================================================
-
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("📝 Summary:\n");
     println!("   ✅ TOML configuration loaded and parsed");
-    println!("   ✅ All security policies extracted");
+    println!("   ✅ All 11 security policy sections extracted");
     println!("   ✅ Configuration validated");
     println!("   ✅ Runtime policy checks working");
     println!("\n🎉 This proves the TOML file is NOT just documentation!");

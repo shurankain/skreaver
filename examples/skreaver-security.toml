@@ -1,80 +1,372 @@
-# Skreaver Security Configuration Example
-# This file matches the actual SecurityConfig Rust structure
+# ============================================================================
+# Skreaver Security Configuration
+# ============================================================================
+#
+# This file defines security policies, resource limits, and audit settings.
+# All fields match the SecurityConfig Rust structure exactly.
+#
+# ⚠️  IMPORTANT: This configuration is actively loaded and enforced at runtime!
+#     It's not just documentation - policies here control actual behavior.
+#
+# Test it: cargo run --example security_config_loading
+#
+# ============================================================================
 
+# ----------------------------------------------------------------------------
+# Metadata
+# ----------------------------------------------------------------------------
 [metadata]
+# Configuration version (semantic versioning)
 version = "1.0.0"
+
+# Creation timestamp (ISO 8601 format: YYYY-MM-DD)
 created = "2025-10-08"
+
+# Human-readable description
 description = "Production security configuration example"
 
+# ----------------------------------------------------------------------------
+# File System Policy
+# ----------------------------------------------------------------------------
 [fs]
+# Enable/disable file system access control
 enabled = true
-allow_paths = ["/tmp/skreaver", "/var/lib/skreaver/data"]
-deny_patterns = ["..", ".git", ".env", "*.key", "*.pem"]
+
+# Allowed paths (whitelist) - Only these paths can be accessed
+# Use absolute paths for production
+allow_paths = [
+    "/tmp/skreaver",              # Temporary files
+    "/var/lib/skreaver/data",     # Application data
+]
+
+# Deny patterns (blacklist) - These override allow_paths
+# Glob patterns are supported (*, **, ?)
+deny_patterns = [
+    "..",           # Prevents path traversal attacks (e.g., ../../etc/passwd)
+    ".git",         # Protects version control data
+    ".env",         # Protects environment files
+    "*.key",        # Protects cryptographic keys
+    "*.pem",        # Protects certificates
+]
+
+# Maximum file size in bytes
+# Default: 16MB (16,777,216 bytes)
+# Maximum: 1GB (1,073,741,824 bytes)
 max_file_size_bytes = 16777216
+
+# Maximum files per operation
+# Default: 100, Maximum: 10,000
 max_files_per_operation = 100
+
+# Allow following symbolic links (security risk if enabled)
 follow_symlinks = false
+
+# Scan file content for secrets before operations
 scan_content = true
 
+# ----------------------------------------------------------------------------
+# HTTP Policy
+# ----------------------------------------------------------------------------
 [http]
+# Enable/disable HTTP access control
 enabled = true
-allow_domains = ["api.example.com", "data.example.com"]
-deny_domains = ["malicious-site.com"]
+
+# Allowed domains (whitelist) - Only these domains can be accessed
+# Supports wildcards: "*.example.com"
+allow_domains = [
+    "api.example.com",      # Internal API
+    "data.example.com",     # Data service
+]
+
+# Denied domains (blacklist) - These override allow_domains
+deny_domains = [
+    "malicious-site.com",   # Known malicious domain
+]
+
+# Allowed HTTP methods
+# Common: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 allow_methods = ["GET", "POST"]
+
+# Request timeout in seconds
+# Default: 30, Minimum: 1, Maximum: 86400 (24 hours)
 timeout_seconds = 30
-max_response_bytes = 33554432
+
+# Maximum response size in bytes
+# Default: 10MB (10,485,760 bytes)
+# Maximum: 500MB (524,288,000 bytes)
+max_response_bytes = 33554432  # 32MB
+
+# Maximum HTTP redirects to follow
+# Default: 5, Maximum: 20
 max_redirects = 3
+
+# User-Agent header for HTTP requests
 user_agent = "Skreaver-Agent/0.3.0"
+
+# Allow requests to localhost/127.0.0.1 (⚠️ security risk in production)
 allow_local = false
+
+# Default headers to include in all requests
 default_headers = []
 
+# ----------------------------------------------------------------------------
+# Network Policy
+# ----------------------------------------------------------------------------
 [network]
+# Enable/disable network access control
 enabled = true
-allow_ports = [80, 443, 8080, 5432, 6379]
-deny_ports = [22, 23, 3389]
-ttl_seconds = 300
+
+# Allowed ports for outbound connections
+# Common ports:
+#   80 (HTTP), 443 (HTTPS), 8080 (HTTP alt)
+#   5432 (PostgreSQL), 3306 (MySQL), 6379 (Redis), 27017 (MongoDB)
+allow_ports = [
+    80,      # HTTP
+    443,     # HTTPS
+    8080,    # Alternative HTTP
+    5432,    # PostgreSQL
+    6379,    # Redis
+]
+
+# Denied ports (blacklist) - These override allow_ports
+# Common dangerous ports:
+#   22 (SSH), 23 (Telnet), 3389 (RDP), 445 (SMB)
+deny_ports = [
+    22,      # SSH
+    23,      # Telnet
+    3389,    # RDP
+]
+
+# DNS TTL in seconds (how long to cache DNS results)
+ttl_seconds = 300  # 5 minutes
+
+# Allow connections to private IP ranges (10.x, 172.16.x, 192.168.x)
+# ⚠️ Security risk: Can be used to access internal services
 allow_private_networks = false
 
+# ----------------------------------------------------------------------------
+# Resource Limits
+# ----------------------------------------------------------------------------
 [resources]
+# Maximum memory usage in megabytes
+# Must be > 0
 max_memory_mb = 256
-max_cpu_percent = 75.0
-max_execution_time_seconds = 600
-max_concurrent_operations = 20
-max_open_files = 200
-max_disk_usage_mb = 1024
 
+# Maximum CPU usage as percentage (0.0 - 100.0)
+max_cpu_percent = 75.0
+
+# Maximum execution time in seconds
+# Must be > 0
+max_execution_time_seconds = 600  # 10 minutes
+
+# Maximum concurrent operations
+# Range: 1-1000
+max_concurrent_operations = 20
+
+# Maximum open file handles
+# Range: 1-10000
+max_open_files = 200
+
+# Maximum disk usage in megabytes
+max_disk_usage_mb = 1024  # 1GB
+
+# ----------------------------------------------------------------------------
+# Audit Configuration
+# ----------------------------------------------------------------------------
 [audit]
+# Log all operations (increases verbosity and storage)
 log_all_operations = true
+
+# Automatically redact secrets from logs
 redact_secrets = true
-secret_patterns = ["password", "token", "api_key", "secret"]
+
+# Regex patterns to detect secrets
+# These patterns will be redacted if redact_secrets = true
+secret_patterns = [
+    "password",     # Matches: password, PASSWORD, Password
+    "token",        # Matches: token, api_token, auth_token
+    "api_key",      # Matches: api_key, apikey, API_KEY
+    "secret",       # Matches: secret, client_secret
+]
+
+# Log retention in days
+# Logs older than this will be eligible for deletion
 retain_logs_days = 90
+
+# Log level: "ERROR", "WARN", "INFO", "DEBUG", "TRACE"
+# Uppercase required!
 log_level = "INFO"
+
+# Include stack traces in error logs (useful for debugging)
 include_stack_traces = true
+
+# Log format: "structured", "json", "text", "compact"
+# Lowercase required!
+# - "json": Machine-readable, best for log aggregation
+# - "structured": Human-readable with structure
+# - "text": Simple text format
+# - "compact": Minimal output
 log_format = "json"
 
+# ----------------------------------------------------------------------------
+# Secrets Configuration
+# ----------------------------------------------------------------------------
 [secrets]
+# Require secrets to come from environment variables only
+# (prevents secrets in config files)
 environment_only = true
+
+# Required prefix for environment variable secrets
+# Example: SKREAVER_API_KEY, SKREAVER_DB_PASSWORD
 env_prefix = "SKREAVER_"
+
+# Enable automatic rotation reminders (logs warnings)
 auto_rotate = false
+
+# Minimum secret length in bytes
+# Recommendation: 32+ for production
 min_secret_length = 32
 
+# ----------------------------------------------------------------------------
+# Alerting Configuration
+# ----------------------------------------------------------------------------
 [alerting]
+# Enable security alerts
 enabled = true
-violation_threshold = 5
-violation_window_minutes = 15
-alert_levels = ["HIGH", "CRITICAL"]
-email_recipients = ["security@example.com", "ops@example.com"]
 
+# Number of policy violations before triggering an alert
+violation_threshold = 5
+
+# Time window for counting violations (in minutes)
+# Example: 5 violations within 15 minutes = alert
+violation_window_minutes = 15
+
+# Alert levels to notify on: "LOW", "MEDIUM", "HIGH", "CRITICAL"
+# Uppercase required!
+alert_levels = ["HIGH", "CRITICAL"]
+
+# Email recipients for security alerts
+email_recipients = [
+    "security@example.com",
+    "ops@example.com",
+]
+
+# Optional: Webhook URL for alerts (uncomment to use)
+# webhook_url = "https://alerts.example.com/skreaver/security"
+
+# ----------------------------------------------------------------------------
+# Development Configuration (⚠️ DISABLE IN PRODUCTION)
+# ----------------------------------------------------------------------------
 [development]
+# Enable development mode (⚠️ Relaxes security constraints)
+# NEVER set this to true in production!
 enabled = false
+
+# Skip domain validation for HTTP requests
 skip_domain_validation = false
+
+# Skip file path validation
 skip_path_validation = false
+
+# Skip resource limits (memory, CPU, etc.)
 skip_resource_limits = false
+
+# Additional allowed domains during development
 dev_allow_domains = ["localhost"]
 
+# ----------------------------------------------------------------------------
+# Emergency Lockdown
+# ----------------------------------------------------------------------------
 [emergency]
+# Lockdown currently active (blocks most operations)
 lockdown_enabled = false
-lockdown_allowed_tools = ["memory", "health_check"]
-security_contact = "security@example.com"
-auto_lockdown_triggers = ["repeated_violations", "resource_exhaustion"]
 
+# Tools allowed during lockdown (whitelist)
+# Only these tools can execute when locked down
+lockdown_allowed_tools = [
+    "memory",        # Memory operations
+    "health_check",  # Health checks
+]
+
+# Security team contact for emergencies
+security_contact = "security@example.com"
+
+# Conditions that automatically trigger lockdown
+# Options: "repeated_violations", "resource_exhaustion",
+#          "suspicious_patterns", "manual_override", "external_threat"
+auto_lockdown_triggers = [
+    "repeated_violations",    # Too many policy violations
+    "resource_exhaustion",    # Resource limits exceeded
+]
+
+# ----------------------------------------------------------------------------
+# Tool-Specific Policies
+# ----------------------------------------------------------------------------
 [tools]
+# Define per-tool security policies here
+#
+# Example: Restrict file_read tool
+# [tools.file_read]
+# fs_enabled = true       # Allow file system access
+# http_enabled = false    # Block HTTP access
+# network_enabled = false # Block network access
+#
+# Example: Allow http_fetch tool only HTTP
+# [tools.http_fetch]
+# fs_enabled = false      # Block file system
+# http_enabled = true     # Allow HTTP
+# network_enabled = false # Block raw network
+#
+# Example: Lock down sensitive tools
+# [tools.shell_exec]
+# fs_enabled = false      # Completely disabled
+# http_enabled = false
+# network_enabled = false
+
+# ============================================================================
+# Common Configuration Patterns
+# ============================================================================
+#
+# PRODUCTION SETUP:
+# -----------------
+# - Set development.enabled = false
+# - Use environment_only = true for secrets
+# - Enable all audit logging (log_all_operations = true)
+# - Configure alerting webhooks
+# - Use minimal allow_paths and allow_domains
+# - Set strong resource limits
+#
+# DEVELOPMENT SETUP:
+# ------------------
+# - Set development.enabled = true
+# - Add "localhost" to allow_domains or dev_allow_domains
+# - Reduce max_memory_mb for faster iteration
+# - Use log_level = "DEBUG" for more details
+#
+# HIGH SECURITY SETUP:
+# --------------------
+# - Minimize allow_paths (only absolute necessary paths)
+# - Set strict resource limits (lower memory/CPU)
+# - Enable all lockdown triggers
+# - Require longer min_secret_length (64+)
+# - Set allow_private_networks = false
+# - Set follow_symlinks = false
+# - Enable scan_content = true
+#
+# ============================================================================
+# Loading This Configuration
+# ============================================================================
+#
+# Rust code:
+#   use skreaver_core::security::SecurityConfig;
+#
+#   let config = SecurityConfig::load_from_file("skreaver-security.toml")?;
+#   config.validate()?;  // Always validate!
+#
+# CLI (if implemented):
+#   skreaver run --security-config skreaver-security.toml
+#
+# Environment variable:
+#   export SKREAVER_SECURITY_CONFIG=skreaver-security.toml
+#
+# ============================================================================
