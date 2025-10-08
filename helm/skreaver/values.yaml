@@ -147,7 +147,7 @@ envFrom: []
 
 # Probes configuration
 livenessProbe:
-  enabled: false
+  enabled: true
   httpGet:
     path: /health
     port: http
@@ -157,7 +157,7 @@ livenessProbe:
   failureThreshold: 3
 
 readinessProbe:
-  enabled: false
+  enabled: true
   httpGet:
     path: /ready
     port: http
