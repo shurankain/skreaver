@@ -1,0 +1,80 @@
+# Skreaver Security Configuration Example
+# This file matches the actual SecurityConfig Rust structure
+
+[metadata]
+version = "1.0.0"
+created = "2025-10-08"
+description = "Production security configuration example"
+
+[fs]
+enabled = true
+allow_paths = ["/tmp/skreaver", "/var/lib/skreaver/data"]
+deny_patterns = ["..", ".git", ".env", "*.key", "*.pem"]
+max_file_size_bytes = 16777216
+max_files_per_operation = 100
+follow_symlinks = false
+scan_content = true
+
+[http]
+enabled = true
+allow_domains = ["api.example.com", "data.example.com"]
+deny_domains = ["malicious-site.com"]
+allow_methods = ["GET", "POST"]
+timeout_seconds = 30
+max_response_bytes = 33554432
+max_redirects = 3
+user_agent = "Skreaver-Agent/0.3.0"
+allow_local = false
+default_headers = []
+
+[network]
+enabled = true
+allow_ports = [80, 443, 8080, 5432, 6379]
+deny_ports = [22, 23, 3389]
+ttl_seconds = 300
+allow_private_networks = false
+
+[resources]
+max_memory_mb = 256
+max_cpu_percent = 75.0
+max_execution_time_seconds = 600
+max_concurrent_operations = 20
+max_open_files = 200
+max_disk_usage_mb = 1024
+
+[audit]
+log_all_operations = true
+redact_secrets = true
+secret_patterns = ["password", "token", "api_key", "secret"]
+retain_logs_days = 90
+log_level = "INFO"
+include_stack_traces = true
+log_format = "json"
+
+[secrets]
+environment_only = true
+env_prefix = "SKREAVER_"
+auto_rotate = false
+min_secret_length = 32
+
+[alerting]
+enabled = true
+violation_threshold = 5
+violation_window_minutes = 15
+alert_levels = ["HIGH", "CRITICAL"]
+email_recipients = ["security@example.com", "ops@example.com"]
+
+[development]
+enabled = false
+skip_domain_validation = false
+skip_path_validation = false
+skip_resource_limits = false
+dev_allow_domains = ["localhost"]
+
+[emergency]
+lockdown_enabled = false
+lockdown_allowed_tools = ["memory", "health_check"]
+security_contact = "security@example.com"
+auto_lockdown_triggers = ["repeated_violations", "resource_exhaustion"]
+
+[tools]
