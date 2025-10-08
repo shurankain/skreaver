@@ -21,7 +21,7 @@ pub use api_key::{ApiKey, ApiKeyConfig, ApiKeyManager};
 pub use jwt::{JwtClaims, JwtConfig, JwtManager, JwtToken};
 pub use middleware::{AuthMiddleware, AuthenticatedRequest};
 pub use rbac::{Permission, Role, RoleManager, ToolPolicy};
-pub use storage::{CredentialStorage, InMemoryStorage, SecureStorage};
+pub use storage::{CredentialStorage, EncryptionKey, InMemoryStorage, SecureStorage};
 
 /// Authentication errors
 #[derive(Debug, Error)]
@@ -52,6 +52,15 @@ pub enum AuthError {
 
     #[error("Validation error: {0}")]
     ValidationError(String),
+
+    #[error("Encryption failed")]
+    EncryptionFailed,
+
+    #[error("Decryption failed")]
+    DecryptionFailed,
+
+    #[error("Invalid encryption key")]
+    InvalidEncryptionKey,
 }
 
 /// Authentication result type

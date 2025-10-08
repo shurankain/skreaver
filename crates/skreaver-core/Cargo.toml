@@ -39,3 +39,7 @@ toml = "0.8"
 url = "2.5"
 once_cell = { version = "1.19", optional = true }
 
+# Encryption for secure storage
+aes-gcm = "0.10"
+zeroize = { version = "1.7", features = ["derive"] }
+
