@@ -8,20 +8,21 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 
 ## ✨ Highlights
 
-- Rust-native agent architecture
-- Decoupled `Agent` / `Memory` / `Tool` model
-- Multi-tool execution with result aggregation
-- Built-in tool registry system
-- Multiple memory backends (File, Redis, SQLite, PostgreSQL)
-- **HTTP runtime with RESTful API endpoints**
-- **Multi-agent communication with Redis Pub/Sub messaging**
-- **Coordination patterns (Supervisor/Worker, Request/Reply, Broadcast/Gather, Pipeline)**
-- **Standard tool library (HTTP, File, JSON, Text processing)**
-- **Production-grade benchmarking framework with CI integration**
-- **Comprehensive observability framework (metrics, tracing, health checks)**
-- **Enterprise-grade security framework with threat modeling and audit logging**
-- **Built-in backpressure and dead letter queue support**
-- Designed for performance and modularity
+- **🔒 API Stability Guarantee**: Clear versioning policy and deprecation process ([API_STABILITY.md](API_STABILITY.md))
+- **🦀 Rust-native** agent architecture with zero-cost abstractions
+- **🧩 Decoupled** `Agent` / `Memory` / `Tool` model for composability
+- **💾 Multiple memory backends**: File, Redis (clustering), SQLite (WAL), PostgreSQL (ACID)
+- **🌐 HTTP runtime** with RESTful API endpoints and OpenAPI documentation
+- **🕸️ Multi-agent communication** with Redis Pub/Sub messaging
+- **🤖 Coordination patterns**: Supervisor/Worker, Request/Reply, Broadcast/Gather, Pipeline
+- **🔌 MCP protocol support** for Claude Desktop integration
+- **⚡ WebSocket support** for real-time communication (experimental)
+- **🛠️ Standard tool library**: HTTP, File I/O, JSON/XML, Text processing
+- **📊 Production observability**: Prometheus metrics, OpenTelemetry tracing, health checks
+- **🔒 Enterprise security**: Threat modeling, input validation, SSRF/path traversal protection
+- **⚙️ Built-in reliability**: Backpressure monitoring, dead letter queues, automatic retry
+- **🚀 Performance**: Comprehensive benchmarking with CI integration
+- **🎛️ Feature flags**: Granular control over dependencies and build size
 
 ---
 
@@ -62,35 +63,104 @@ Skreaver gives you the scaffolding. You build the logic.
 
 ---
 
-📦 Status: Skreaver is in active development.
+📦 **Status**: Skreaver v0.3.0 is production-ready for core use cases.
 
-Core components implemented:
+### ✅ Implemented (v0.3.0)
 
-* `Agent`, `Memory`, and `Tool` traits
-* Modular `Coordinator` runtime
-* `ToolRegistry` with dispatch and test coverage
-* Support for multiple tool calls per step
-* Multiple memory backends (`FileMemory`, `RedisMemory`, SQLite, PostgreSQL)
-* **Axum-based HTTP runtime with RESTful endpoints**
-* **Multi-agent communication layer (`skreaver-mesh`) with Redis Pub/Sub backend**
-* **Coordination patterns: Supervisor/Worker, Request/Reply, Broadcast/Gather, Pipeline**
-* **Agent messaging with backpressure monitoring and dead letter queues**
-* **Standard tool library (HTTP client, file ops, JSON/XML, text processing)**
-* **Production benchmarking framework with resource monitoring and CI integration**
-* **Comprehensive observability framework with Prometheus metrics, distributed tracing, and health checks**
-* **Enterprise security framework with threat modeling, input validation, and audit logging**
-* Fully working examples (`echo`, `multi_tool`, `http_server`, `standard_tools`, `mesh_ping_pong`, `mesh_broadcast`, `mesh_task_coordinator`)
-* Self-hosted CI pipeline
+**Core Framework**:
+* `Agent`, `Memory`, and `Tool` trait system
+* Type-safe error handling with structured error types
+* Non-empty collections (`NonEmptyVec`, `NonEmptyQueue`)
+* Modular `Coordinator` runtime with multi-tool execution
 
-Next steps:
+**Memory Backends**:
+* File-based persistence (`FileMemory`)
+* Redis with clustering support (`RedisMemory`)
+* SQLite with WAL mode (`SqliteMemory`)
+* PostgreSQL with ACID compliance (`PostgresMemory`)
+* Connection pooling and health monitoring
 
-* Agent test harness and mock tools (✅ `skreaver-testing` implemented)
-* OpenTelemetry integration for distributed tracing (✅ Phase 0.3 implemented)
-* Enterprise security framework (✅ Phase 0.4 implemented)
-* Authentication and rate limiting (🚧 In progress - Phase 1.1)
-* Enhanced memory backends (SQLite, PostgreSQL) (🚧 Planned - Phase 1.1)
-* Playground & live examples  
-* Developer docs (powered by skreaver-docs-starter)
+**HTTP Runtime** (`skreaver-http`):
+* RESTful API endpoints with Axum
+* OpenAPI 3.0 documentation generation
+* JWT and API key authentication
+* WebSocket support (experimental)
+* Compression and streaming
+
+**Multi-Agent Communication** (`skreaver-mesh`):
+* Redis Pub/Sub messaging
+* Coordination patterns: Supervisor, Request/Reply, Broadcast/Gather, Pipeline
+* Backpressure monitoring and dead letter queues
+* Type-safe message schemas
+
+**MCP Integration** (`skreaver-mcp`):
+* MCP server for exposing tools to Claude Desktop
+* MCP bridge for using external MCP servers
+* Full protocol compliance with type safety
+
+**Standard Tools** (`skreaver-tools`):
+* HTTP/network operations
+* File system operations
+* JSON/XML/text processing
+* Tool registry with dispatch
+
+**Observability** (`skreaver-observability`):
+* Prometheus metrics with cardinality controls
+* OpenTelemetry distributed tracing
+* Health checks and monitoring
+* Performance targets (p50<30ms, p95<200ms)
+
+**Security** (`skreaver-core/security`):
+* Threat modeling and security policies
+* Input validation and sanitization
+* Path traversal and SSRF protection
+* Resource limits and audit logging
+
+**Testing & CI**:
+* Comprehensive test suite (554+ test points)
+* Property-based testing with proptest
+* Golden tests for regression detection
+* Automated benchmarking with CI integration
+* cargo-semver-checks for API stability
+
+**Deployment**:
+* Docker images with multi-stage builds
+* Kubernetes Helm charts
+* Health checks and HPA support
+
+### 🚧 Roadmap (v0.4.0 - v0.5.0)
+
+* CLI scaffolding tools (`skreaver new agent`, `skreaver generate tool`)
+* Auth middleware integration with HTTP endpoints
+* Migration framework for schema evolution
+* Enhanced developer documentation
+* Live examples and playground
+
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) and [TODO.md](TODO.md) for detailed roadmap.
+
+---
+
+## 🔒 API Stability Guarantee
+
+Skreaver provides **clear API stability guarantees** starting from v0.3.0:
+
+✅ **Stable APIs**: When you import from the `skreaver` meta-crate, you get backwards-compatible APIs
+```rust
+use skreaver::{Agent, Memory, Tool};  // ✅ Stable
+```
+
+⚠️ **Unstable Features**: Features prefixed with `unstable-` (like WebSockets) may change
+```toml
+[dependencies]
+skreaver = { version = "0.3", features = ["unstable-websocket"] }
+```
+
+📚 **Learn More**:
+- **[API_STABILITY.md](API_STABILITY.md)** - What's stable, versioning policy, deprecation process
+- **[DEPRECATION_POLICY.md](DEPRECATION_POLICY.md)** - How we handle API changes
+- **[MIGRATION.md](MIGRATION.md)** - Upgrade guides between versions
+
+**Pre-1.0 Notice**: While in 0.x versions, minor releases (0.x.0) may include breaking changes. All changes are documented with migration guides. Post-1.0, we'll follow strict [Semantic Versioning](https://semver.org/).
 
 ---
 
@@ -151,6 +221,52 @@ curl -X POST http://localhost:3000/agents/demo-agent-1/observe \
 
 The HTTP runtime supports all standard tools and provides full agent lifecycle management.
 
+### 🔌 WebSocket Support (Experimental)
+
+Skreaver includes **experimental WebSocket support** for real-time agent communication:
+
+```toml
+[dependencies]
+skreaver = { version = "0.3", features = ["unstable-websocket"] }
+```
+
+**Features:**
+- **Real-time Bidirectional Communication**: Send and receive agent messages over WebSockets
+- **Connection Management**: Automatic connection tracking and cleanup
+- **Authentication**: Integrate with existing auth systems
+- **Protocol**: Text and binary message support
+
+**Example Usage:**
+```rust
+use skreaver_http::websocket::{WebSocketManager, WebSocketConfig};
+
+// Configure WebSocket manager
+let ws_config = WebSocketConfig::default()
+    .with_heartbeat_interval(Duration::from_secs(30))
+    .with_max_connections(1000);
+
+let ws_manager = WebSocketManager::new(ws_config);
+
+// WebSocket endpoint: ws://localhost:3000/ws/agents/{agent_id}
+```
+
+**Client Example:**
+```javascript
+const ws = new WebSocket('ws://localhost:3000/ws/agents/my-agent');
+
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log('Agent response:', data);
+};
+
+ws.send(JSON.stringify({
+    type: 'observe',
+    input: 'hello world'
+}));
+```
+
+**⚠️ Experimental Notice**: WebSocket support is marked as `unstable-websocket` and may change in future versions. See [API_STABILITY.md](API_STABILITY.md) for details on unstable features.
+
 ---
 
 ## 🕸️ Multi-Agent Communication
@@ -192,6 +308,64 @@ supervisor.submit_task(message).await;
 - 45 tests covering all patterns and reliability features
 - Redis integration tested with connection pooling
 - Backpressure with 3-level signals (Normal/Warning/Critical)
+
+---
+
+## 🔌 Model Context Protocol (MCP) Support
+
+Skreaver includes **native MCP integration** for seamless interoperability with Claude Desktop and other MCP-compatible clients:
+
+```bash
+cargo run --example mcp_server
+```
+
+**Features:**
+- **MCP Server**: Expose your Skreaver tools as MCP resources for Claude Desktop
+- **MCP Bridge**: Use external MCP servers as Skreaver tools
+- **Type-Safe Protocol**: Full implementation of MCP specification with Rust type safety
+- **Bidirectional**: Both server and client capabilities
+
+**Example - Expose Tools to Claude Desktop:**
+```rust
+use skreaver_mcp::McpServer;
+use skreaver_tools::InMemoryToolRegistry;
+
+// Create your tool registry
+let mut tools = InMemoryToolRegistry::new();
+tools.register(HttpGetTool::new());
+tools.register(FileReadTool::new());
+
+// Start MCP server (stdio mode for Claude Desktop)
+let server = McpServer::new(&tools);
+server.serve_stdio().await?;
+```
+
+**Example - Use External MCP Servers:**
+```rust
+use skreaver_mcp::McpBridge;
+
+// Connect to external MCP server
+let bridge = McpBridge::connect("http://localhost:3000").await?;
+
+// Use external tools as if they were local
+let result = bridge.call_tool("search", query).await?;
+```
+
+**Integration with Claude Desktop:**
+Add to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "skreaver": {
+      "command": "cargo",
+      "args": ["run", "-p", "skreaver-cli", "--", "mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+**Protocol Compliance**: Full MCP specification support including resource listing, tool schemas, and error handling.
 
 ---
 
@@ -323,6 +497,81 @@ cargo bench --bench realistic_benchmarks
 - File I/O: ~17μs read (1KB), ~111μs write (1KB) 
 - JSON processing: ~3.5μs simple, ~5.5μs complex
 - **8-500x faster than Python agent frameworks** (see `PERFORMANCE_COMPARISON.md`)
+
+---
+
+## 🎛️ Feature Flags
+
+Skreaver uses feature flags for optional dependencies and experimental features. Configure them in your `Cargo.toml`:
+
+### Core Features (Stable)
+
+```toml
+[dependencies]
+skreaver = { version = "0.3", features = [
+    # Memory backends
+    "redis",      # Redis memory backend with clustering
+    "sqlite",     # SQLite memory backend with WAL mode
+    "postgres",   # PostgreSQL memory backend with ACID
+
+    # HTTP runtime features
+    "auth",          # Authentication (JWT, API keys, RBAC)
+    "openapi",       # OpenAPI 3.0 documentation generation
+    "openapi-ui",    # Swagger UI for API documentation
+    "compression",   # HTTP compression (gzip, br)
+    "streaming",     # Server-sent events and streaming responses
+
+    # Observability
+    "metrics",       # Prometheus metrics collection
+    "tracing",       # Distributed tracing
+    "observability", # Full observability (metrics + tracing)
+    "opentelemetry", # OpenTelemetry OTLP export
+
+    # Tools
+    "io",       # File system tools
+    "network",  # HTTP/network tools
+    "data",     # JSON/XML/text processing tools
+
+    # Testing
+    "testing",  # Test harness and mock tools
+]}
+```
+
+### Experimental Features (Unstable)
+
+```toml
+[dependencies]
+skreaver = { version = "0.3", features = [
+    "unstable-websocket",  # WebSocket support (may change)
+]}
+```
+
+**⚠️ Unstable Features**: Features prefixed with `unstable-` are experimental and may have breaking changes in minor releases. See [API_STABILITY.md](API_STABILITY.md) for details.
+
+### Feature Combinations
+
+**Minimal (Core Only)**:
+```toml
+skreaver = "0.3"  # Just core agent framework
+```
+
+**Full Production Stack**:
+```toml
+skreaver = { version = "0.3", features = [
+    "redis", "postgres",           # Persistent memory
+    "auth", "openapi", "openapi-ui",  # HTTP + docs
+    "observability", "opentelemetry", # Full monitoring
+    "io", "network", "data",       # All standard tools
+]}
+```
+
+**Development**:
+```toml
+skreaver = { version = "0.3", features = [
+    "testing",                     # Test utilities
+    "openapi-ui",                  # API exploration
+]}
+```
 
 ---
 
