@@ -46,3 +46,6 @@ zeroize = { version = "1.7", features = ["derive"] }
 # Token revocation with Redis
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
 
+# Resource monitoring (cross-platform)
+sysinfo = "0.32"
+

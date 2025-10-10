@@ -250,6 +250,63 @@ fn display_runtime_checks(config: &SecurityConfig) {
     println!("   Current log level: {:?}\n", config.get_log_level());
 }
 
+fn demonstrate_resource_monitoring(config: &SecurityConfig) {
+    use skreaver_core::security::limits::ResourceTracker;
+
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    println!("🔍 Step 13: Resource Monitoring Integration\n");
+
+    // Create a resource tracker using the limits from config
+    let tracker = ResourceTracker::new(&config.resources);
+    println!("   ✅ ResourceTracker created with config limits\n");
+
+    // Start an operation to demonstrate tracking
+    let _guard = tracker.start_operation("demo_agent");
+
+    // Get current usage
+    if let Some(usage) = tracker.get_usage("demo_agent") {
+        println!("   Current Process Usage:");
+        println!(
+            "      Memory: {} MB (limit: {} MB)",
+            usage.memory_mb, config.resources.max_memory_mb
+        );
+        println!(
+            "      CPU: {:.2}% (limit: {:.1}%)",
+            usage.cpu_percent, config.resources.max_cpu_percent
+        );
+        println!(
+            "      Open Files: {} (limit: {})",
+            usage.open_files, config.resources.max_open_files
+        );
+        println!(
+            "      Active Operations: {} (limit: {})",
+            usage.active_operations, config.resources.max_concurrent_operations
+        );
+
+        // Check if we're within limits
+        let memory_ok = usage.memory_mb <= config.resources.max_memory_mb;
+        let cpu_ok = usage.cpu_percent <= config.resources.max_cpu_percent;
+        let files_ok = usage.open_files <= config.resources.max_open_files;
+
+        println!("\n   Limit Check:");
+        println!(
+            "      Memory: {}",
+            if memory_ok { "✅ OK" } else { "❌ EXCEEDED" }
+        );
+        println!(
+            "      CPU: {}",
+            if cpu_ok { "✅ OK" } else { "❌ EXCEEDED" }
+        );
+        println!(
+            "      Files: {}",
+            if files_ok { "✅ OK" } else { "❌ EXCEEDED" }
+        );
+        println!();
+    } else {
+        println!("   ⚠️  No usage data available yet\n");
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🔒 Skreaver Security Configuration Loading Demo\n");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -300,6 +357,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Demonstrate runtime checks
     display_runtime_checks(&config);
 
+    // Demonstrate resource monitoring
+    demonstrate_resource_monitoring(&config);
+
     // Summary
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("📝 Summary:\n");
@@ -307,6 +367,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   ✅ All 11 security policy sections extracted");
     println!("   ✅ Configuration validated");
     println!("   ✅ Runtime policy checks working");
+    println!("   ✅ Real resource monitoring integrated");
     println!("\n🎉 This proves the TOML file is NOT just documentation!");
     println!("   It's actively loaded and used to enforce security at runtime.\n");
 

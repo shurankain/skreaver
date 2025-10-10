@@ -1,4 +1,58 @@
 //! Resource limits and monitoring
+//!
+//! This module provides real-time resource monitoring and enforcement for Skreaver agents.
+//! It tracks CPU, memory, disk usage, and file descriptors to prevent resource exhaustion
+//! attacks and ensure fair resource allocation.
+//!
+//! # Features
+//!
+//! - **Real-time monitoring**: Uses `sysinfo` crate for cross-platform resource tracking
+//! - **CPU monitoring**: Tracks per-process CPU usage percentage
+//! - **Memory monitoring**: Tracks resident set size (RSS) in megabytes
+//! - **File descriptor tracking**: Counts open files (Linux/macOS)
+//! - **Disk usage**: Monitors disk space usage for current working directory
+//! - **Concurrent operation tracking**: Limits number of simultaneous operations
+//! - **Rate limiting**: Token bucket algorithm for request throttling
+//! - **RAII guards**: Automatic resource cleanup with operation guards
+//!
+//! # Example
+//!
+//! ```rust
+//! use skreaver_core::security::{
+//!     limits::{ResourceLimits, ResourceTracker},
+//!     SecurityContext, SecurityPolicy,
+//! };
+//!
+//! // Configure resource limits
+//! let limits = ResourceLimits {
+//!     max_memory_mb: 256,
+//!     max_cpu_percent: 75.0,
+//!     max_execution_time: std::time::Duration::from_secs(300),
+//!     max_concurrent_operations: 20,
+//!     max_open_files: 200,
+//!     max_disk_usage_mb: 1024,
+//! };
+//!
+//! // Create resource tracker
+//! let tracker = ResourceTracker::new(&limits);
+//!
+//! // Start tracking an operation (automatically cleaned up when guard is dropped)
+//! let _guard = tracker.start_operation("my_agent");
+//!
+//! // Get current resource usage
+//! if let Some(usage) = tracker.get_usage("my_agent") {
+//!     println!("Memory: {} MB", usage.memory_mb);
+//!     println!("CPU: {:.2}%", usage.cpu_percent);
+//! }
+//! ```
+//!
+//! # Security
+//!
+//! This module is critical for security because:
+//! - Prevents denial-of-service through resource exhaustion
+//! - Enforces fair resource allocation across agents
+//! - Provides visibility into resource consumption
+//! - Enables automated alerting on limit violations
 
 use super::errors::SecurityError;
 use serde::{Deserialize, Serialize};
@@ -188,93 +242,138 @@ impl Drop for OperationGuard {
     }
 }
 
-/// Process-level resource monitoring
+/// Process-level resource monitoring using sysinfo
+///
+/// This struct provides cross-platform access to real-time process metrics.
+/// It uses the `sysinfo` crate to query CPU, memory, and other resources.
+///
+/// # Implementation Notes
+///
+/// - **CPU**: Reports instantaneous CPU usage as a percentage (0-100+)
+/// - **Memory**: Reports resident set size (RSS) in megabytes
+/// - **File descriptors**: Platform-specific counting (Linux: /proc/self/fd, macOS: lsof)
+/// - **Disk**: Reports total used space on the disk containing the working directory
+///
+/// # Performance
+///
+/// The monitor uses selective refresh to minimize overhead. Only CPU and memory
+/// metrics are refreshed on each call to `get_current_usage()`.
 struct ProcessMonitor {
-    #[allow(dead_code)]
-    pid: u32,
+    pid: sysinfo::Pid,
+    system: Arc<Mutex<sysinfo::System>>,
 }
 
 impl ProcessMonitor {
     fn new() -> Result<Self, SecurityError> {
+        use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+
+        let pid = sysinfo::Pid::from_u32(std::process::id());
+
+        // Create system with minimal refresh for better performance
+        let refresh_kind =
+            RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cpu().with_memory());
+
+        let mut system = System::new_with_specifics(refresh_kind);
+        system.refresh_specifics(refresh_kind);
+
         Ok(Self {
-            pid: std::process::id(),
+            pid,
+            system: Arc::new(Mutex::new(system)),
         })
     }
 
     fn get_current_usage(&self) -> Result<ResourceUsage, SecurityError> {
-        // This is a simplified implementation
-        // In a real system, you'd use platform-specific APIs or libraries like `sysinfo`
+        use sysinfo::{ProcessRefreshKind, RefreshKind};
 
-        #[cfg(target_os = "linux")]
-        {
-            self.get_linux_usage()
-        }
+        let mut system = self.system.lock().unwrap();
 
-        #[cfg(target_os = "macos")]
-        {
-            self.get_macos_usage()
-        }
+        // Refresh CPU and memory for our process
+        let refresh_kind =
+            RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cpu().with_memory());
 
-        #[cfg(target_os = "windows")]
-        {
-            self.get_windows_usage()
-        }
+        system.refresh_specifics(refresh_kind);
 
-        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-        {
-            // Fallback for unsupported platforms
-            Ok(ResourceUsage::default())
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn get_linux_usage(&self) -> Result<ResourceUsage, SecurityError> {
-        use std::fs;
-
-        // Read memory usage from /proc/self/status
-        let status_content =
-            fs::read_to_string("/proc/self/status").map_err(|_| SecurityError::ConfigError {
-                message: "Failed to read process status".to_string(),
+        // Get our process
+        let process = system
+            .process(self.pid)
+            .ok_or_else(|| SecurityError::ConfigError {
+                message: format!("Process {} not found", self.pid),
             })?;
 
-        let mut memory_mb = 0;
-        for line in status_content.lines() {
-            if line.starts_with("VmRSS:") {
-                if let Some(kb_str) = line.split_whitespace().nth(1) {
-                    if let Ok(kb) = kb_str.parse::<u64>() {
-                        memory_mb = kb / 1024; // Convert KB to MB
-                    }
-                }
-                break;
-            }
-        }
+        // Memory usage in MB
+        let memory_mb = process.memory() / (1024 * 1024);
 
-        // For CPU usage, you'd typically need to sample over time
-        // This is a simplified version
-        let cpu_percent = 0.0; // TODO: Implement CPU monitoring
+        // CPU usage percentage
+        let cpu_percent = process.cpu_usage() as f64;
+
+        // Count open file descriptors (platform-specific)
+        let open_files = self.count_open_files();
+
+        // Disk usage (working directory)
+        let disk_usage_mb = self.get_disk_usage();
 
         Ok(ResourceUsage {
             memory_mb,
             cpu_percent,
-            open_files: 0,    // TODO: Count open file descriptors
-            disk_usage_mb: 0, // TODO: Calculate disk usage
-            active_operations: 0,
+            open_files,
+            disk_usage_mb,
+            active_operations: 0, // Managed externally
             start_time: Instant::now(),
         })
     }
 
-    #[cfg(target_os = "macos")]
-    fn get_macos_usage(&self) -> Result<ResourceUsage, SecurityError> {
-        // macOS-specific implementation using system APIs
-        // This would require linking to system libraries
-        Ok(ResourceUsage::default())
+    /// Count open file descriptors (platform-specific)
+    fn count_open_files(&self) -> u32 {
+        #[cfg(target_os = "linux")]
+        {
+            // On Linux, count files in /proc/self/fd/
+            if let Ok(entries) = std::fs::read_dir("/proc/self/fd") {
+                return entries.count() as u32;
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // On macOS, use lsof command
+            if let Ok(output) = std::process::Command::new("lsof")
+                .arg("-p")
+                .arg(std::process::id().to_string())
+                .output()
+                && output.status.success()
+            {
+                let count = output
+                    .stdout
+                    .split(|&b| b == b'\n')
+                    .filter(|line| !line.is_empty())
+                    .count();
+                return count.saturating_sub(1) as u32; // Subtract header line
+            }
+        }
+
+        // Fallback: return 0 if we can't determine
+        0
     }
 
-    #[cfg(target_os = "windows")]
-    fn get_windows_usage(&self) -> Result<ResourceUsage, SecurityError> {
-        // Windows-specific implementation using WinAPI
-        // This would require windows crate
-        Ok(ResourceUsage::default())
+    /// Get disk usage for current working directory
+    fn get_disk_usage(&self) -> u64 {
+        use sysinfo::Disks;
+
+        let disks = Disks::new_with_refreshed_list();
+
+        // Get current working directory
+        if let Ok(cwd) = std::env::current_dir() {
+            // Find the disk containing our working directory
+            for disk in &disks {
+                if cwd.starts_with(disk.mount_point()) {
+                    let total = disk.total_space();
+                    let available = disk.available_space();
+                    let used = total.saturating_sub(available);
+                    return used / (1024 * 1024); // Convert to MB
+                }
+            }
+        }
+
+        0
     }
 }
 
@@ -371,5 +470,218 @@ mod tests {
         // Check that active operations decreased
         let usage = tracker.get_usage("test_agent").unwrap();
         assert_eq!(usage.active_operations, 0);
+    }
+
+    #[test]
+    fn test_process_monitor_creation() {
+        // Test that ProcessMonitor can be created
+        let monitor = ProcessMonitor::new();
+        assert!(
+            monitor.is_ok(),
+            "ProcessMonitor should be created successfully"
+        );
+    }
+
+    #[test]
+    fn test_real_resource_usage() {
+        // Test that we get real (non-zero) resource usage
+        let monitor = ProcessMonitor::new().expect("Failed to create ProcessMonitor");
+        let usage = monitor
+            .get_current_usage()
+            .expect("Failed to get resource usage");
+
+        // Memory should be greater than 0 (we're a running process)
+        assert!(
+            usage.memory_mb > 0,
+            "Memory usage should be greater than 0, got: {}",
+            usage.memory_mb
+        );
+
+        // CPU might be 0 on first measurement, but the value should exist
+        assert!(
+            usage.cpu_percent >= 0.0,
+            "CPU usage should be non-negative, got: {}",
+            usage.cpu_percent
+        );
+
+        // We should have at least some open files (stdin, stdout, stderr)
+        // Note: This might be 0 on platforms where we can't determine it
+        println!("Open files detected: {}", usage.open_files);
+
+        // Disk usage should exist (u64 is always >= 0)
+        println!("Disk usage: {} MB", usage.disk_usage_mb);
+
+        println!("✅ Real resource monitoring is working!");
+        println!("   Memory: {} MB", usage.memory_mb);
+        println!("   CPU: {:.2}%", usage.cpu_percent);
+        println!("   Open Files: {}", usage.open_files);
+        println!("   Disk Usage: {} MB", usage.disk_usage_mb);
+    }
+
+    #[test]
+    fn test_resource_tracker_with_real_monitor() {
+        // Test that ResourceTracker integrates with ProcessMonitor
+        let limits = ResourceLimits::default();
+        let tracker = ResourceTracker::new(&limits);
+
+        // Create a security context
+        let policy = super::super::SecurityPolicy {
+            fs_policy: super::super::policy::FileSystemPolicy::default(),
+            http_policy: super::super::policy::HttpPolicy::default(),
+            network_policy: super::super::policy::NetworkPolicy::default(),
+        };
+        let context = super::super::SecurityContext::new(
+            "test_agent".to_string(),
+            "test_tool".to_string(),
+            policy,
+        );
+
+        // Check limits - should not fail for normal process usage
+        let result = tracker.check_limits(&context);
+        assert!(
+            result.is_ok(),
+            "Normal process should not exceed limits: {:?}",
+            result
+        );
+
+        // Get usage and verify it's tracked
+        let usage = tracker.get_usage("test_agent").unwrap();
+        println!("Tracked usage - Memory: {} MB", usage.memory_mb);
+
+        // If monitor is available, memory should be > 0
+        if usage.memory_mb > 0 {
+            println!("✅ ResourceTracker is using real monitoring data!");
+        }
+    }
+
+    #[test]
+    fn test_memory_limit_enforcement() {
+        // Test that memory limits are actually enforced
+        let limits = ResourceLimits {
+            max_memory_mb: 1, // Set very low limit
+            max_cpu_percent: 100.0,
+            max_execution_time: Duration::from_secs(300),
+            max_concurrent_operations: 10,
+            max_open_files: 1000,
+            max_disk_usage_mb: 10000,
+        };
+
+        let tracker = ResourceTracker::new(&limits);
+
+        // Get current usage to populate the tracker
+        let policy = super::super::SecurityPolicy {
+            fs_policy: super::super::policy::FileSystemPolicy::default(),
+            http_policy: super::super::policy::HttpPolicy::default(),
+            network_policy: super::super::policy::NetworkPolicy::default(),
+        };
+        let context = super::super::SecurityContext::new(
+            "test_agent".to_string(),
+            "test_tool".to_string(),
+            policy,
+        );
+
+        // First check might pass or fail depending on timing
+        let _ = tracker.check_limits(&context);
+
+        // Manually set high memory usage
+        {
+            let mut usage_map = tracker.usage.lock().unwrap();
+            if let Some(usage) = usage_map.get_mut("test_agent") {
+                usage.memory_mb = 100; // Exceed the 1 MB limit
+            }
+        }
+
+        // Second check should fail
+        let result = tracker.check_limits(&context);
+        assert!(result.is_err(), "Should fail with high memory usage");
+
+        if let Err(e) = result {
+            println!("✅ Memory limit enforcement working: {:?}", e);
+        }
+    }
+
+    #[test]
+    fn test_cpu_limit_enforcement() {
+        // Test that CPU limits are actually enforced
+        // Note: This test creates a tracker WITHOUT a process monitor to ensure
+        // we can reliably test the limit enforcement logic
+        let limits = ResourceLimits {
+            max_memory_mb: 1000,
+            max_cpu_percent: 1.0, // Set very low CPU limit
+            max_execution_time: Duration::from_secs(300),
+            max_concurrent_operations: 10,
+            max_open_files: 1000,
+            max_disk_usage_mb: 10000,
+        };
+
+        // Create a tracker with no monitor by manually constructing it
+        let tracker = ResourceTracker {
+            limits,
+            usage: Arc::new(Mutex::new(HashMap::new())),
+            process_monitor: None, // Explicitly disable monitor for this test
+        };
+
+        let policy = super::super::SecurityPolicy {
+            fs_policy: super::super::policy::FileSystemPolicy::default(),
+            http_policy: super::super::policy::HttpPolicy::default(),
+            network_policy: super::super::policy::NetworkPolicy::default(),
+        };
+        let context = super::super::SecurityContext::new(
+            "test_agent".to_string(),
+            "test_tool".to_string(),
+            policy,
+        );
+
+        // Manually set high CPU usage
+        {
+            let mut usage_map = tracker.usage.lock().unwrap();
+            let usage = usage_map.entry("test_agent".to_string()).or_default();
+            usage.cpu_percent = 50.0; // Exceed the 1% limit
+        }
+
+        // Check should fail
+        let result = tracker.check_limits(&context);
+        assert!(result.is_err(), "Should fail with high CPU usage");
+
+        if let Err(e) = result {
+            println!("✅ CPU limit enforcement working: {:?}", e);
+        }
+    }
+
+    #[test]
+    fn test_cleanup_stale_agents() {
+        let limits = ResourceLimits::default();
+        let tracker = ResourceTracker::new(&limits);
+
+        // Add some agents
+        let _guard1 = tracker.start_operation("agent1");
+        let _guard2 = tracker.start_operation("agent2");
+
+        // Both agents should exist
+        assert!(tracker.get_usage("agent1").is_some());
+        assert!(tracker.get_usage("agent2").is_some());
+
+        // Cleanup with max_age = 0 should remove all agents
+        tracker.cleanup_stale_agents(Duration::from_secs(0));
+
+        // Agents should still exist because guards are active
+        // Let's add a very old agent manually
+        {
+            let mut usage_map = tracker.usage.lock().unwrap();
+            let mut old_usage = ResourceUsage::default();
+            old_usage.start_time = Instant::now() - Duration::from_secs(3600); // 1 hour ago
+            usage_map.insert("old_agent".to_string(), old_usage);
+        }
+
+        // Verify old agent exists
+        assert!(tracker.get_usage("old_agent").is_some());
+
+        // Cleanup agents older than 1 second
+        tracker.cleanup_stale_agents(Duration::from_secs(1));
+
+        // Old agent should be removed
+        assert!(tracker.get_usage("old_agent").is_none());
+
+        println!("✅ Stale agent cleanup working!");
     }
 }
