@@ -159,6 +159,18 @@ impl ResourceTracker {
 
         // Check concurrent operations limit
         if usage.active_operations >= self.limits.max_concurrent_operations {
+            // Record concurrency limit exceeded metric
+            #[cfg(feature = "skreaver-observability")]
+            {
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_resource_limit_exceeded_total
+                        .with_label_values(&["concurrency"])
+                        .inc();
+                }
+            }
+
             return Err(SecurityError::ConcurrencyLimitExceeded {
                 count: usage.active_operations,
                 limit: self.limits.max_concurrent_operations,
@@ -175,6 +187,18 @@ impl ResourceTracker {
 
         // Check memory limit
         if usage.memory_mb > self.limits.max_memory_mb {
+            // Record memory limit exceeded metric
+            #[cfg(feature = "skreaver-observability")]
+            {
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_resource_limit_exceeded_total
+                        .with_label_values(&["memory"])
+                        .inc();
+                }
+            }
+
             return Err(SecurityError::MemoryLimitExceeded {
                 requested: usage.memory_mb,
                 limit: self.limits.max_memory_mb,
@@ -183,6 +207,18 @@ impl ResourceTracker {
 
         // Check CPU limit
         if usage.cpu_percent > self.limits.max_cpu_percent {
+            // Record CPU limit exceeded metric
+            #[cfg(feature = "skreaver-observability")]
+            {
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_resource_limit_exceeded_total
+                        .with_label_values(&["cpu"])
+                        .inc();
+                }
+            }
+
             return Err(SecurityError::CpuLimitExceeded {
                 usage: usage.cpu_percent,
                 limit: self.limits.max_cpu_percent,

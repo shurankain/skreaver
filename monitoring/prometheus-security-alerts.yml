@@ -1,0 +1,245 @@
+groups:
+  - name: skreaver_security_alerts
+    interval: 30s
+    rules:
+      # Authentication Alerts
+      - alert: SkreaverHighAuthenticationFailureRate
+        expr: |
+          rate(skreaver_security_auth_attempts_total{result="failure"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          component: authentication
+        annotations:
+          summary: "High authentication failure rate detected"
+          description: "Authentication failures are above 10/sec for more than 2 minutes. Current rate: {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/auth-failure-spike"
+
+      - alert: SkreaverCriticalAuthenticationFailureRate
+        expr: |
+          rate(skreaver_security_auth_attempts_total{result="failure"}[5m]) > 50
+        for: 1m
+        labels:
+          severity: critical
+          component: authentication
+        annotations:
+          summary: "CRITICAL: Very high authentication failure rate"
+          description: "Authentication failures exceed 50/sec. Possible brute force attack. Current rate: {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/possible-brute-force"
+
+      - alert: SkreaverAuthenticationSuccessRateLow
+        expr: |
+          (
+            sum(rate(skreaver_security_auth_attempts_total{result="success"}[5m]))
+            /
+            sum(rate(skreaver_security_auth_attempts_total[5m]))
+          ) * 100 < 80
+        for: 5m
+        labels:
+          severity: warning
+          component: authentication
+        annotations:
+          summary: "Low authentication success rate"
+          description: "Authentication success rate is below 80% for 5 minutes. Current rate: {{ $value | humanize }}%"
+          runbook_url: "https://docs.skreaver.com/runbooks/low-auth-success"
+
+      - alert: SkreaverInvalidTokenSpike
+        expr: |
+          rate(skreaver_security_auth_attempts_total{result="invalid"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          component: authentication
+        annotations:
+          summary: "High rate of invalid tokens"
+          description: "Invalid token rate exceeds 5/sec. May indicate client misconfiguration or token manipulation. Current rate: {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/invalid-tokens"
+
+      # RBAC Alerts
+      - alert: SkreaverHighRBACDenialRate
+        expr: |
+          rate(skreaver_security_rbac_checks_total{result="denied"}[5m]) > 5
+        for: 3m
+        labels:
+          severity: warning
+          component: rbac
+        annotations:
+          summary: "High RBAC permission denial rate"
+          description: "RBAC denials exceed 5/sec for 3 minutes. Current rate: {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/rbac-denials"
+
+      - alert: SkreaverRBACDenialRateHigh
+        expr: |
+          (
+            sum(rate(skreaver_security_rbac_checks_total{result="denied"}[5m]))
+            /
+            sum(rate(skreaver_security_rbac_checks_total[5m]))
+          ) * 100 > 25
+        for: 5m
+        labels:
+          severity: critical
+          component: rbac
+        annotations:
+          summary: "CRITICAL: Over 25% of RBAC checks are denied"
+          description: "RBAC denial rate is {{ $value | humanize }}%. Review access policies."
+          runbook_url: "https://docs.skreaver.com/runbooks/high-rbac-denial-rate"
+
+      - alert: SkreaverSpecificToolBlocked
+        expr: |
+          sum by(tool) (rate(skreaver_security_rbac_checks_total{result="denied"}[5m])) > 10
+        for: 2m
+        labels:
+          severity: warning
+          component: rbac
+        annotations:
+          summary: "High denial rate for tool: {{ $labels.tool }}"
+          description: "Tool '{{ $labels.tool }}' is being denied at {{ $value | humanize }}/sec. Review tool permissions."
+          runbook_url: "https://docs.skreaver.com/runbooks/tool-blocked"
+
+      # Policy Violation Alerts
+      - alert: SkreaverPolicyViolationDetected
+        expr: |
+          rate(skreaver_security_policy_violations_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: policy
+        annotations:
+          summary: "Security policy violations detected"
+          description: "Policy violations occurring at {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/policy-violations"
+
+      - alert: SkreaverHighPolicyViolationRate
+        expr: |
+          rate(skreaver_security_policy_violations_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: policy
+        annotations:
+          summary: "CRITICAL: High policy violation rate"
+          description: "Policy violations exceed 5/sec. Possible security incident. Current rate: {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/high-policy-violations"
+
+      - alert: SkreaverPathTraversalAttempt
+        expr: |
+          rate(skreaver_security_policy_violations_total{violation_type="path_not_allowed"}[5m]) > 1
+        for: 1m
+        labels:
+          severity: critical
+          component: policy
+        annotations:
+          summary: "Path traversal attempts detected"
+          description: "Unauthorized path access attempts at {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/path-traversal"
+
+      - alert: SkreaverDomainViolation
+        expr: |
+          rate(skreaver_security_policy_violations_total{violation_type="domain_not_allowed"}[5m]) > 1
+        for: 1m
+        labels:
+          severity: warning
+          component: policy
+        annotations:
+          summary: "Unauthorized domain access attempts"
+          description: "Attempts to access blocked domains at {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/domain-violations"
+
+      # Resource Limit Alerts
+      - alert: SkreaverMemoryLimitExceeded
+        expr: |
+          rate(skreaver_security_resource_limit_exceeded_total{resource_type="memory"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "Memory limits being exceeded"
+          description: "Memory limit violations at {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/memory-limits"
+
+      - alert: SkreaverCPULimitExceeded
+        expr: |
+          rate(skreaver_security_resource_limit_exceeded_total{resource_type="cpu"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "CPU limits being exceeded"
+          description: "CPU limit violations at {{ $value | humanize }}/sec"
+          runbook_url: "https://docs.skreaver.com/runbooks/cpu-limits"
+
+      - alert: SkreaverConcurrencyLimitExceeded
+        expr: |
+          rate(skreaver_security_resource_limit_exceeded_total{resource_type="concurrency"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: resources
+        annotations:
+          summary: "Concurrency limits exceeded"
+          description: "Concurrent operation limits being hit at {{ $value | humanize }}/sec. System may be overloaded."
+          runbook_url: "https://docs.skreaver.com/runbooks/concurrency-limits"
+
+      - alert: SkreaverHighResourceViolationRate
+        expr: |
+          sum(rate(skreaver_security_resource_limit_exceeded_total[5m])) > 10
+        for: 3m
+        labels:
+          severity: critical
+          component: resources
+        annotations:
+          summary: "CRITICAL: High resource limit violation rate"
+          description: "Resource limits exceeded at {{ $value | humanize }}/sec. System under severe stress."
+          runbook_url: "https://docs.skreaver.com/runbooks/resource-stress"
+
+      # Composite Security Alerts
+      - alert: SkreaverSecurityIncidentPossible
+        expr: |
+          (
+            sum(rate(skreaver_security_auth_attempts_total{result="failure"}[5m])) > 5
+            or
+            sum(rate(skreaver_security_policy_violations_total[5m])) > 2
+            or
+            sum(rate(skreaver_security_rbac_checks_total{result="denied"}[5m])) > 10
+          )
+        for: 5m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Possible security incident detected"
+          description: "Multiple security indicators showing unusual activity. Investigate immediately."
+          runbook_url: "https://docs.skreaver.com/runbooks/security-incident"
+
+      - alert: SkreaverNoSecurityMetrics
+        expr: |
+          absent(skreaver_security_auth_attempts_total)
+          or
+          absent(skreaver_security_rbac_checks_total)
+        for: 5m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: "Security metrics not being collected"
+          description: "Security metrics are not available. Monitoring may be broken."
+          runbook_url: "https://docs.skreaver.com/runbooks/metrics-missing"
+
+      # SLO-based Alerts
+      - alert: SkreaverSecuritySLOBreach
+        expr: |
+          (
+            sum(rate(skreaver_security_auth_attempts_total{result="success"}[5m]))
+            /
+            sum(rate(skreaver_security_auth_attempts_total[5m]))
+          ) * 100 < 99
+        for: 10m
+        labels:
+          severity: warning
+          component: slo
+        annotations:
+          summary: "Security SLO breach: Authentication success rate"
+          description: "Authentication success rate {{ $value | humanize }}% is below 99% SLO target"
+          runbook_url: "https://docs.skreaver.com/runbooks/slo-breach"

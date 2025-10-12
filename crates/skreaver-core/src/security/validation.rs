@@ -199,6 +199,18 @@ impl PathValidator {
 
         // Check against allowed paths
         if !self.policy.is_path_allowed(&canonical_path)? {
+            // Record path policy violation metric
+            #[cfg(feature = "skreaver-observability")]
+            {
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_policy_violations_total
+                        .with_label_values(&["path_not_allowed"])
+                        .inc();
+                }
+            }
+
             return Err(SecurityError::PathNotAllowed {
                 path: canonical_path.to_string_lossy().to_string(),
             });
@@ -261,6 +273,18 @@ impl DomainValidator {
 
         // Validate domain
         if !self.policy.is_domain_allowed(host)? {
+            // Record domain policy violation metric
+            #[cfg(feature = "skreaver-observability")]
+            {
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_policy_violations_total
+                        .with_label_values(&["domain_not_allowed"])
+                        .inc();
+                }
+            }
+
             return Err(SecurityError::DomainNotAllowed {
                 domain: host.to_string(),
             });

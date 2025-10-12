@@ -1,0 +1,408 @@
+{
+  "dashboard": {
+    "title": "Skreaver Security Metrics",
+    "description": "Comprehensive security monitoring dashboard for Skreaver agent system",
+    "tags": ["skreaver", "security", "monitoring"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Authentication Attempts",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(skreaver_security_auth_attempts_total{result=\"success\"}[5m])",
+            "legendFormat": "Success",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(skreaver_security_auth_attempts_total{result=\"failure\"}[5m])",
+            "legendFormat": "Failure",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(skreaver_security_auth_attempts_total{result=\"invalid\"}[5m])",
+            "legendFormat": "Invalid",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "reqps",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Success"},
+              "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Failure"},
+              "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Invalid"},
+              "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]
+            }
+          ]
+        },
+        "options": {
+          "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 2,
+        "title": "Authentication Success Rate",
+        "type": "gauge",
+        "gridPos": {"x": 12, "y": 0, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(skreaver_security_auth_attempts_total{result=\"success\"}[5m])) / sum(rate(skreaver_security_auth_attempts_total[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 80, "color": "yellow"},
+                {"value": 95, "color": "green"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 3,
+        "title": "Total Auth Attempts (24h)",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 0, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(increase(skreaver_security_auth_attempts_total[24h]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1000, "color": "yellow"},
+                {"value": 10000, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {"values": false, "calcs": ["lastNotNull"]},
+          "textMode": "value_and_name",
+          "colorMode": "background"
+        }
+      },
+      {
+        "id": 4,
+        "title": "RBAC Permission Checks",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by(tool) (rate(skreaver_security_rbac_checks_total{result=\"allowed\"}[5m]))",
+            "legendFormat": "Allowed - {{tool}}",
+            "refId": "A"
+          },
+          {
+            "expr": "sum by(tool) (rate(skreaver_security_rbac_checks_total{result=\"denied\"}[5m]))",
+            "legendFormat": "Denied - {{tool}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "cps",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          }
+        },
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "last"]},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 5,
+        "title": "RBAC Denial Rate",
+        "type": "gauge",
+        "gridPos": {"x": 12, "y": 8, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(skreaver_security_rbac_checks_total{result=\"denied\"}[5m])) / sum(rate(skreaver_security_rbac_checks_total[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 25, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 6,
+        "title": "Top Denied Tools",
+        "type": "bargauge",
+        "gridPos": {"x": 18, "y": 8, "w": 6, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(5, sum by(tool) (increase(skreaver_security_rbac_checks_total{result=\"denied\"}[1h])))",
+            "legendFormat": "{{tool}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient",
+          "showUnfilled": true
+        }
+      },
+      {
+        "id": 7,
+        "title": "Policy Violations by Type",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by(violation_type) (rate(skreaver_security_policy_violations_total[5m]))",
+            "legendFormat": "{{violation_type}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "vps",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "stacking": {"mode": "normal"}
+            }
+          }
+        },
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum", "max"]},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 8,
+        "title": "Total Policy Violations (24h)",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(increase(skreaver_security_policy_violations_total[24h]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {"values": false, "calcs": ["lastNotNull"]},
+          "textMode": "value_and_name",
+          "colorMode": "background",
+          "graphMode": "area"
+        }
+      },
+      {
+        "id": 9,
+        "title": "Resource Limit Violations",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by(resource_type) (rate(skreaver_security_resource_limit_exceeded_total[5m]))",
+            "legendFormat": "{{resource_type}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "vps",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "memory"},
+              "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "cpu"},
+              "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]
+            },
+            {
+              "matcher": {"id": "byName", "options": "concurrency"},
+              "properties": [{"id": "color", "value": {"fixedColor": "yellow", "mode": "fixed"}}]
+            }
+          ]
+        },
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+          "tooltip": {"mode": "multi", "sort": "desc"}
+        }
+      },
+      {
+        "id": 10,
+        "title": "Resource Violations (1h)",
+        "type": "piechart",
+        "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum by(resource_type) (increase(skreaver_security_resource_limit_exceeded_total[1h]))",
+            "legendFormat": "{{resource_type}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "short"
+          }
+        },
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]},
+          "pieType": "donut",
+          "displayLabels": ["name", "percent"]
+        }
+      },
+      {
+        "id": 11,
+        "title": "Security Events Heatmap",
+        "type": "heatmap",
+        "gridPos": {"x": 0, "y": 32, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(increase(skreaver_security_auth_attempts_total{result!=\"success\"}[1m])) + sum(increase(skreaver_security_rbac_checks_total{result=\"denied\"}[1m])) + sum(increase(skreaver_security_policy_violations_total[1m]))",
+            "refId": "A",
+            "format": "time_series"
+          }
+        ],
+        "options": {
+          "calculate": true,
+          "cellGap": 2,
+          "color": {
+            "exponent": 0.5,
+            "fill": "dark-red",
+            "mode": "scheme",
+            "scale": "exponential",
+            "scheme": "Spectral",
+            "steps": 64
+          },
+          "exemplars": {"color": "rgba(255,0,255,0.7)"},
+          "filterValues": {"le": 1e-9},
+          "yAxis": {"axisPlacement": "left", "reverse": false}
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus",
+          "current": {"value": "Prometheus", "text": "Prometheus"}
+        },
+        {
+          "name": "job",
+          "type": "query",
+          "datasource": "${datasource}",
+          "query": "label_values(skreaver_security_auth_attempts_total, job)",
+          "current": {},
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Security Incidents",
+          "datasource": "${datasource}",
+          "enable": true,
+          "expr": "ALERTS{alertname=~\"Skreaver.*\"}",
+          "iconColor": "red",
+          "tagKeys": "alertname,severity"
+        }
+      ]
+    }
+  }
+}
