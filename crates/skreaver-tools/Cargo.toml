@@ -19,6 +19,7 @@ data = ["dep:quick-xml"]
 [dependencies]
 # Core dependencies
 skreaver-core = { path = "../skreaver-core", version = "0.3.0" }
+skreaver-observability = { path = "../skreaver-observability", version = "0.3.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

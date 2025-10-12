@@ -33,6 +33,12 @@ pub struct CoreMetrics {
     // HTTP metrics (for skreaver-http integration)
     pub http_requests_total: CounterVec, // cardinality: ≤30
     pub http_request_duration_seconds: HistogramVec, // cardinality: ≤30
+
+    // Security metrics (GAP-004 resolution)
+    pub security_auth_attempts_total: CounterVec, // cardinality: ≤5 (result: success|failure|invalid)
+    pub security_rbac_checks_total: CounterVec,   // cardinality: ≤5 (result: allowed|denied)
+    pub security_policy_violations_total: CounterVec, // cardinality: ≤10 (violation_type)
+    pub security_resource_limit_exceeded_total: CounterVec, // cardinality: ≤5 (resource_type)
 }
 
 impl CoreMetrics {
@@ -93,6 +99,39 @@ impl CoreMetrics {
             &["route", "method"]
         )?;
 
+        // Security metrics
+        let security_auth_attempts_total = register_counter_vec!(
+            Opts::new(
+                format!("{}_security_auth_attempts_total", namespace),
+                "Total authentication attempts by result (success, failure, invalid)"
+            ),
+            &["result"]
+        )?;
+
+        let security_rbac_checks_total = register_counter_vec!(
+            Opts::new(
+                format!("{}_security_rbac_checks_total", namespace),
+                "Total RBAC permission checks by result (allowed, denied)"
+            ),
+            &["result", "tool"]
+        )?;
+
+        let security_policy_violations_total = register_counter_vec!(
+            Opts::new(
+                format!("{}_security_policy_violations_total", namespace),
+                "Total security policy violations by type"
+            ),
+            &["violation_type"]
+        )?;
+
+        let security_resource_limit_exceeded_total = register_counter_vec!(
+            Opts::new(
+                format!("{}_security_resource_limit_exceeded_total", namespace),
+                "Total resource limit violations by resource type"
+            ),
+            &["resource_type"]
+        )?;
+
         Ok(Self {
             agent_sessions_active,
             agent_errors_total,
@@ -101,6 +140,10 @@ impl CoreMetrics {
             memory_ops_total,
             http_requests_total,
             http_request_duration_seconds,
+            security_auth_attempts_total,
+            security_rbac_checks_total,
+            security_policy_violations_total,
+            security_resource_limit_exceeded_total,
         })
     }
 }

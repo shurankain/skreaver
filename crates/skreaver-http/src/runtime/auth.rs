@@ -162,6 +162,15 @@ pub fn extract_auth_context(
         if let Some(token) = auth_str.strip_prefix("Bearer ") {
             // Try JWT first
             if let Ok(token_data) = validate_jwt_token(token) {
+                // Record successful JWT authentication
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_auth_attempts_total
+                        .with_label_values(&["success"])
+                        .inc();
+                }
+
                 return Ok(AuthContext {
                     user_id: token_data.claims.sub,
                     permissions: token_data.claims.permissions,
@@ -172,12 +181,30 @@ pub fn extract_auth_context(
             // If JWT validation failed, check if it's an API key (starts with sk-)
             if token.starts_with("sk-") {
                 if let Some(key_data) = API_KEYS.get(token) {
+                    // Record successful API key authentication
+                    if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                        registry
+                            .core_metrics()
+                            .security_auth_attempts_total
+                            .with_label_values(&["success"])
+                            .inc();
+                    }
+
                     return Ok(AuthContext {
                         user_id: format!("api-key-{}", &token[3..std::cmp::min(11, token.len())]), // First 8 chars after sk-
                         permissions: key_data.permissions.clone(),
                         auth_method: AuthMethod::ApiKey(token.to_string()),
                     });
                 } else {
+                    // Record failed API key authentication
+                    if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                        registry
+                            .core_metrics()
+                            .security_auth_attempts_total
+                            .with_label_values(&["failure"])
+                            .inc();
+                    }
+
                     return Err((
                         StatusCode::UNAUTHORIZED,
                         Json(AuthError {
@@ -188,7 +215,15 @@ pub fn extract_auth_context(
                 }
             }
 
-            // Neither valid JWT nor API key
+            // Neither valid JWT nor API key - invalid token
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_auth_attempts_total
+                    .with_label_values(&["invalid"])
+                    .inc();
+            }
+
             return Err((
                 StatusCode::UNAUTHORIZED,
                 Json(AuthError {
@@ -212,12 +247,30 @@ pub fn extract_auth_context(
         })?;
 
         if let Some(key_data) = API_KEYS.get(api_key) {
+            // Record successful API key authentication
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_auth_attempts_total
+                    .with_label_values(&["success"])
+                    .inc();
+            }
+
             return Ok(AuthContext {
                 user_id: format!("api-key-{}", &api_key[3..11]), // First 8 chars after sk-
                 permissions: key_data.permissions.clone(),
                 auth_method: AuthMethod::ApiKey(api_key.to_string()),
             });
         } else {
+            // Record failed API key authentication
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_auth_attempts_total
+                    .with_label_values(&["failure"])
+                    .inc();
+            }
+
             return Err((
                 StatusCode::UNAUTHORIZED,
                 Json(AuthError {
@@ -228,7 +281,15 @@ pub fn extract_auth_context(
         }
     }
 
-    // No authentication provided
+    // No authentication provided - record as failure
+    if let Some(registry) = skreaver_observability::get_metrics_registry() {
+        registry
+            .core_metrics()
+            .security_auth_attempts_total
+            .with_label_values(&["failure"])
+            .inc();
+    }
+
     Err((
         StatusCode::UNAUTHORIZED,
         Json(AuthError {

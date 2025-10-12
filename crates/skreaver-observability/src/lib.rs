@@ -20,7 +20,7 @@ pub mod tags;
 
 // Re-export core types for easy access
 #[cfg(feature = "metrics")]
-pub use metrics::{CoreMetrics, MetricsCollector, MetricsRegistry};
+pub use metrics::{CoreMetrics, MetricsCollector, MetricsRegistry, get_metrics_registry};
 
 #[cfg(feature = "tracing")]
 pub use trace::{SessionTracker, TraceContext};

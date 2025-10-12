@@ -118,7 +118,26 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                 error = %error,
                 "Tool execution blocked by RBAC policy"
             );
+
+            // Record RBAC denial metric
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_rbac_checks_total
+                    .with_label_values(&["denied", call.name()])
+                    .inc();
+            }
+
             return Some(ExecutionResult::Failure { error });
+        }
+
+        // Record RBAC allowed metric
+        if let Some(registry) = skreaver_observability::get_metrics_registry() {
+            registry
+                .core_metrics()
+                .security_rbac_checks_total
+                .with_label_values(&["allowed", call.name()])
+                .inc();
         }
 
         // Permissions OK - dispatch to inner registry
@@ -133,7 +152,26 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                 error = %error,
                 "Tool execution blocked by RBAC policy"
             );
+
+            // Record RBAC denial metric
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_rbac_checks_total
+                    .with_label_values(&["denied", call.name()])
+                    .inc();
+            }
+
             return Some(ExecutionResult::Failure { error });
+        }
+
+        // Record RBAC allowed metric
+        if let Some(registry) = skreaver_observability::get_metrics_registry() {
+            registry
+                .core_metrics()
+                .security_rbac_checks_total
+                .with_label_values(&["allowed", call.name()])
+                .inc();
         }
 
         // Permissions OK - dispatch to inner registry
@@ -148,7 +186,26 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                 error = %error,
                 "Tool execution blocked by RBAC policy"
             );
+
+            // Record RBAC denial metric
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_rbac_checks_total
+                    .with_label_values(&["denied", call.name()])
+                    .inc();
+            }
+
             return Ok(ExecutionResult::Failure { error });
+        }
+
+        // Record RBAC allowed metric
+        if let Some(registry) = skreaver_observability::get_metrics_registry() {
+            registry
+                .core_metrics()
+                .security_rbac_checks_total
+                .with_label_values(&["allowed", call.name()])
+                .inc();
         }
 
         // Permissions OK - dispatch to inner registry
