@@ -595,8 +595,10 @@ mod tests {
     async fn test_jwt_revocation_with_ttl() {
         use crate::auth::InMemoryBlacklist;
 
-        let mut config = JwtConfig::default();
-        config.expiry_minutes = 5; // 5 minutes
+        let config = JwtConfig {
+            expiry_minutes: 5, // 5 minutes
+            ..Default::default()
+        };
 
         let blacklist = Arc::new(InMemoryBlacklist::new());
         let manager = JwtManager::with_blacklist(config, blacklist.clone());

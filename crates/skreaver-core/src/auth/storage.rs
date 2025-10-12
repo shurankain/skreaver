@@ -351,7 +351,7 @@ mod tests {
         let mut key_bytes = [0u8; 32];
         use aes_gcm::aead::rand_core::RngCore;
         aes_gcm::aead::OsRng.fill_bytes(&mut key_bytes);
-        let encoded = BASE64.encode(&key_bytes);
+        let encoded = BASE64.encode(key_bytes);
 
         // Set environment variable
         unsafe { std::env::set_var("TEST_ENCRYPTION_KEY", &encoded) };
@@ -379,7 +379,7 @@ mod tests {
 
         // Test with wrong length
         use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-        let short_key = BASE64.encode(&[0u8; 16]); // Only 16 bytes, not 32
+        let short_key = BASE64.encode([0u8; 16]); // Only 16 bytes, not 32
         unsafe { std::env::set_var("SHORT_KEY", &short_key) };
         let result = EncryptionKey::from_env("SHORT_KEY");
         assert!(matches!(result, Err(AuthError::InvalidEncryptionKey)));
@@ -519,7 +519,7 @@ mod tests {
 
         // Test with valid base64 but too short (less than nonce size)
         use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-        let short_data = BASE64.encode(&[1, 2, 3]); // Only 3 bytes
+        let short_data = BASE64.encode([1, 2, 3]); // Only 3 bytes
         shared_backend.store("short", &short_data).await.unwrap();
 
         let result = test_storage.get_decrypted("short").await;

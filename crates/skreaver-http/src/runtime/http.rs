@@ -15,9 +15,10 @@ use crate::runtime::{
     rate_limit::{RateLimitConfig, RateLimitState},
 };
 use skreaver_core::Agent;
+use skreaver_core::security::SecurityConfig;
 use skreaver_observability::{ObservabilityConfig, init_observability};
 use skreaver_tools::ToolRegistry;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 
 /// Unique identifier for an agent instance
@@ -31,6 +32,8 @@ pub struct HttpAgentRuntime<T: ToolRegistry> {
     pub rate_limit_state: Arc<RateLimitState>,
     pub backpressure_manager: Arc<BackpressureManager>,
     pub agent_factory: Arc<AgentFactory>,
+    /// Security configuration loaded from file or defaults
+    pub security_config: Arc<SecurityConfig>,
 }
 
 /// HTTP runtime configuration
@@ -50,6 +53,9 @@ pub struct HttpRuntimeConfig {
     pub enable_openapi: bool,
     /// Observability configuration
     pub observability: ObservabilityConfig,
+    /// Path to security configuration file (skreaver-security.toml)
+    /// If None, uses default security configuration
+    pub security_config_path: Option<PathBuf>,
 }
 
 impl Default for HttpRuntimeConfig {
@@ -62,6 +68,7 @@ impl Default for HttpRuntimeConfig {
             enable_cors: true,
             enable_openapi: true,
             observability: ObservabilityConfig::default(),
+            security_config_path: None, // Use default config
         }
     }
 }
@@ -98,6 +105,38 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             tracing::warn!("Failed to initialize observability: {}", e);
         }
 
+        // Load security configuration
+        let security_config = if let Some(config_path) = &config.security_config_path {
+            match SecurityConfig::load_from_file(config_path) {
+                Ok(cfg) => {
+                    tracing::info!(
+                        "Loaded security configuration from: {}",
+                        config_path.display()
+                    );
+                    // Validate configuration
+                    if let Err(e) = cfg.validate() {
+                        tracing::error!("Security configuration validation failed: {}", e);
+                        tracing::warn!("Falling back to default security configuration");
+                        SecurityConfig::create_default()
+                    } else {
+                        cfg
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to load security configuration from {}: {}",
+                        config_path.display(),
+                        e
+                    );
+                    tracing::warn!("Falling back to default security configuration");
+                    SecurityConfig::create_default()
+                }
+            }
+        } else {
+            tracing::info!("No security configuration file specified, using defaults");
+            SecurityConfig::create_default()
+        };
+
         let backpressure_manager = Arc::new(BackpressureManager::new(config.backpressure.clone()));
 
         // Start backpressure manager in background
@@ -120,6 +159,7 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             rate_limit_state: Arc::new(RateLimitState::new(config.rate_limit)),
             backpressure_manager,
             agent_factory: Arc::new(agent_factory),
+            security_config: Arc::new(security_config),
         }
     }
 
@@ -160,6 +200,11 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
     /// Get agent count
     pub async fn agent_count(&self) -> usize {
         self.agent_factory.agent_count().await
+    }
+
+    /// Get the security configuration
+    pub fn security_config(&self) -> &SecurityConfig {
+        &self.security_config
     }
 
     /// Add an agent instance to the runtime (legacy method for backward compatibility)

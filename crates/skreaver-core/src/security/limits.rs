@@ -668,8 +668,10 @@ mod tests {
         // Let's add a very old agent manually
         {
             let mut usage_map = tracker.usage.lock().unwrap();
-            let mut old_usage = ResourceUsage::default();
-            old_usage.start_time = Instant::now() - Duration::from_secs(3600); // 1 hour ago
+            let old_usage = ResourceUsage {
+                start_time: Instant::now() - Duration::from_secs(3600), // 1 hour ago
+                ..Default::default()
+            };
             usage_map.insert("old_agent".to_string(), old_usage);
         }
 

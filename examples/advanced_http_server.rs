@@ -249,6 +249,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         enable_cors: true,
         enable_openapi: true,
         observability: Default::default(),
+        security_config_path: None, // Use default security config
     };
 
     // Create HTTP runtime with configuration
