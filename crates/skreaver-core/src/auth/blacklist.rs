@@ -196,7 +196,8 @@ impl TokenBlacklist for RedisBlacklist {
         let key = self.get_key(jti);
 
         // Store with TTL (value doesn't matter, we just check existence)
-        let _: () = conn.set_ex(&key, "revoked", ttl_seconds as u64)
+        let _: () = conn
+            .set_ex(&key, "revoked", ttl_seconds as u64)
             .await
             .map_err(|e| AuthError::StorageError(format!("Failed to revoke token: {}", e)))?;
 
@@ -220,7 +221,8 @@ impl TokenBlacklist for RedisBlacklist {
         let mut conn = self.get_connection().await?;
         let key = self.get_key(jti);
 
-        let _: () = conn.del(key.as_str())
+        let _: () = conn
+            .del(key.as_str())
             .await
             .map_err(|e| AuthError::StorageError(format!("Failed to remove token: {}", e)))?;
 
@@ -240,7 +242,8 @@ impl TokenBlacklist for RedisBlacklist {
             .map_err(|e| AuthError::StorageError(format!("Failed to get keys: {}", e)))?;
 
         if !keys.is_empty() {
-            let _: () = conn.del(keys)
+            let _: () = conn
+                .del(keys)
                 .await
                 .map_err(|e| AuthError::StorageError(format!("Failed to clear tokens: {}", e)))?;
         }

@@ -3,7 +3,7 @@
 //! This module provides router setup and route registration for the HTTP runtime.
 
 use axum::{
-    Router,
+    Router, middleware,
     routing::{get, post},
 };
 use skreaver_tools::ToolRegistry;
@@ -11,6 +11,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::runtime::{
     HttpAgentRuntime, HttpRuntimeConfig,
+    auth::require_auth,
     docs::{openapi_spec, swagger_ui},
     handlers::{
         batch_observe_agent,
@@ -43,13 +44,9 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
 
     /// Create the Axum router with custom configuration
     pub fn router_with_config(self, config: HttpRuntimeConfig) -> Router {
-        let mut router = Router::new()
-            // Public endpoints (no auth required)
-            .route("/health", get(health_check))
-            .route("/ready", get(readiness_check))
-            .route("/metrics", get(metrics_endpoint))
-            .route("/auth/token", post(create_token))
-            // Protected endpoints (require authentication)
+        // Protected routes - require authentication
+        // Use route_layer to apply middleware to specific routes before merging
+        let protected_routes = Router::new()
             .route("/agents", get(list_agents).post(create_agent))
             .route("/agents/{agent_id}/status", get(get_agent_status))
             .route("/agents/{agent_id}/observe", post(observe_agent))
@@ -65,6 +62,19 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             )
             .route("/agents/{agent_id}", axum::routing::delete(delete_agent))
             .route("/queue/metrics", get(get_global_queue_metrics))
+            .route_layer(middleware::from_fn(require_auth)); // Apply auth to these routes only
+
+        // Public routes - no authentication required
+        let public_routes = Router::new()
+            .route("/health", get(health_check))
+            .route("/ready", get(readiness_check))
+            .route("/metrics", get(metrics_endpoint))
+            .route("/auth/token", post(create_token));
+
+        // Combine public and protected routes
+        let mut router = Router::new()
+            .merge(public_routes)
+            .merge(protected_routes)
             .with_state(self)
             .layer(TraceLayer::new_for_http());
 

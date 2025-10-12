@@ -16,23 +16,60 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// JWT secret key (in production, this should come from environment variables)
+/// JWT secret key - MUST be set via SKREAVER_JWT_SECRET environment variable in production
+/// In debug/test builds, uses a default test secret for convenience
 static JWT_SECRET: Lazy<String> = Lazy::new(|| {
-    std::env::var("SKREAVER_JWT_SECRET").unwrap_or_else(|_| "your-super-secret-jwt-key".to_string())
+    std::env::var("SKREAVER_JWT_SECRET").unwrap_or_else(|_| {
+        // In test/debug builds, provide a default. In release builds, panic.
+        #[cfg(any(test, debug_assertions))]
+        {
+            "test-secret-for-development-only-generate-real-secret-for-production".to_string()
+        }
+
+        #[cfg(not(any(test, debug_assertions)))]
+        {
+            panic!("SKREAVER_JWT_SECRET environment variable must be set in production. Generate with: openssl rand -base64 32")
+        }
+    })
 });
 
-/// API keys storage (in production, this should be backed by a database)
+/// API keys storage - Hardcoded test key in debug builds, empty in release builds
+/// In production, this should be backed by a database (see skreaver-core::auth::AuthManager)
 static API_KEYS: Lazy<HashMap<String, ApiKeyData>> = Lazy::new(|| {
     let mut keys = HashMap::new();
-    // Default API key for testing
-    keys.insert(
-        "sk-test-key-123".to_string(),
-        ApiKeyData {
-            name: "Test Key".to_string(),
-            permissions: vec!["read".to_string(), "write".to_string()],
-            created_at: Utc::now(),
-        },
-    );
+
+    // In debug builds, include test key for convenience
+    #[cfg(debug_assertions)]
+    {
+        keys.insert(
+            "sk-test-key-123".to_string(),
+            ApiKeyData {
+                name: "Test Key (DEBUG BUILD ONLY)".to_string(),
+                permissions: vec!["read".to_string(), "write".to_string()],
+                created_at: Utc::now(),
+            },
+        );
+    }
+
+    // In release builds, only add test key if explicitly enabled
+    #[cfg(not(debug_assertions))]
+    {
+        if std::env::var("SKREAVER_ENABLE_TEST_KEY").is_ok() {
+            tracing::warn!(
+                "⚠️  SECURITY WARNING: Test API key 'sk-test-key-123' is enabled in RELEASE BUILD. \
+                 DO NOT USE IN PRODUCTION. Unset SKREAVER_ENABLE_TEST_KEY to disable."
+            );
+            keys.insert(
+                "sk-test-key-123".to_string(),
+                ApiKeyData {
+                    name: "Test Key (DANGER: ENABLED IN RELEASE)".to_string(),
+                    permissions: vec!["read".to_string(), "write".to_string()],
+                    created_at: Utc::now(),
+                },
+            );
+        }
+    }
+
     keys
 });
 
@@ -121,46 +158,44 @@ pub fn extract_auth_context(
             )
         })?;
 
-        // JWT Bearer token
+        // Check Bearer token - could be JWT or API Key
         if let Some(token) = auth_str.strip_prefix("Bearer ") {
-            match validate_jwt_token(token) {
-                Ok(token_data) => {
+            // Try JWT first
+            if let Ok(token_data) = validate_jwt_token(token) {
+                return Ok(AuthContext {
+                    user_id: token_data.claims.sub,
+                    permissions: token_data.claims.permissions,
+                    auth_method: AuthMethod::JWT,
+                });
+            }
+
+            // If JWT validation failed, check if it's an API key (starts with sk-)
+            if token.starts_with("sk-") {
+                if let Some(key_data) = API_KEYS.get(token) {
                     return Ok(AuthContext {
-                        user_id: token_data.claims.sub,
-                        permissions: token_data.claims.permissions,
-                        auth_method: AuthMethod::JWT,
+                        user_id: format!("api-key-{}", &token[3..std::cmp::min(11, token.len())]), // First 8 chars after sk-
+                        permissions: key_data.permissions.clone(),
+                        auth_method: AuthMethod::ApiKey(token.to_string()),
                     });
-                }
-                Err(_) => {
+                } else {
                     return Err((
                         StatusCode::UNAUTHORIZED,
                         Json(AuthError {
-                            error: "invalid_token".to_string(),
-                            message: "Invalid or expired JWT token".to_string(),
+                            error: "invalid_api_key".to_string(),
+                            message: "Invalid API key".to_string(),
                         }),
                     ));
                 }
             }
-        }
 
-        // API Key
-        if let Some(api_key) = auth_str.strip_prefix("Bearer sk-") {
-            let full_key = format!("sk-{}", api_key);
-            if let Some(key_data) = API_KEYS.get(&full_key) {
-                return Ok(AuthContext {
-                    user_id: format!("api-key-{}", &full_key[3..11]), // First 8 chars after sk-
-                    permissions: key_data.permissions.clone(),
-                    auth_method: AuthMethod::ApiKey(full_key),
-                });
-            } else {
-                return Err((
-                    StatusCode::UNAUTHORIZED,
-                    Json(AuthError {
-                        error: "invalid_api_key".to_string(),
-                        message: "Invalid API key".to_string(),
-                    }),
-                ));
-            }
+            // Neither valid JWT nor API key
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(AuthError {
+                    error: "invalid_token".to_string(),
+                    message: "Invalid or expired JWT token or API key".to_string(),
+                }),
+            ));
         }
     }
 
@@ -204,7 +239,7 @@ pub fn extract_auth_context(
 }
 
 /// Middleware to require authentication for protected endpoints
-pub async fn require_auth<S>(
+pub async fn require_auth(
     mut request: Request,
     next: Next,
 ) -> Result<Response, (StatusCode, Json<AuthError>)> {
