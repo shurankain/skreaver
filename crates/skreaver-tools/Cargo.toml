@@ -32,3 +32,4 @@ regex = { workspace = true }
 
 # I/O tools
 tokio = { workspace = true, features = ["fs", "rt", "rt-multi-thread"] }
+tracing = { workspace = true }

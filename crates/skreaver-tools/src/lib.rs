@@ -28,10 +28,13 @@
 pub mod core;
 /// Tool registry implementations for managing collections of tools.
 pub mod registry;
+/// Secure tool registry with RBAC enforcement.
+pub mod secure_registry;
 /// Standard tool library providing common functionality.
 pub mod standard;
 
 pub use core::{InvalidToolName, ToolCallBuildError, ToolCallBuilder, ToolName};
 pub use registry::{InMemoryToolRegistry, ToolRegistry};
+pub use secure_registry::SecureToolRegistry;
 pub use skreaver_core::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 pub use standard::*;
