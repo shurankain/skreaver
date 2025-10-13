@@ -18,7 +18,7 @@ pub mod middleware;
 pub mod rbac;
 pub mod storage;
 
-pub use api_key::{ApiKey, ApiKeyConfig, ApiKeyManager};
+pub use api_key::{Active, ApiKey, ApiKeyConfig, ApiKeyManager, Expired, Key, Revoked};
 #[cfg(feature = "redis")]
 pub use blacklist::RedisBlacklist;
 pub use blacklist::{InMemoryBlacklist, TokenBlacklist};
