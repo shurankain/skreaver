@@ -60,7 +60,7 @@ pub use backpressure::{
 pub use dlq::{DeadLetterQueue, DlqConfig, DlqEntry, DlqStats};
 pub use error::{MeshError, MeshResult};
 pub use mesh::AgentMesh;
-pub use message::{Message, MessageBuilder, MessageId, MessageMetadata, MessagePayload};
+pub use message::{Message, MessageBuilder, MessageId, MessageMetadata, MessagePayload, Route};
 pub use metrics::{MeshMetrics, MeshMetricsCollector};
 pub use patterns::{
     BroadcastGather, GatherConfig, GatherResult, Pipeline, PipelineStage, RequestReply,

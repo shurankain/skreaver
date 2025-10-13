@@ -146,9 +146,20 @@ impl RedisMesh {
 
 #[async_trait]
 impl AgentMesh for RedisMesh {
-    async fn send(&self, to: &AgentId, mut message: Message) -> MeshResult<()> {
-        // Set recipient
-        message.to = Some(to.clone());
+    async fn send(&self, to: &AgentId, message: Message) -> MeshResult<()> {
+        // Update message routing to ensure recipient is set
+        let message = if message.route.recipient().is_none() {
+            // If no recipient, convert to unicast or system message
+            if let Some(sender) = message.route.sender() {
+                Message::unicast(sender.clone(), to.clone(), message.payload)
+                    .with_correlation_id(message.correlation_id.unwrap_or_default())
+            } else {
+                Message::system(to.clone(), message.payload)
+                    .with_correlation_id(message.correlation_id.unwrap_or_default())
+            }
+        } else {
+            message
+        };
 
         // Serialize message
         let json = message.to_json()?;

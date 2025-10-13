@@ -115,7 +115,6 @@ impl MetadataKey {
             MetadataKey::Custom(s) => s,
         }
     }
-
 }
 
 impl fmt::Display for MetadataKey {
