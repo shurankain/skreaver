@@ -9,6 +9,7 @@ pub mod collections;
 pub mod error;
 pub mod in_memory;
 pub mod memory;
+pub mod metadata;
 pub mod security;
 pub mod tool;
 
@@ -18,6 +19,7 @@ pub use in_memory::InMemoryMemory;
 pub use memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
+pub use metadata::{Metadata, MetadataBuilder, MetadataKey, MetadataValue};
 pub use security::{
     DomainValidator, InputValidator, PathValidator, ResourceLimits, ResourceTracker,
     SecurityConfig, SecurityContext, SecurityError, SecurityManager, SecurityPolicy,
