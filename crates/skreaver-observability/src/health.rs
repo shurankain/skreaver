@@ -7,7 +7,225 @@ use crate::ObservabilityError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Health check status levels
+// ============================================================================
+// Typestate Pattern Markers for Health States
+// ============================================================================
+
+/// Marker for healthy state
+#[derive(Debug, Clone, Copy)]
+pub struct Healthy;
+
+/// Marker for degraded state with severity level
+#[derive(Debug, Clone)]
+pub struct Degraded {
+    pub reason: String,
+    pub severity: DegradationLevel,
+}
+
+/// Marker for unhealthy state
+#[derive(Debug, Clone)]
+pub struct Unhealthy {
+    pub reason: String,
+}
+
+/// Degradation severity levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DegradationLevel {
+    /// Minor degradation - system mostly functional
+    Minor,
+    /// Moderate degradation - noticeable impact
+    Moderate,
+    /// Severe degradation - significant impact
+    Severe,
+}
+
+impl Default for DegradationLevel {
+    fn default() -> Self {
+        Self::Moderate
+    }
+}
+
+/// Type-safe health check with state encoded in type system
+#[derive(Debug, Clone)]
+pub struct Health<S> {
+    /// Component name
+    pub component_name: String,
+    /// Last check timestamp
+    pub last_check: chrono::DateTime<chrono::Utc>,
+    /// Response time for the health check in milliseconds
+    pub response_time_ms: u64,
+    /// State data
+    pub state: S,
+}
+
+impl<S> Health<S> {
+    /// Get component name
+    pub fn component_name(&self) -> &str {
+        &self.component_name
+    }
+
+    /// Get last check timestamp
+    pub fn last_check(&self) -> chrono::DateTime<chrono::Utc> {
+        self.last_check
+    }
+
+    /// Get response time
+    pub fn response_time_ms(&self) -> u64 {
+        self.response_time_ms
+    }
+}
+
+impl Health<Healthy> {
+    /// Create a new healthy component
+    pub fn new_healthy(component_name: String) -> Self {
+        Self {
+            component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: 0,
+            state: Healthy,
+        }
+    }
+
+    /// Check if health is good (compile-time guarantee for Healthy state)
+    pub fn is_healthy(&self) -> bool {
+        true
+    }
+
+    /// Get HTTP status code (always 200 for healthy)
+    pub fn http_status(&self) -> u16 {
+        200
+    }
+
+    /// Transition to degraded state
+    pub fn degrade(self, reason: String, severity: DegradationLevel) -> Health<Degraded> {
+        Health {
+            component_name: self.component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: self.response_time_ms,
+            state: Degraded { reason, severity },
+        }
+    }
+
+    /// Transition to unhealthy state
+    pub fn fail(self, reason: String) -> Health<Unhealthy> {
+        Health {
+            component_name: self.component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: self.response_time_ms,
+            state: Unhealthy { reason },
+        }
+    }
+}
+
+impl Health<Degraded> {
+    /// Create a new degraded component
+    pub fn new_degraded(
+        component_name: String,
+        reason: String,
+        severity: DegradationLevel,
+    ) -> Self {
+        Self {
+            component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: 0,
+            state: Degraded { reason, severity },
+        }
+    }
+
+    /// Check if health is good (always false for degraded)
+    pub fn is_healthy(&self) -> bool {
+        false
+    }
+
+    /// Get HTTP status code (503 for degraded)
+    pub fn http_status(&self) -> u16 {
+        503
+    }
+
+    /// Check if degradation is severe
+    pub fn is_severe(&self) -> bool {
+        matches!(self.state.severity, DegradationLevel::Severe)
+    }
+
+    /// Get degradation reason
+    pub fn reason(&self) -> &str {
+        &self.state.reason
+    }
+
+    /// Get severity level
+    pub fn severity(&self) -> DegradationLevel {
+        self.state.severity
+    }
+
+    /// Recover to healthy state
+    pub fn recover(self) -> Health<Healthy> {
+        Health {
+            component_name: self.component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: self.response_time_ms,
+            state: Healthy,
+        }
+    }
+
+    /// Transition to unhealthy state
+    pub fn fail(self, reason: String) -> Health<Unhealthy> {
+        Health {
+            component_name: self.component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: self.response_time_ms,
+            state: Unhealthy { reason },
+        }
+    }
+}
+
+impl Health<Unhealthy> {
+    /// Create a new unhealthy component
+    pub fn new_unhealthy(component_name: String, reason: String) -> Self {
+        Self {
+            component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: 0,
+            state: Unhealthy { reason },
+        }
+    }
+
+    /// Check if health is good (always false for unhealthy)
+    pub fn is_healthy(&self) -> bool {
+        false
+    }
+
+    /// Get HTTP status code (503 for unhealthy)
+    pub fn http_status(&self) -> u16 {
+        503
+    }
+
+    /// Get failure reason
+    pub fn reason(&self) -> &str {
+        &self.state.reason
+    }
+
+    /// Attempt recovery to healthy state
+    pub fn recover(self) -> Health<Healthy> {
+        Health {
+            component_name: self.component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: self.response_time_ms,
+            state: Healthy,
+        }
+    }
+
+    /// Recover to degraded state (partial recovery)
+    pub fn partial_recover(self, reason: String, severity: DegradationLevel) -> Health<Degraded> {
+        Health {
+            component_name: self.component_name,
+            last_check: chrono::Utc::now(),
+            response_time_ms: self.response_time_ms,
+            state: Degraded { reason, severity },
+        }
+    }
+}
+
+/// Backward-compatible health check status levels
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum HealthStatus {
@@ -40,6 +258,29 @@ impl HealthStatus {
             HealthStatus::Healthy => "healthy",
             HealthStatus::Degraded { .. } => "degraded",
             HealthStatus::Unhealthy { .. } => "unhealthy",
+        }
+    }
+}
+
+// Conversion traits for backward compatibility
+impl From<Health<Healthy>> for HealthStatus {
+    fn from(_health: Health<Healthy>) -> Self {
+        HealthStatus::Healthy
+    }
+}
+
+impl From<Health<Degraded>> for HealthStatus {
+    fn from(health: Health<Degraded>) -> Self {
+        HealthStatus::Degraded {
+            reason: health.reason().to_string(),
+        }
+    }
+}
+
+impl From<Health<Unhealthy>> for HealthStatus {
+    fn from(health: Health<Unhealthy>) -> Self {
+        HealthStatus::Unhealthy {
+            reason: health.reason().to_string(),
         }
     }
 }

@@ -26,7 +26,10 @@ pub use metrics::{CoreMetrics, MetricsCollector, MetricsRegistry, get_metrics_re
 pub use trace::{SessionTracker, TraceContext};
 
 #[cfg(feature = "health")]
-pub use health::{ComponentHealth, HealthChecker, HealthStatus};
+pub use health::{
+    ComponentHealth, DegradationLevel, Degraded, Health, HealthChecker, HealthStatus, Healthy,
+    Unhealthy,
+};
 
 pub use tags::{AgentId, CardinalTags, ErrorKind, SessionId, ToolName};
 
