@@ -1,4 +1,4 @@
-//! JWT (JSON Web Token) authentication support
+//! JWT (JSON Web Token) authentication support with type-safe tokens
 
 use super::{AuthError, AuthMethod, AuthResult, Principal, TokenBlacklist};
 use crate::auth::rbac::Role;
@@ -6,6 +6,7 @@ use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// JWT configuration
@@ -123,7 +124,135 @@ impl JwtClaims {
     }
 }
 
-/// JWT token wrapper
+// ============================================================================
+// Type-safe tokens using phantom types
+// ============================================================================
+
+/// Marker type for Access tokens
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccessToken;
+
+/// Marker type for Refresh tokens
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RefreshToken;
+
+/// Type-safe token wrapper using phantom types.
+/// The type parameter `T` represents the token type and provides
+/// compile-time guarantees about token usage.
+#[derive(Debug, Clone)]
+pub struct Token<T> {
+    value: String,
+    expires_at: DateTime<Utc>,
+    issued_at: DateTime<Utc>,
+    _phantom: PhantomData<T>,
+}
+
+impl<T> Token<T> {
+    /// Create a new token
+    fn new(value: String, expires_at: DateTime<Utc>, issued_at: DateTime<Utc>) -> Self {
+        Self {
+            value,
+            expires_at,
+            issued_at,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Get the token value as a string
+    pub fn as_str(&self) -> &str {
+        &self.value
+    }
+
+    /// Get the expiration time
+    pub fn expires_at(&self) -> DateTime<Utc> {
+        self.expires_at
+    }
+
+    /// Get when the token was issued
+    pub fn issued_at(&self) -> DateTime<Utc> {
+        self.issued_at
+    }
+
+    /// Check if the token is expired
+    pub fn is_expired(&self) -> bool {
+        Utc::now() > self.expires_at
+    }
+
+    /// Time until expiration
+    pub fn time_until_expiry(&self) -> Duration {
+        self.expires_at - Utc::now()
+    }
+}
+
+impl Token<AccessToken> {
+    /// Get expiration time in seconds (common for access tokens)
+    pub fn expiry_seconds(&self) -> i64 {
+        self.time_until_expiry().num_seconds().max(0)
+    }
+
+    /// Check if token will expire soon (within 5 minutes)
+    pub fn expires_soon(&self) -> bool {
+        self.expiry_seconds() < 300
+    }
+}
+
+impl Token<RefreshToken> {
+    /// Get expiration time in days (common for refresh tokens)
+    pub fn expiry_days(&self) -> i64 {
+        self.time_until_expiry().num_days().max(0)
+    }
+
+    /// Check if token will expire soon (within 7 days)
+    pub fn expires_soon(&self) -> bool {
+        self.expiry_days() < 7
+    }
+}
+
+impl<T> PartialEq for Token<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl<T> Eq for Token<T> {}
+
+/// Type-safe token pair containing access and optional refresh token
+#[derive(Debug, Clone)]
+pub struct TokenPair {
+    /// Access token for authentication
+    pub access: Token<AccessToken>,
+    /// Optional refresh token for obtaining new access tokens
+    pub refresh: Option<Token<RefreshToken>>,
+    /// Token type (always "Bearer" for JWT)
+    pub token_type: &'static str,
+}
+
+impl TokenPair {
+    /// Create a new token pair
+    pub fn new(access: Token<AccessToken>, refresh: Option<Token<RefreshToken>>) -> Self {
+        Self {
+            access,
+            refresh,
+            token_type: "Bearer",
+        }
+    }
+
+    /// Check if refresh token is available
+    pub fn has_refresh_token(&self) -> bool {
+        self.refresh.is_some()
+    }
+
+    /// Get time until access token expires (in seconds)
+    pub fn expires_in(&self) -> i64 {
+        self.access.expiry_seconds()
+    }
+}
+
+// ============================================================================
+// Backward compatibility: Legacy JWT token structure
+// ============================================================================
+
+/// JWT token wrapper (legacy structure for backward compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JwtToken {
     /// Access token
@@ -136,6 +265,23 @@ pub struct JwtToken {
     pub expires_in: i64,
     /// Issued at timestamp
     pub issued_at: DateTime<Utc>,
+}
+
+impl From<TokenPair> for JwtToken {
+    fn from(pair: TokenPair) -> Self {
+        let expires_in = pair.expires_in();
+        let issued_at = pair.access.issued_at;
+        let access_token = pair.access.value;
+        let refresh_token = pair.refresh.map(|t| t.value);
+
+        JwtToken {
+            access_token,
+            refresh_token,
+            token_type: pair.token_type.to_string(),
+            expires_in,
+            issued_at,
+        }
+    }
 }
 
 /// JWT Manager for token operations
@@ -188,43 +334,78 @@ impl JwtManager {
         manager
     }
 
-    /// Generate a new JWT token for a principal
+    /// Generate a type-safe token pair for a principal
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if token encoding fails.
+    #[allow(clippy::unused_async)]
+    pub async fn generate_tokens(&self, principal: &Principal) -> AuthResult<TokenPair> {
+        let now = Utc::now();
+        let header = Header::new(self.config.algorithm);
+
+        // Create access token claims
+        let access_claims = JwtClaims::new(principal, &self.config, "access");
+        let access_expires_at =
+            DateTime::from_timestamp(access_claims.exp, 0).ok_or_else(|| {
+                AuthError::ValidationError("Invalid expiration timestamp".to_string())
+            })?;
+
+        // Encode access token
+        let access_token_str = encode(&header, &access_claims, &self.encoding_key)
+            .map_err(|e| AuthError::ValidationError(format!("Failed to encode JWT: {e}")))?;
+
+        let access_token = Token::new(access_token_str, access_expires_at, now);
+
+        // Create refresh token if enabled
+        let refresh_token = if self.config.allow_refresh {
+            let refresh_claims = JwtClaims::new(principal, &self.config, "refresh");
+            let refresh_expires_at =
+                DateTime::from_timestamp(refresh_claims.exp, 0).ok_or_else(|| {
+                    AuthError::ValidationError("Invalid expiration timestamp".to_string())
+                })?;
+
+            let refresh_token_str =
+                encode(&header, &refresh_claims, &self.encoding_key).map_err(|e| {
+                    AuthError::ValidationError(format!("Failed to encode refresh token: {e}"))
+                })?;
+
+            Some(Token::new(refresh_token_str, refresh_expires_at, now))
+        } else {
+            None
+        };
+
+        Ok(TokenPair::new(access_token, refresh_token))
+    }
+
+    /// Generate a new JWT token for a principal (legacy API for backward compatibility)
     ///
     /// # Errors
     ///
     /// Returns an error if token encoding fails.
     #[allow(clippy::unused_async)]
     pub async fn generate(&self, principal: &Principal) -> AuthResult<JwtToken> {
-        // Create access token claims
-        let access_claims = JwtClaims::new(principal, &self.config, "access");
-
-        // Encode access token
-        let header = Header::new(self.config.algorithm);
-        let access_token = encode(&header, &access_claims, &self.encoding_key)
-            .map_err(|e| AuthError::ValidationError(format!("Failed to encode JWT: {e}")))?;
-
-        // Create refresh token if enabled
-        let refresh_token = if self.config.allow_refresh {
-            let refresh_claims = JwtClaims::new(principal, &self.config, "refresh");
-            Some(
-                encode(&header, &refresh_claims, &self.encoding_key).map_err(|e| {
-                    AuthError::ValidationError(format!("Failed to encode refresh token: {e}"))
-                })?,
-            )
-        } else {
-            None
-        };
-
-        Ok(JwtToken {
-            access_token,
-            refresh_token,
-            token_type: "Bearer".to_string(),
-            expires_in: self.config.expiry_minutes * 60,
-            issued_at: Utc::now(),
-        })
+        let token_pair = self.generate_tokens(principal).await?;
+        Ok(token_pair.into())
     }
 
-    /// Authenticate with a JWT token
+    /// Authenticate with a type-safe access token
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The token is malformed or has invalid signature
+    /// - The token is expired (`AuthError::TokenExpired`)
+    /// - The token has been revoked (`AuthError::InvalidToken`)
+    /// - The token is not yet valid
+    pub async fn authenticate_with_token(
+        &self,
+        token: &Token<AccessToken>,
+    ) -> AuthResult<Principal> {
+        self.authenticate(token.as_str()).await
+    }
+
+    /// Authenticate with a JWT token string (legacy API)
     ///
     /// # Errors
     ///
@@ -279,7 +460,62 @@ impl JwtManager {
         Ok(principal)
     }
 
-    /// Refresh a token
+    /// Refresh tokens using a type-safe refresh token
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Token refresh is not allowed
+    /// - The refresh token is invalid or malformed
+    /// - The refresh token has been revoked
+    /// - The token is not a refresh token type
+    pub async fn refresh_with_token(
+        &self,
+        refresh_token: &Token<RefreshToken>,
+    ) -> AuthResult<TokenPair> {
+        if !self.config.allow_refresh {
+            return Err(AuthError::ValidationError(
+                "Token refresh not allowed".to_string(),
+            ));
+        }
+
+        // Decode the refresh token
+        let token_data =
+            decode::<JwtClaims>(refresh_token.as_str(), &self.decoding_key, &self.validation)
+                .map_err(|e| AuthError::InvalidToken(format!("Invalid refresh token: {e}")))?;
+
+        let claims = token_data.claims;
+
+        // Check if refresh token is blacklisted (revoked)
+        if let Some(ref blacklist) = self.blacklist
+            && blacklist.is_revoked(&claims.jti).await?
+        {
+            return Err(AuthError::InvalidToken(
+                "Refresh token has been revoked".to_string(),
+            ));
+        }
+
+        // Verify it's a refresh token
+        if claims.typ != "refresh" {
+            return Err(AuthError::InvalidToken("Not a refresh token".to_string()));
+        }
+
+        // Create a new principal from refresh token claims
+        let mut principal = Principal::new(
+            claims.sub.clone(),
+            claims.name.clone(),
+            AuthMethod::Bearer(claims.jti.clone()),
+        );
+
+        for role in claims.get_roles() {
+            principal = principal.with_role(role);
+        }
+
+        // Generate new tokens
+        self.generate_tokens(&principal).await
+    }
+
+    /// Refresh a token (legacy API for backward compatibility)
     ///
     /// # Errors
     ///
@@ -695,5 +931,140 @@ mod tests {
         let result = manager.revoke(&expired_token).await;
         // Note: This will fail validation during verify() due to expiration
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_phantom_type_token_generation() {
+        let config = JwtConfig::default();
+        let manager = JwtManager::new(config);
+
+        let principal = Principal::new(
+            "user-456".to_string(),
+            "Phantom User".to_string(),
+            AuthMethod::ApiKey("test".to_string()),
+        )
+        .with_role(Role::Agent);
+
+        // Generate type-safe token pair
+        let token_pair = manager.generate_tokens(&principal).await.unwrap();
+
+        // Access token is type Token<AccessToken>
+        assert!(!token_pair.access.is_expired());
+        assert!(token_pair.access.expiry_seconds() > 0);
+        assert!(!token_pair.access.as_str().is_empty());
+
+        // Refresh token is type Option<Token<RefreshToken>>
+        assert!(token_pair.has_refresh_token());
+        let refresh = token_pair.refresh.as_ref().unwrap();
+        assert!(!refresh.is_expired());
+        assert!(refresh.expiry_days() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_phantom_type_authentication() {
+        let config = JwtConfig::default();
+        let manager = JwtManager::new(config);
+
+        let principal = Principal::new(
+            "user-789".to_string(),
+            "Auth Test User".to_string(),
+            AuthMethod::ApiKey("test".to_string()),
+        )
+        .with_role(Role::Admin);
+
+        // Generate tokens
+        let token_pair = manager.generate_tokens(&principal).await.unwrap();
+
+        // Authenticate using typed token (compile-time check ensures only AccessToken works)
+        let authenticated = manager
+            .authenticate_with_token(&token_pair.access)
+            .await
+            .unwrap();
+
+        assert_eq!(authenticated.id, "user-789");
+        assert_eq!(authenticated.name, "Auth Test User");
+        assert!(authenticated.has_role(&Role::Admin));
+    }
+
+    #[tokio::test]
+    async fn test_phantom_type_refresh() {
+        let config = JwtConfig {
+            allow_refresh: true,
+            ..Default::default()
+        };
+        let manager = JwtManager::new(config);
+
+        let principal = Principal::new(
+            "user-101".to_string(),
+            "Refresh User".to_string(),
+            AuthMethod::ApiKey("test".to_string()),
+        )
+        .with_role(Role::Viewer);
+
+        // Generate tokens with refresh enabled
+        let token_pair = manager.generate_tokens(&principal).await.unwrap();
+        assert!(token_pair.has_refresh_token());
+
+        let refresh_token = token_pair.refresh.unwrap();
+
+        // Refresh using typed token (compile-time check ensures only RefreshToken works)
+        let new_pair = manager.refresh_with_token(&refresh_token).await.unwrap();
+
+        // New access token should be valid
+        assert!(!new_pair.access.is_expired());
+        assert!(new_pair.access.expiry_seconds() > 0);
+
+        // Can authenticate with new access token
+        let authenticated = manager
+            .authenticate_with_token(&new_pair.access)
+            .await
+            .unwrap();
+
+        assert_eq!(authenticated.id, "user-101");
+        assert_eq!(authenticated.name, "Refresh User");
+    }
+
+    #[test]
+    fn test_token_expiry_soon() {
+        let now = Utc::now();
+
+        // Access token expires in 4 minutes (should be "soon")
+        let access_token: Token<AccessToken> =
+            Token::new("test-token".to_string(), now + Duration::minutes(4), now);
+        assert!(access_token.expires_soon());
+
+        // Access token expires in 10 minutes (not soon)
+        let access_token_later: Token<AccessToken> =
+            Token::new("test-token-2".to_string(), now + Duration::minutes(10), now);
+        assert!(!access_token_later.expires_soon());
+
+        // Refresh token expires in 5 days (should be "soon")
+        let refresh_token: Token<RefreshToken> =
+            Token::new("refresh-test".to_string(), now + Duration::days(5), now);
+        assert!(refresh_token.expires_soon());
+
+        // Refresh token expires in 14 days (not soon)
+        let refresh_token_later: Token<RefreshToken> =
+            Token::new("refresh-test-2".to_string(), now + Duration::days(14), now);
+        assert!(!refresh_token_later.expires_soon());
+    }
+
+    #[test]
+    fn test_backward_compatibility_conversion() {
+        let now = Utc::now();
+        let access_token: Token<AccessToken> =
+            Token::new("access-123".to_string(), now + Duration::minutes(60), now);
+        let refresh_token: Token<RefreshToken> =
+            Token::new("refresh-456".to_string(), now + Duration::days(30), now);
+
+        let token_pair = TokenPair::new(access_token, Some(refresh_token));
+
+        // Convert to legacy JwtToken
+        let jwt_token: JwtToken = token_pair.into();
+
+        assert_eq!(jwt_token.access_token, "access-123");
+        assert_eq!(jwt_token.refresh_token, Some("refresh-456".to_string()));
+        assert_eq!(jwt_token.token_type, "Bearer");
+        assert!(jwt_token.expires_in > 0);
     }
 }

@@ -22,7 +22,9 @@ pub use api_key::{ApiKey, ApiKeyConfig, ApiKeyManager};
 #[cfg(feature = "redis")]
 pub use blacklist::RedisBlacklist;
 pub use blacklist::{InMemoryBlacklist, TokenBlacklist};
-pub use jwt::{JwtClaims, JwtConfig, JwtManager, JwtToken};
+pub use jwt::{
+    AccessToken, JwtClaims, JwtConfig, JwtManager, JwtToken, RefreshToken, Token, TokenPair,
+};
 pub use middleware::{AuthMiddleware, AuthenticatedRequest};
 pub use rbac::{Permission, Role, RoleManager, ToolPolicy};
 pub use storage::{CredentialStorage, EncryptionKey, InMemoryStorage, SecureStorage};

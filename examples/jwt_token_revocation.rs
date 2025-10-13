@@ -8,19 +8,17 @@
 //!
 //! - Token generation with JTI (JWT ID) for tracking
 //! - In-memory blacklist for development/testing
-//! - Redis blacklist for production (with feature flag)
 //! - Automatic TTL management (tokens auto-expire from blacklist)
 //! - Revocation of both access and refresh tokens
 //!
 //! # Usage
 //!
 //! ```bash
-//! # Run with in-memory blacklist
 //! cargo run --example jwt_token_revocation
-//!
-//! # Run with Redis blacklist (requires Redis running)
-//! cargo run --example jwt_token_revocation --features redis
 //! ```
+//!
+//! For production deployments, consider using `RedisBlacklist` instead of
+//! `InMemoryBlacklist` for distributed token revocation across multiple instances.
 
 use skreaver_core::auth::{
     AuthMethod, InMemoryBlacklist, JwtConfig, JwtManager, Principal, Role, TokenBlacklist,
@@ -34,17 +32,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 1: Setup JWT Manager with blacklist
     println!("Step 1: Setting up JWT manager with token revocation...");
 
-    #[cfg(not(feature = "redis"))]
+    // Using in-memory blacklist (for testing/example purposes)
+    // For production, consider using RedisBlacklist for distributed token revocation
     let blacklist = {
         println!("   Using in-memory blacklist (for testing)");
         Arc::new(InMemoryBlacklist::new())
-    };
-
-    #[cfg(feature = "redis")]
-    let blacklist = {
-        println!("   Using Redis blacklist (for production)");
-        use skreaver_core::auth::RedisBlacklist;
-        Arc::new(RedisBlacklist::new("redis://localhost:6379").expect("Failed to connect to Redis"))
     };
 
     let config = JwtConfig {
