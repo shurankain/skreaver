@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::runtime::{
     agent_instance::{AgentId, AgentIdError, AgentInstance, CoordinatorTrait},
-    agent_status::AgentStatus,
+    agent_status::AgentStatusEnum,
     api_types::{AgentEndpoints, AgentSpec, AgentType, CreateAgentResponse},
 };
 
@@ -163,7 +163,7 @@ impl AgentFactory {
         let agent_instance = AgentInstance::new(agent_id, spec.agent_type.to_string(), coordinator);
 
         // Set agent to ready state
-        agent_instance.set_status(AgentStatus::Ready).await;
+        agent_instance.set_status(AgentStatusEnum::Ready).await;
 
         // Add metadata from spec
         if let Some(ref name) = spec.name {
@@ -363,7 +363,7 @@ mod tests {
         assert!(response.agent_id.contains("echo"));
         assert!(response.agent_id.contains("test-agent"));
         assert_eq!(response.spec.agent_type, AgentType::Echo);
-        assert_eq!(response.status, AgentStatus::Ready);
+        assert_eq!(response.status, AgentStatusEnum::Ready);
     }
 
     #[tokio::test]

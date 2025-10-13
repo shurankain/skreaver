@@ -356,7 +356,7 @@ pub struct AgentStatusResponse {
     /// Agent type
     pub agent_type: AgentType,
     /// Current execution status
-    pub status: crate::runtime::agent_status::AgentStatus,
+    pub status: crate::runtime::agent_status::AgentStatusEnum,
     /// Resource usage information
     pub resource_usage: ResourceUsage,
     /// Performance metrics
@@ -444,7 +444,7 @@ pub struct CreateAgentResponse {
     /// Agent specification that was used
     pub spec: AgentSpec,
     /// Current agent status
-    pub status: crate::runtime::agent_status::AgentStatus,
+    pub status: crate::runtime::agent_status::AgentStatusEnum,
     /// Creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// Endpoints available for this agent

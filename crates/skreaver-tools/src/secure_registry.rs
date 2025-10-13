@@ -81,9 +81,8 @@ impl<T: ToolRegistry> SecureToolRegistry<T> {
         // For now, we check if at least one capability is enabled
         // In the future, this could be more sophisticated based on tool requirements
 
-        let has_any_capability = policy.fs_policy.enabled
-            || policy.http_policy.enabled
-            || policy.network_policy.enabled;
+        let has_any_capability =
+            policy.fs_policy.enabled || policy.http_policy.enabled || policy.network_policy.enabled;
 
         if !has_any_capability {
             return Err(format!(
@@ -283,9 +282,8 @@ mod tests {
         // Default config has filesystem and HTTP enabled
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
 
-        let result = secure_registry.dispatch(
-            ToolCall::new("test_tool", "hello").expect("Valid tool name"),
-        );
+        let result =
+            secure_registry.dispatch(ToolCall::new("test_tool", "hello").expect("Valid tool name"));
 
         assert!(result.is_some());
         match result.unwrap() {
@@ -317,9 +315,8 @@ mod tests {
 
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
 
-        let result = secure_registry.dispatch(
-            ToolCall::new("blocked_tool", "hello").expect("Valid tool name"),
-        );
+        let result = secure_registry
+            .dispatch(ToolCall::new("blocked_tool", "hello").expect("Valid tool name"));
 
         assert!(result.is_some());
         match result.unwrap() {
@@ -344,18 +341,16 @@ mod tests {
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
 
         // Allowed tool should work
-        let allowed_result = secure_registry.dispatch(
-            ToolCall::new("allowed_tool", "hello").expect("Valid tool name"),
-        );
+        let allowed_result = secure_registry
+            .dispatch(ToolCall::new("allowed_tool", "hello").expect("Valid tool name"));
         assert!(matches!(
             allowed_result,
             Some(ExecutionResult::Success { .. })
         ));
 
         // Blocked tool should fail
-        let blocked_result = secure_registry.dispatch(
-            ToolCall::new("blocked_tool", "hello").expect("Valid tool name"),
-        );
+        let blocked_result = secure_registry
+            .dispatch(ToolCall::new("blocked_tool", "hello").expect("Valid tool name"));
         match blocked_result.unwrap() {
             ExecutionResult::Failure { error } => {
                 assert!(error.contains("emergency lockdown"));

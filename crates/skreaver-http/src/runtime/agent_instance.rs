@@ -1,6 +1,6 @@
 //! Agent instance management with proper state tracking
 
-use crate::runtime::agent_status::AgentStatus;
+use crate::runtime::agent_status::AgentStatusEnum;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -80,7 +80,7 @@ pub struct AgentInstance {
     /// Agent type name
     pub agent_type: String,
     /// Current execution status
-    pub status: Arc<RwLock<AgentStatus>>,
+    pub status: Arc<RwLock<AgentStatusEnum>>,
     /// Creation timestamp
     pub created_at: DateTime<Utc>,
     /// Last activity timestamp
@@ -113,7 +113,7 @@ impl AgentInstance {
         Self {
             id,
             agent_type,
-            status: Arc::new(RwLock::new(AgentStatus::Ready)),
+            status: Arc::new(RwLock::new(AgentStatusEnum::Ready)),
             created_at: now,
             last_activity: Arc::new(RwLock::new(now)),
             observation_count: Arc::new(AtomicU64::new(0)),
@@ -124,14 +124,14 @@ impl AgentInstance {
     }
 
     /// Update agent status
-    pub async fn set_status(&self, status: AgentStatus) {
+    pub async fn set_status(&self, status: AgentStatusEnum) {
         let mut current_status = self.status.write().await;
         *current_status = status;
         self.update_last_activity().await;
     }
 
     /// Get current agent status
-    pub async fn get_status(&self) -> AgentStatus {
+    pub async fn get_status(&self) -> AgentStatusEnum {
         self.status.read().await.clone()
     }
 
@@ -196,7 +196,7 @@ impl AgentInstance {
         }
 
         // Set status to processing
-        self.set_status(AgentStatus::Processing {
+        self.set_status(AgentStatusEnum::Processing {
             current_task: "observing".to_string(),
             started_at: chrono::Utc::now(),
         })
@@ -207,7 +207,7 @@ impl AgentInstance {
         let result = self.coordinator.step(input);
 
         // Set status back to ready
-        self.set_status(AgentStatus::Ready).await;
+        self.set_status(AgentStatusEnum::Ready).await;
 
         Ok(result)
     }
@@ -217,7 +217,7 @@ impl AgentInstance {
 #[derive(Debug, Clone)]
 pub enum AgentExecutionError {
     InvalidState {
-        current_status: AgentStatus,
+        current_status: AgentStatusEnum,
         attempted_operation: String,
     },
     ExecutionTimeout,
@@ -288,12 +288,12 @@ mod tests {
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
         // Initially ready
-        assert_eq!(instance.get_status().await, AgentStatus::Ready);
+        assert_eq!(instance.get_status().await, AgentStatusEnum::Ready);
         assert!(instance.can_accept_observations().await);
 
         // Set to processing
         instance
-            .set_status(AgentStatus::Processing {
+            .set_status(AgentStatusEnum::Processing {
                 current_task: "test".to_string(),
                 started_at: chrono::Utc::now(),
             })
@@ -302,7 +302,7 @@ mod tests {
         // Check that it's in processing state
         assert!(matches!(
             instance.get_status().await,
-            AgentStatus::Processing { .. }
+            AgentStatusEnum::Processing { .. }
         ));
         assert!(!instance.can_accept_observations().await);
     }

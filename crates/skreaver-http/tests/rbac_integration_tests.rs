@@ -6,10 +6,15 @@
 //! - Emergency lockdown mode prevents tool execution
 //! - HTTP runtime properly integrates with SecureToolRegistry
 
-use axum::{body::Body, http::{Request, StatusCode}};
-use skreaver_http::runtime::{HttpAgentRuntime, HttpRuntimeConfig};
-use skreaver_tools::{InMemoryToolRegistry, SecureToolRegistry, ToolRegistry, Tool, ExecutionResult};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use skreaver_core::security::{SecurityConfig, policy::ToolPolicy};
+use skreaver_http::runtime::{HttpAgentRuntime, HttpRuntimeConfig};
+use skreaver_tools::{
+    ExecutionResult, InMemoryToolRegistry, SecureToolRegistry, Tool, ToolRegistry,
+};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tower::ServiceExt;
 
@@ -29,8 +34,7 @@ impl Tool for DummyTool {
 
 /// Helper to create a test app with secure registry
 fn create_secure_app() -> axum::Router {
-    let registry = InMemoryToolRegistry::new()
-        .with_tool("dummy_tool", Arc::new(DummyTool));
+    let registry = InMemoryToolRegistry::new().with_tool("dummy_tool", Arc::new(DummyTool));
 
     // Wrap with SecureToolRegistry
     let security_config = Arc::new(SecurityConfig::create_default());
@@ -130,8 +134,7 @@ async fn test_secure_registry_logs_blocked_attempts() {
     // This test verifies that SecureToolRegistry properly integrates
     // with the HTTP runtime and logs blocked tool execution attempts
 
-    let registry = InMemoryToolRegistry::new()
-        .with_tool("test_tool", Arc::new(DummyTool));
+    let registry = InMemoryToolRegistry::new().with_tool("test_tool", Arc::new(DummyTool));
 
     let mut security_config = SecurityConfig::create_default();
     let mut tool_policies = HashMap::new();
@@ -150,9 +153,8 @@ async fn test_secure_registry_logs_blocked_attempts() {
     let secure_registry = SecureToolRegistry::new(registry, Arc::new(security_config));
 
     // Attempt to dispatch a tool that should be blocked
-    let result = secure_registry.dispatch(
-        skreaver_core::ToolCall::new("test_tool", "test_input").unwrap()
-    );
+    let result =
+        secure_registry.dispatch(skreaver_core::ToolCall::new("test_tool", "test_input").unwrap());
 
     // Should return a failure result, not None
     assert!(result.is_some());
