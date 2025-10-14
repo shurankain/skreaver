@@ -89,7 +89,10 @@ impl AgentId {
         }
 
         // Validate characters (alphanumeric, hyphen, underscore, dot)
-        if !s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        if !s
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
             return Err(IdValidationError::InvalidCharacters);
         }
 
@@ -100,7 +103,10 @@ impl AgentId {
     ///
     /// # Deprecated
     /// Use `AgentId::parse()` instead to ensure input validation.
-    #[deprecated(since = "0.4.1", note = "Use AgentId::parse() for validated construction")]
+    #[deprecated(
+        since = "0.4.1",
+        note = "Use AgentId::parse() for validated construction"
+    )]
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
@@ -193,7 +199,10 @@ impl Topic {
         }
 
         // Validate characters (alphanumeric, hyphen, underscore, dot)
-        if !s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        if !s
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
             return Err(IdValidationError::InvalidCharacters);
         }
 
@@ -204,7 +213,10 @@ impl Topic {
     ///
     /// # Deprecated
     /// Use `Topic::parse()` instead to ensure input validation.
-    #[deprecated(since = "0.4.1", note = "Use Topic::parse() for validated construction")]
+    #[deprecated(
+        since = "0.4.1",
+        note = "Use Topic::parse() for validated construction"
+    )]
     pub fn new(topic: impl Into<String>) -> Self {
         Self(topic.into())
     }
@@ -384,10 +396,7 @@ mod tests {
 
     #[test]
     fn test_topic_parse_whitespace_only() {
-        assert_eq!(
-            Topic::parse("   "),
-            Err(IdValidationError::WhitespaceOnly)
-        );
+        assert_eq!(Topic::parse("   "), Err(IdValidationError::WhitespaceOnly));
     }
 
     #[test]
@@ -438,10 +447,7 @@ mod tests {
 
     #[test]
     fn test_id_validation_error_display() {
-        assert_eq!(
-            IdValidationError::Empty.to_string(),
-            "ID cannot be empty"
-        );
+        assert_eq!(IdValidationError::Empty.to_string(), "ID cannot be empty");
         assert_eq!(
             IdValidationError::WhitespaceOnly.to_string(),
             "ID cannot be whitespace-only"
