@@ -49,10 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         info!("Agent 2 received: '{}' (message {})", text, msg.id);
 
                         // Send pong response
-                        if let Some(from) = &msg.from {
-                            let response = Message::new("pong")
-                                .from(agent2_id_clone.clone())
-                                .with_correlation_id(msg.id.as_str());
+                        if let Some(from) = msg.sender() {
+                            let response =
+                                Message::unicast(agent2_id_clone.clone(), from.clone(), "pong")
+                                    .with_correlation_id(msg.id.as_str());
 
                             mesh2.send(from, response).await.unwrap();
                             info!("Agent 2 sent: 'pong' (response to {})", msg.id);
@@ -80,8 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for i in 0..5 {
         // Send ping message
-        let msg = Message::new("ping")
-            .from(agent1_id.clone())
+        let msg = Message::unicast(agent1_id.clone(), agent2_id.clone(), "ping")
             .with_metadata("round", i.to_string());
 
         mesh.send(&agent2_id, msg.clone()).await?;

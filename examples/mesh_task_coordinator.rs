@@ -157,24 +157,27 @@ async fn run_worker(
             info!("✅ Worker {} completed task successfully", worker_id);
 
             // Send success response if there's a correlation ID (request/reply pattern)
-            if let Some(correlation_id) = &message.correlation_id {
-                let response =
-                    Message::new("Task completed successfully").with_correlation_id(correlation_id);
-
-                if let Some(reply_to) = &message.from {
-                    let _ = mesh.send(reply_to, response).await;
-                }
+            if let Some(correlation_id) = &message.correlation_id
+                && let Some(reply_to) = message.sender()
+            {
+                let response = Message::unicast(
+                    worker_id.clone(),
+                    reply_to.clone(),
+                    "Task completed successfully",
+                )
+                .with_correlation_id(correlation_id);
+                let _ = mesh.send(reply_to, response).await;
             }
         } else {
             warn!("❌ Worker {} failed to process task", worker_id);
 
             // Send failure response
-            if let Some(correlation_id) = &message.correlation_id {
-                let response = Message::new("Task failed").with_correlation_id(correlation_id);
-
-                if let Some(reply_to) = &message.from {
-                    let _ = mesh.send(reply_to, response).await;
-                }
+            if let Some(correlation_id) = &message.correlation_id
+                && let Some(reply_to) = message.sender()
+            {
+                let response = Message::unicast(worker_id.clone(), reply_to.clone(), "Task failed")
+                    .with_correlation_id(correlation_id);
+                let _ = mesh.send(reply_to, response).await;
             }
         }
     }

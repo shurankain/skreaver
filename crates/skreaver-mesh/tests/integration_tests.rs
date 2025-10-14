@@ -31,7 +31,7 @@ mod redis_tests {
         mesh.register_presence(&receiver, 60).await.unwrap();
 
         // Send message
-        let msg = Message::new("test message").from(sender.clone());
+        let msg = Message::unicast(sender.clone(), receiver.clone(), "test message");
         mesh.send(&receiver, msg.clone()).await.unwrap();
 
         // Receive message
@@ -39,7 +39,7 @@ mod redis_tests {
         assert!(received.is_some());
 
         let received_msg = received.unwrap();
-        assert_eq!(received_msg.from, Some(sender.clone()));
+        assert_eq!(received_msg.sender(), Some(&sender));
 
         // Cleanup
         mesh.deregister_presence(&sender).await.unwrap();
@@ -79,7 +79,7 @@ mod redis_tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Publish message
-        let msg = Message::new("test pub/sub").from(publisher.clone());
+        let msg = Message::broadcast(publisher.clone(), "test pub/sub");
         mesh.publish(&topic, msg).await.unwrap();
 
         // Wait for message to be received
@@ -175,8 +175,7 @@ mod redis_tests {
         mesh.register_presence(&receiver, 60).await.unwrap();
 
         // Send message with metadata
-        let msg = Message::new("test")
-            .from(sender.clone())
+        let msg = Message::unicast(sender.clone(), receiver.clone(), "test")
             .with_metadata("priority", "high")
             .with_metadata("type", "command");
 
@@ -210,8 +209,7 @@ mod redis_tests {
 
         // Send request with correlation ID
         let correlation_id = "req-123";
-        let request = Message::new("ping")
-            .from(requester.clone())
+        let request = Message::unicast(requester.clone(), responder.clone(), "ping")
             .with_correlation_id(correlation_id);
 
         mesh.send(&responder, request).await.unwrap();
@@ -224,8 +222,7 @@ mod redis_tests {
         );
 
         // Send response with same correlation ID
-        let response = Message::new("pong")
-            .from(responder.clone())
+        let response = Message::unicast(responder.clone(), requester.clone(), "pong")
             .with_correlation_id(received_request.correlation_id.unwrap());
 
         mesh.send(&requester, response).await.unwrap();

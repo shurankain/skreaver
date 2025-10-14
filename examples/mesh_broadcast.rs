@@ -108,8 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for (i, announcement) in announcements.iter().enumerate() {
-        let msg = Message::new(announcement.to_string())
-            .from(coordinator_id.clone())
+        let msg = Message::broadcast(coordinator_id.clone(), announcement.to_string())
             .with_metadata("sequence", (i + 1).to_string())
             .with_metadata("type", "announcement");
 

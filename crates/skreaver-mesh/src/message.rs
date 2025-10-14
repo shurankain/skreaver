@@ -6,6 +6,22 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::types::AgentId;
+use std::marker::PhantomData;
+
+/// Typestate marker: Message routing is not yet determined
+pub struct Unrouted;
+
+/// Typestate marker: Message has unicast routing
+pub struct UnicastRoute;
+
+/// Typestate marker: Message has broadcast routing
+pub struct BroadcastRoute;
+
+/// Typestate marker: Message has system routing
+pub struct SystemRoute;
+
+/// Typestate marker: Message has anonymous routing
+pub struct AnonymousRoute;
 
 /// Type-safe message routing pattern
 ///
@@ -476,6 +492,274 @@ impl MessageBuilder {
     }
 }
 
+/// Type-safe message builder using typestate pattern
+///
+/// This eliminates the possibility of inconsistent routing state by
+/// encoding routing information in the type system. Unlike `Message`,
+/// `TypedMessage` guarantees at compile time that sender/recipient are
+/// present when required.
+///
+/// # Examples
+///
+/// ```
+/// use skreaver_mesh::TypedMessage;
+///
+/// // Unicast - both sender and recipient guaranteed
+/// let msg = TypedMessage::with_payload("hello")
+///     .unicast("agent-1", "agent-2");
+/// let sender = msg.sender(); // &AgentId - no Option!
+/// let recipient = msg.recipient(); // &AgentId - no Option!
+///
+/// // Broadcast - only sender guaranteed
+/// let broadcast = TypedMessage::with_payload("announcement")
+///     .broadcast("coordinator");
+/// let from = broadcast.sender(); // &AgentId
+/// // broadcast.recipient(); // Compile error - no recipient!
+/// ```
+pub struct TypedMessage<R> {
+    id: MessageId,
+    route: Route,
+    payload: MessagePayload,
+    metadata: MessageMetadata,
+    timestamp: DateTime<Utc>,
+    correlation_id: Option<String>,
+    _phantom: PhantomData<R>,
+}
+
+impl TypedMessage<Unrouted> {
+    /// Start building a message (routing must be specified)
+    pub fn with_payload(payload: impl Into<MessagePayload>) -> Self {
+        Self {
+            id: MessageId::new(),
+            route: Route::Anonymous, // Will be overwritten
+            payload: payload.into(),
+            metadata: HashMap::new(),
+            timestamp: Utc::now(),
+            correlation_id: None,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Convert to unicast message
+    pub fn unicast(
+        self,
+        from: impl Into<AgentId>,
+        to: impl Into<AgentId>,
+    ) -> TypedMessage<UnicastRoute> {
+        TypedMessage {
+            id: self.id,
+            route: Route::Unicast {
+                from: from.into(),
+                to: to.into(),
+            },
+            payload: self.payload,
+            metadata: self.metadata,
+            timestamp: self.timestamp,
+            correlation_id: self.correlation_id,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Convert to broadcast message
+    pub fn broadcast(self, from: impl Into<AgentId>) -> TypedMessage<BroadcastRoute> {
+        TypedMessage {
+            id: self.id,
+            route: Route::Broadcast { from: from.into() },
+            payload: self.payload,
+            metadata: self.metadata,
+            timestamp: self.timestamp,
+            correlation_id: self.correlation_id,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Convert to system message
+    pub fn system(self, to: impl Into<AgentId>) -> TypedMessage<SystemRoute> {
+        TypedMessage {
+            id: self.id,
+            route: Route::System { to: to.into() },
+            payload: self.payload,
+            metadata: self.metadata,
+            timestamp: self.timestamp,
+            correlation_id: self.correlation_id,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Convert to anonymous message (rare, for infrastructure)
+    pub fn anonymous(self) -> TypedMessage<AnonymousRoute> {
+        TypedMessage {
+            id: self.id,
+            route: Route::Anonymous,
+            payload: self.payload,
+            metadata: self.metadata,
+            timestamp: self.timestamp,
+            correlation_id: self.correlation_id,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+// Common builder methods available for all routing states
+impl<R> TypedMessage<R> {
+    /// Add metadata to the message
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set correlation ID for request/reply pattern
+    pub fn with_correlation_id(mut self, correlation_id: impl Into<String>) -> Self {
+        self.correlation_id = Some(correlation_id.into());
+        self
+    }
+
+    /// Get the route (available on all typed messages)
+    pub fn route(&self) -> &Route {
+        &self.route
+    }
+
+    /// Get message ID
+    pub fn id(&self) -> &MessageId {
+        &self.id
+    }
+
+    /// Get metadata value by key
+    pub fn get_metadata(&self, key: &str) -> Option<&str> {
+        self.metadata.get(key).map(|s| s.as_str())
+    }
+}
+
+// Specialized methods for unicast messages
+impl TypedMessage<UnicastRoute> {
+    /// Get the sender (guaranteed present for unicast)
+    pub fn sender(&self) -> &AgentId {
+        match &self.route {
+            Route::Unicast { from, .. } => from,
+            _ => unreachable!("Typestate guarantees unicast route"),
+        }
+    }
+
+    /// Get the recipient (guaranteed present for unicast)
+    pub fn recipient(&self) -> &AgentId {
+        match &self.route {
+            Route::Unicast { to, .. } => to,
+            _ => unreachable!("Typestate guarantees unicast route"),
+        }
+    }
+}
+
+// Specialized methods for broadcast messages
+impl TypedMessage<BroadcastRoute> {
+    /// Get the sender (guaranteed present for broadcast)
+    pub fn sender(&self) -> &AgentId {
+        match &self.route {
+            Route::Broadcast { from } => from,
+            _ => unreachable!("Typestate guarantees broadcast route"),
+        }
+    }
+}
+
+// Specialized methods for system messages
+impl TypedMessage<SystemRoute> {
+    /// Get the recipient (guaranteed present for system messages)
+    pub fn recipient(&self) -> &AgentId {
+        match &self.route {
+            Route::System { to } => to,
+            _ => unreachable!("Typestate guarantees system route"),
+        }
+    }
+}
+
+// Conversions from TypedMessage to Message for backward compatibility
+impl<R> From<TypedMessage<R>> for Message {
+    fn from(typed: TypedMessage<R>) -> Self {
+        let from = typed.route.sender().cloned();
+        let to = typed.route.recipient().cloned();
+
+        #[allow(deprecated)]
+        Self {
+            id: typed.id,
+            route: typed.route,
+            from,
+            to,
+            payload: typed.payload,
+            metadata: typed.metadata,
+            timestamp: typed.timestamp,
+            correlation_id: typed.correlation_id,
+        }
+    }
+}
+
+// Conversions from Message to TypedMessage
+impl From<Message> for TypedMessage<UnicastRoute> {
+    fn from(msg: Message) -> Self {
+        match msg.route {
+            Route::Unicast { .. } => Self {
+                id: msg.id,
+                route: msg.route,
+                payload: msg.payload,
+                metadata: msg.metadata,
+                timestamp: msg.timestamp,
+                correlation_id: msg.correlation_id,
+                _phantom: PhantomData,
+            },
+            _ => panic!("Cannot convert non-unicast message to TypedMessage<UnicastRoute>"),
+        }
+    }
+}
+
+impl From<Message> for TypedMessage<BroadcastRoute> {
+    fn from(msg: Message) -> Self {
+        match msg.route {
+            Route::Broadcast { .. } => Self {
+                id: msg.id,
+                route: msg.route,
+                payload: msg.payload,
+                metadata: msg.metadata,
+                timestamp: msg.timestamp,
+                correlation_id: msg.correlation_id,
+                _phantom: PhantomData,
+            },
+            _ => panic!("Cannot convert non-broadcast message to TypedMessage<BroadcastRoute>"),
+        }
+    }
+}
+
+impl From<Message> for TypedMessage<SystemRoute> {
+    fn from(msg: Message) -> Self {
+        match msg.route {
+            Route::System { .. } => Self {
+                id: msg.id,
+                route: msg.route,
+                payload: msg.payload,
+                metadata: msg.metadata,
+                timestamp: msg.timestamp,
+                correlation_id: msg.correlation_id,
+                _phantom: PhantomData,
+            },
+            _ => panic!("Cannot convert non-system message to TypedMessage<SystemRoute>"),
+        }
+    }
+}
+
+impl From<Message> for TypedMessage<AnonymousRoute> {
+    fn from(msg: Message) -> Self {
+        match msg.route {
+            Route::Anonymous => Self {
+                id: msg.id,
+                route: msg.route,
+                payload: msg.payload,
+                metadata: msg.metadata,
+                timestamp: msg.timestamp,
+                correlation_id: msg.correlation_id,
+                _phantom: PhantomData,
+            },
+            _ => panic!("Cannot convert non-anonymous message to TypedMessage<AnonymousRoute>"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,5 +907,42 @@ mod tests {
         let anonymous = Route::anonymous();
         assert!(!anonymous.has_sender());
         assert!(!anonymous.has_recipient());
+    }
+
+    #[test]
+    fn test_typed_message_unicast() {
+        let msg = TypedMessage::with_payload("test")
+            .unicast("sender", "receiver")
+            .with_metadata("key", "value");
+
+        // Guaranteed methods - no Option unwrapping needed
+        assert_eq!(msg.sender().as_str(), "sender");
+        assert_eq!(msg.recipient().as_str(), "receiver");
+
+        // Convert to Message for backward compatibility
+        let old_msg: Message = msg.into();
+        assert!(old_msg.is_unicast());
+    }
+
+    #[test]
+    fn test_typed_message_broadcast() {
+        let msg = TypedMessage::with_payload("announce").broadcast("announcer");
+
+        // Only sender available, no recipient method exists
+        assert_eq!(msg.sender().as_str(), "announcer");
+
+        let old_msg: Message = msg.into();
+        assert!(old_msg.is_broadcast());
+    }
+
+    #[test]
+    fn test_typed_message_system() {
+        let msg = TypedMessage::with_payload("config").system("agent-1");
+
+        // Only recipient available, no sender method exists
+        assert_eq!(msg.recipient().as_str(), "agent-1");
+
+        let old_msg: Message = msg.into();
+        assert!(old_msg.is_system());
     }
 }
