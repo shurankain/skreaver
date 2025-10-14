@@ -69,7 +69,7 @@ pub use patterns::{
     BroadcastGather, GatherConfig, GatherResult, Pipeline, PipelineStage, RequestReply,
     RequestReplyConfig, Supervisor, SupervisorConfig, TaskStatus, WorkerPool,
 };
-pub use types::{AgentId, Topic};
+pub use types::{AgentId, IdValidationError, Topic};
 
 #[cfg(feature = "redis")]
 pub use redis::RedisMesh;
