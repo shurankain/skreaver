@@ -34,11 +34,12 @@ pub struct CoreMetrics {
     pub http_requests_total: CounterVec, // cardinality: ≤30
     pub http_request_duration_seconds: HistogramVec, // cardinality: ≤30
 
-    // Security metrics (GAP-004 resolution)
+    // Security metrics (GAP-003 & GAP-004 resolution)
     pub security_auth_attempts_total: CounterVec, // cardinality: ≤5 (result: success|failure|invalid)
     pub security_rbac_checks_total: CounterVec,   // cardinality: ≤5 (result: allowed|denied)
     pub security_policy_violations_total: CounterVec, // cardinality: ≤10 (violation_type)
     pub security_resource_limit_exceeded_total: CounterVec, // cardinality: ≤5 (resource_type)
+    pub security_rate_limit_exceeded_total: CounterVec, // cardinality: ≤4 (limit_type: global|ip|user|endpoint)
 }
 
 impl CoreMetrics {
@@ -132,6 +133,14 @@ impl CoreMetrics {
             &["resource_type"]
         )?;
 
+        let security_rate_limit_exceeded_total = register_counter_vec!(
+            Opts::new(
+                format!("{}_security_rate_limit_exceeded_total", namespace),
+                "Total rate limit violations by limit type (global, ip, user, endpoint)"
+            ),
+            &["limit_type"]
+        )?;
+
         Ok(Self {
             agent_sessions_active,
             agent_errors_total,
@@ -144,6 +153,7 @@ impl CoreMetrics {
             security_rbac_checks_total,
             security_policy_violations_total,
             security_resource_limit_exceeded_total,
+            security_rate_limit_exceeded_total,
         })
     }
 }

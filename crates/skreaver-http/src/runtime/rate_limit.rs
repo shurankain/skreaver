@@ -97,6 +97,15 @@ impl RateLimitState {
     ) -> Result<(), RateLimitError> {
         // Check global rate limit
         if let Err(not_until) = self.global_limiter.check() {
+            // Record global rate limit exceeded metric
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_rate_limit_exceeded_total
+                    .with_label_values(&["global"])
+                    .inc();
+            }
+
             let retry_after = not_until
                 .wait_time_from(DefaultClock::default().now())
                 .as_secs();
@@ -109,6 +118,15 @@ impl RateLimitState {
 
         // Check per-IP rate limit
         if let Err(not_until) = self.ip_limiter.check_key(&client_ip) {
+            // Record IP rate limit exceeded metric
+            if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                registry
+                    .core_metrics()
+                    .security_rate_limit_exceeded_total
+                    .with_label_values(&["ip"])
+                    .inc();
+            }
+
             let retry_after = not_until
                 .wait_time_from(DefaultClock::default().now())
                 .as_secs();
@@ -123,6 +141,15 @@ impl RateLimitState {
         if let Some(user_id) = user_id {
             let user_limiter = self.get_user_limiter(user_id).await;
             if let Err(not_until) = user_limiter.check() {
+                // Record user rate limit exceeded metric
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_rate_limit_exceeded_total
+                        .with_label_values(&["user"])
+                        .inc();
+                }
+
                 let retry_after = not_until
                     .wait_time_from(DefaultClock::default().now())
                     .as_secs();

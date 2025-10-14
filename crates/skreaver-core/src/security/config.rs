@@ -1054,7 +1054,9 @@ impl SecurityConfig {
 
         // Check for path traversal in allow_paths
         for path in &self.fs.allow_paths {
-            if let Some(path_str) = path.to_str() && path_str.contains("..") {
+            if let Some(path_str) = path.to_str()
+                && path_str.contains("..")
+            {
                 return Err(SecurityError::ConfigError {
                     message: format!(
                         "Allowed path '{}' contains '..' (path traversal risk)",
