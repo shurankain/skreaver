@@ -10,9 +10,58 @@ use tracing::{debug, error, warn};
 use crate::{
     error::{MeshError, MeshResult},
     mesh::{AgentMesh, MessageStream},
-    message::Message,
+    message::{Message, Route},
     types::{AgentId, Topic},
 };
+
+/// Validates that a message route is compatible with the send operation
+fn validate_send_route(route: &Route, to: &AgentId) -> MeshResult<()> {
+    match route {
+        Route::Unicast { to: route_to, .. } => {
+            if route_to != to {
+                Err(MeshError::InvalidConfig(format!(
+                    "Route specifies recipient '{}' but send() called with '{}'",
+                    route_to, to
+                )))
+            } else {
+                Ok(())
+            }
+        }
+        Route::System { to: route_to } => {
+            if route_to != to {
+                Err(MeshError::InvalidConfig(format!(
+                    "Route specifies recipient '{}' but send() called with '{}'",
+                    route_to, to
+                )))
+            } else {
+                Ok(())
+            }
+        }
+        Route::Broadcast { from } => Err(MeshError::InvalidConfig(format!(
+            "Cannot send broadcast message from '{}' to specific agent '{}'. Use broadcast() instead",
+            from, to
+        ))),
+        Route::Anonymous => Err(MeshError::InvalidConfig(format!(
+            "Cannot send anonymous message to specific agent '{}'. Anonymous messages should use broadcast()",
+            to
+        ))),
+    }
+}
+
+/// Validates that a message route is compatible with the broadcast operation
+fn validate_broadcast_route(route: &Route) -> MeshResult<()> {
+    match route {
+        Route::Broadcast { .. } | Route::Anonymous => Ok(()),
+        Route::Unicast { from, to } => Err(MeshError::InvalidConfig(format!(
+            "Cannot broadcast unicast message from '{}' to '{}'. Use send() instead",
+            from, to
+        ))),
+        Route::System { to } => Err(MeshError::InvalidConfig(format!(
+            "Cannot broadcast system message to '{}'. Use send() instead",
+            to
+        ))),
+    }
+}
 
 /// Redis connection configuration
 #[derive(Debug, Clone)]
@@ -147,19 +196,8 @@ impl RedisMesh {
 #[async_trait]
 impl AgentMesh for RedisMesh {
     async fn send(&self, to: &AgentId, message: Message) -> MeshResult<()> {
-        // Update message routing to ensure recipient is set
-        let message = if message.route.recipient().is_none() {
-            // If no recipient, convert to unicast or system message
-            if let Some(sender) = message.route.sender() {
-                Message::unicast(sender.clone(), to.clone(), message.payload)
-                    .with_correlation_id(message.correlation_id.unwrap_or_default())
-            } else {
-                Message::system(to.clone(), message.payload)
-                    .with_correlation_id(message.correlation_id.unwrap_or_default())
-            }
-        } else {
-            message
-        };
+        // Validate that the route is compatible with send operation
+        validate_send_route(&message.route, to)?;
 
         // Serialize message
         let json = message.to_json()?;
@@ -177,6 +215,9 @@ impl AgentMesh for RedisMesh {
     }
 
     async fn broadcast(&self, message: Message) -> MeshResult<()> {
+        // Validate that the route is compatible with broadcast operation
+        validate_broadcast_route(&message.route)?;
+
         // Serialize message
         let json = message.to_json()?;
 
@@ -229,6 +270,9 @@ impl AgentMesh for RedisMesh {
     }
 
     async fn publish(&self, topic: &Topic, message: Message) -> MeshResult<()> {
+        // Validate that the route is compatible with broadcast/publish operation
+        validate_broadcast_route(&message.route)?;
+
         // Serialize message
         let json = message.to_json()?;
 
@@ -412,5 +456,97 @@ mod tests {
         let topic = Topic::from("notifications");
         let topic_key = RedisMesh::topic_key(&topic);
         assert_eq!(topic_key, "skreaver:topic:notifications");
+    }
+
+    #[test]
+    fn test_validate_send_route_unicast_valid() {
+        let route = Route::unicast("sender", "recipient");
+        let to = AgentId::from("recipient");
+        assert!(validate_send_route(&route, &to).is_ok());
+    }
+
+    #[test]
+    fn test_validate_send_route_unicast_mismatch() {
+        let route = Route::unicast("sender", "recipient");
+        let to = AgentId::from("wrong-recipient");
+        let result = validate_send_route(&route, &to);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Route specifies recipient"));
+    }
+
+    #[test]
+    fn test_validate_send_route_broadcast_invalid() {
+        let route = Route::broadcast("sender");
+        let to = AgentId::from("recipient");
+        let result = validate_send_route(&route, &to);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot send broadcast message"));
+    }
+
+    #[test]
+    fn test_validate_send_route_anonymous_invalid() {
+        let route = Route::anonymous();
+        let to = AgentId::from("recipient");
+        let result = validate_send_route(&route, &to);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot send anonymous message"));
+    }
+
+    #[test]
+    fn test_validate_send_route_system_valid() {
+        let route = Route::system("recipient");
+        let to = AgentId::from("recipient");
+        assert!(validate_send_route(&route, &to).is_ok());
+    }
+
+    #[test]
+    fn test_validate_send_route_system_mismatch() {
+        let route = Route::system("recipient");
+        let to = AgentId::from("wrong-recipient");
+        let result = validate_send_route(&route, &to);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_broadcast_route_broadcast_valid() {
+        let route = Route::broadcast("sender");
+        assert!(validate_broadcast_route(&route).is_ok());
+    }
+
+    #[test]
+    fn test_validate_broadcast_route_anonymous_valid() {
+        let route = Route::anonymous();
+        assert!(validate_broadcast_route(&route).is_ok());
+    }
+
+    #[test]
+    fn test_validate_broadcast_route_unicast_invalid() {
+        let route = Route::unicast("sender", "recipient");
+        let result = validate_broadcast_route(&route);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot broadcast unicast message"));
+    }
+
+    #[test]
+    fn test_validate_broadcast_route_system_invalid() {
+        let route = Route::system("recipient");
+        let result = validate_broadcast_route(&route);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot broadcast system message"));
     }
 }
