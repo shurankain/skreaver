@@ -130,13 +130,16 @@ impl std::fmt::Display for MessageId {
 
 /// Message payload - can be any serializable type
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "data")]
 pub enum MessagePayload {
     /// String payload
+    #[serde(rename = "text")]
     Text(String),
     /// JSON payload
+    #[serde(rename = "json")]
     Json(serde_json::Value),
     /// Binary payload (base64 encoded in JSON)
+    #[serde(rename = "binary")]
     #[serde(with = "base64_serde")]
     Binary(Vec<u8>),
 }
@@ -944,5 +947,66 @@ mod tests {
 
         let old_msg: Message = msg.into();
         assert!(old_msg.is_system());
+    }
+
+    #[test]
+    fn test_payload_serialization_roundtrip() {
+        // Test that each payload type survives serialization round-trip
+
+        // Text payload
+        let text = MessagePayload::Text("hello world".to_string());
+        let json = serde_json::to_string(&text).unwrap();
+        assert_eq!(json, r#"{"type":"text","data":"hello world"}"#);
+        let deserialized: MessagePayload = serde_json::from_str(&json).unwrap();
+        assert!(matches!(deserialized, MessagePayload::Text(_)));
+
+        // JSON payload
+        let json_payload = MessagePayload::Json(serde_json::json!({"key": "value"}));
+        let json = serde_json::to_string(&json_payload).unwrap();
+        assert!(json.contains(r#""type":"json""#));
+        let deserialized: MessagePayload = serde_json::from_str(&json).unwrap();
+        assert!(matches!(deserialized, MessagePayload::Json(_)));
+
+        // Binary payload - now properly tagged to prevent Text deserialization
+        let binary = MessagePayload::Binary(vec![1, 2, 3, 4, 5]);
+        let json = serde_json::to_string(&binary).unwrap();
+        assert_eq!(json, r#"{"type":"binary","data":"AQIDBAU="}"#);
+        let deserialized: MessagePayload = serde_json::from_str(&json).unwrap();
+
+        // With explicit tagging, binary data is correctly preserved!
+        match deserialized {
+            MessagePayload::Binary(data) => {
+                assert_eq!(data, vec![1, 2, 3, 4, 5]);
+            }
+            MessagePayload::Text(s) => {
+                panic!("Binary payload was deserialized as Text: {}", s);
+            }
+            MessagePayload::Json(_) => {
+                panic!("Binary payload was deserialized as Json");
+            }
+        }
+    }
+
+    #[test]
+    fn test_payload_format_examples() {
+        // Document the new tagged format for each payload type
+
+        // Text: {"type":"text","data":"..."}
+        let text = MessagePayload::Text("hello".to_string());
+        let json = serde_json::to_value(&text).unwrap();
+        assert_eq!(json["type"], "text");
+        assert_eq!(json["data"], "hello");
+
+        // Json: {"type":"json","data":{...}}
+        let json_payload = MessagePayload::Json(serde_json::json!({"x": 42}));
+        let json = serde_json::to_value(&json_payload).unwrap();
+        assert_eq!(json["type"], "json");
+        assert_eq!(json["data"]["x"], 42);
+
+        // Binary: {"type":"binary","data":"base64..."}
+        let binary = MessagePayload::Binary(vec![255, 0, 128]);
+        let json = serde_json::to_value(&binary).unwrap();
+        assert_eq!(json["type"], "binary");
+        assert_eq!(json["data"], "/wCA"); // base64 of [255, 0, 128]
     }
 }
