@@ -880,4 +880,251 @@ mod tests {
             "All 30 concurrent requests should succeed"
         );
     }
+
+    // ===================================================================
+    // Authentication Integration Tests
+    // ===================================================================
+
+    #[tokio::test]
+    async fn test_protected_endpoint_requires_auth() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+
+        // Try accessing protected endpoint without auth
+        let request = Request::builder()
+            .uri("/agents")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "authentication_required");
+    }
+
+    #[tokio::test]
+    async fn test_protected_endpoint_with_invalid_token() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+
+        // Try with invalid JWT token
+        let request = Request::builder()
+            .uri("/agents")
+            .header("Authorization", "Bearer invalid-token-12345")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "invalid_token");
+    }
+
+    #[tokio::test]
+    async fn test_protected_endpoint_with_valid_token() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+        let token = create_test_token();
+
+        // Try with valid JWT token
+        let request = Request::builder()
+            .uri("/agents")
+            .header("Authorization", format!("Bearer {}", token))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_public_endpoint_no_auth_required() {
+        let runtime = create_test_runtime();
+        let app = runtime.router();
+
+        // Public endpoints should work without auth
+        let endpoints = vec!["/health", "/ready", "/metrics"];
+
+        for endpoint in endpoints {
+            let request = Request::builder()
+                .uri(endpoint)
+                .body(Body::empty())
+                .unwrap();
+
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "Endpoint {} should be accessible without auth",
+                endpoint
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_observe_endpoint_requires_auth() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "auth-test-agent").await;
+        let app = runtime.router();
+
+        let request_body = json!({
+            "input": "Test input"
+        });
+
+        // Try without auth
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agents/auth-test-agent/observe")
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_api_key_authentication() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+
+        // Try with test API key (available in debug builds)
+        let request = Request::builder()
+            .uri("/agents")
+            .header("Authorization", "Bearer sk-test-key-123")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_x_api_key_header_authentication() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+
+        // Try with X-API-Key header
+        let request = Request::builder()
+            .uri("/agents")
+            .header("X-API-Key", "sk-test-key-123")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_invalid_api_key() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+
+        // Try with invalid API key
+        let request = Request::builder()
+            .uri("/agents")
+            .header("Authorization", "Bearer sk-invalid-key-999")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "invalid_api_key");
+    }
+
+    #[tokio::test]
+    async fn test_create_token_endpoint_public() {
+        let runtime = create_test_runtime();
+        let app = runtime.router();
+
+        let request_body = json!({
+            "user_id": "new-user",
+            "permissions": ["read"]
+        });
+
+        // Token creation should not require auth
+        let request = Request::builder()
+            .method("POST")
+            .uri("/auth/token")
+            .header("content-type", "application/json")
+            .body(Body::from(request_body.to_string()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["token"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_all_agent_endpoints_require_auth() {
+        let runtime = create_test_runtime();
+        setup_test_agent(&runtime, "test-agent").await;
+        let app = runtime.router();
+
+        // Test all protected agent endpoints
+        let protected_endpoints = vec![
+            ("GET", "/agents"),
+            ("GET", "/agents/test-agent/status"),
+            ("POST", "/agents/test-agent/observe"),
+            ("POST", "/agents/test-agent/observe/stream"),
+            ("POST", "/agents/test-agent/batch"),
+            ("GET", "/agents/test-agent/stream"),
+            ("DELETE", "/agents/test-agent"),
+            ("GET", "/agents/test-agent/queue/metrics"),
+            ("GET", "/queue/metrics"),
+        ];
+
+        for (method, endpoint) in protected_endpoints {
+            let mut request = Request::builder().uri(endpoint);
+
+            if method == "POST" {
+                request = request
+                    .method(method)
+                    .header("content-type", "application/json");
+            } else {
+                request = request.method(method);
+            }
+
+            let body = if method == "POST" {
+                Body::from(json!({"input": "test"}).to_string())
+            } else {
+                Body::empty()
+            };
+
+            let request = request.body(body).unwrap();
+            let response = app.clone().oneshot(request).await.unwrap();
+
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "Endpoint {} {} should require authentication",
+                method,
+                endpoint
+            );
+        }
+    }
 }
