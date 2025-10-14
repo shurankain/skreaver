@@ -7,3 +7,6 @@ Cargo.lock
 *.log
 *.tmp
 .vibe-ensemble-mcp
+
+# Internal development documentation (not for public git)
+.dev/
