@@ -1,7 +1,8 @@
-//! Token blacklist for JWT revocation
+//! JWT Token Revocation
 //!
-//! This module provides token revocation functionality through blacklisting.
-//! Revoked tokens are stored with TTL (time-to-live) equal to their remaining validity period.
+//! This module provides token revocation functionality using a blacklist approach.
+//! Revoked tokens are stored with TTL (time-to-live) equal to their remaining validity period,
+//! ensuring automatic cleanup once tokens would have expired anyway.
 
 #[cfg(feature = "redis")]
 use super::AuthError;

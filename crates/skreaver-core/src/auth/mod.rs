@@ -12,19 +12,19 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod api_key;
-pub mod blacklist;
 pub mod jwt;
+pub mod jwt_revocation;
 pub mod middleware;
 pub mod rbac;
 pub mod storage;
 
 pub use api_key::{Active, ApiKey, ApiKeyConfig, ApiKeyManager, Expired, Key, Revoked};
-#[cfg(feature = "redis")]
-pub use blacklist::RedisBlacklist;
-pub use blacklist::{InMemoryBlacklist, TokenBlacklist};
 pub use jwt::{
     AccessToken, JwtClaims, JwtConfig, JwtManager, JwtToken, RefreshToken, Token, TokenPair,
 };
+#[cfg(feature = "redis")]
+pub use jwt_revocation::RedisBlacklist;
+pub use jwt_revocation::{InMemoryBlacklist, TokenBlacklist};
 pub use middleware::{AuthMiddleware, AuthenticatedRequest};
 pub use rbac::{Permission, Role, RoleManager, ToolPolicy};
 pub use storage::{CredentialStorage, EncryptionKey, InMemoryStorage, SecureStorage};
