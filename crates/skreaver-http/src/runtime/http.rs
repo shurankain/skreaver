@@ -17,7 +17,7 @@ use crate::runtime::{
 use skreaver_core::Agent;
 use skreaver_core::security::SecurityConfig;
 use skreaver_observability::{ObservabilityConfig, init_observability};
-use skreaver_tools::ToolRegistry;
+use skreaver_tools::{SecureToolRegistry, ToolRegistry};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::RwLock;
 
@@ -25,10 +25,13 @@ use tokio::sync::RwLock;
 pub type AgentId = String;
 
 /// HTTP server state containing all running agents and security configuration
+///
+/// Tool registry is wrapped in `SecureToolRegistry` to enforce security policies at runtime.
 #[derive(Clone)]
 pub struct HttpAgentRuntime<T: ToolRegistry> {
     pub agents: Arc<RwLock<HashMap<AgentId, AgentInstance>>>,
-    pub tool_registry: Arc<T>,
+    /// Tool registry wrapped with security policy enforcement
+    pub tool_registry: Arc<SecureToolRegistry<T>>,
     pub rate_limit_state: Arc<RateLimitState>,
     pub backpressure_manager: Arc<BackpressureManager>,
     pub agent_factory: Arc<AgentFactory>,
@@ -105,7 +108,7 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             tracing::warn!("Failed to initialize observability: {}", e);
         }
 
-        // Load security configuration
+        // Load security configuration with fail-fast validation
         let security_config = if let Some(config_path) = &config.security_config_path {
             match SecurityConfig::load_from_file(config_path) {
                 Ok(cfg) => {
@@ -113,29 +116,50 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
                         "Loaded security configuration from: {}",
                         config_path.display()
                     );
-                    // Validate configuration
-                    if let Err(e) = cfg.validate() {
-                        tracing::error!("Security configuration validation failed: {}", e);
-                        tracing::warn!("Falling back to default security configuration");
-                        SecurityConfig::create_default()
-                    } else {
-                        cfg
-                    }
+                    // Validate configuration (fail-fast on errors)
+                    cfg.validate().unwrap_or_else(|e| {
+                        panic!(
+                            "Security configuration validation failed: {}\n\
+                            Config file: {}\n\
+                            CRITICAL: Invalid security configuration prevents startup. \
+                            Please fix the configuration file or remove it to use defaults.",
+                            e,
+                            config_path.display()
+                        )
+                    });
+                    tracing::info!("Security configuration validated successfully");
+                    cfg
                 }
                 Err(e) => {
-                    tracing::error!(
-                        "Failed to load security configuration from {}: {}",
+                    panic!(
+                        "Failed to load security configuration from {}: {}\n\
+                        CRITICAL: Could not read security configuration file. \
+                        Please ensure the file exists and is readable, or remove the \
+                        security_config_path setting to use defaults.",
                         config_path.display(),
                         e
-                    );
-                    tracing::warn!("Falling back to default security configuration");
-                    SecurityConfig::create_default()
+                    )
                 }
             }
         } else {
             tracing::info!("No security configuration file specified, using defaults");
-            SecurityConfig::create_default()
+            let default_config = SecurityConfig::create_default();
+            // Validate defaults (should always pass, but check anyway)
+            default_config.validate().unwrap_or_else(|e| {
+                panic!(
+                    "Default security configuration is invalid: {}\n\
+                    This is a bug - please report it.",
+                    e
+                )
+            });
+            default_config
         };
+
+        // Wrap tool registry with security policy enforcement
+        let security_config_arc = Arc::new(security_config);
+        let secure_registry =
+            SecureToolRegistry::new(tool_registry, Arc::clone(&security_config_arc));
+        tracing::info!("Tool registry wrapped with security policy enforcement");
 
         let backpressure_manager = Arc::new(BackpressureManager::new(config.backpressure.clone()));
 
@@ -155,11 +179,11 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
 
         Self {
             agents: agent_factory.agents(),
-            tool_registry: Arc::new(tool_registry),
+            tool_registry: Arc::new(secure_registry),
             rate_limit_state: Arc::new(RateLimitState::new(config.rate_limit)),
             backpressure_manager,
             agent_factory: Arc::new(agent_factory),
-            security_config: Arc::new(security_config),
+            security_config: security_config_arc,
         }
     }
 

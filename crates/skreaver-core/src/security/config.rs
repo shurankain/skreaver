@@ -1002,14 +1002,14 @@ impl SecurityConfig {
         }
     }
 
-    /// Validate configuration for security issues
+    /// Validate configuration for security issues (fail-fast on critical errors)
     pub fn validate(&self) -> Result<(), SecurityError> {
         // Check for development mode in production
         if self.development.enabled {
             tracing::warn!("Development mode is enabled - this should not be used in production");
         }
 
-        // Validate resource limits
+        // Validate resource limits (CRITICAL - must fail)
         if self.resources.max_memory_mb == 0 {
             return Err(SecurityError::ConfigError {
                 message: "Memory limit cannot be zero".to_string(),
@@ -1022,21 +1022,124 @@ impl SecurityConfig {
             });
         }
 
-        // Validate file system policies
-        if self.fs.enabled && self.fs.allow_paths.is_empty() {
+        if self.resources.max_concurrent_operations == 0 {
             return Err(SecurityError::ConfigError {
-                message: "File system enabled but no allowed paths configured".to_string(),
+                message: "max_concurrent_operations must be > 0".to_string(),
             });
         }
 
-        // Validate HTTP policies
-        if self.http.enabled && self.http.allow_domains.is_empty() && !self.development.enabled {
-            tracing::warn!("HTTP enabled but no allowed domains configured");
+        if self.resources.max_open_files == 0 {
+            return Err(SecurityError::ConfigError {
+                message: "max_open_files must be > 0".to_string(),
+            });
         }
 
-        // Check for overly permissive settings
+        // Validate CPU percentage
+        if self.resources.max_cpu_percent < 0.0 || self.resources.max_cpu_percent > 100.0 {
+            return Err(SecurityError::ConfigError {
+                message: format!(
+                    "max_cpu_percent must be 0.0-100.0, got {}",
+                    self.resources.max_cpu_percent
+                ),
+            });
+        }
+
+        // Validate file system policies (CRITICAL - must fail)
+        if self.fs.enabled && self.fs.allow_paths.is_empty() {
+            return Err(SecurityError::ConfigError {
+                message: "File system enabled but no allowed paths configured (security risk)"
+                    .to_string(),
+            });
+        }
+
+        // Check for path traversal in allow_paths
+        for path in &self.fs.allow_paths {
+            if let Some(path_str) = path.to_str() && path_str.contains("..") {
+                return Err(SecurityError::ConfigError {
+                    message: format!(
+                        "Allowed path '{}' contains '..' (path traversal risk)",
+                        path.display()
+                    ),
+                });
+            }
+        }
+
+        // Note: File size, timeout, and redirect limits are validated by their newtypes (FileSizeLimit, TimeoutSeconds, RedirectLimit)
+        // during deserialization, so no additional validation is needed here.
+
+        // Validate HTTP policies
+        if self.http.enabled && self.http.allow_domains.is_empty() && !self.development.enabled {
+            tracing::warn!(
+                "HTTP enabled but no allowed domains configured (all domains will be blocked)"
+            );
+        }
+
+        // Check for overly permissive settings (WARNINGS)
         if self.http.allow_local && !self.development.enabled {
-            tracing::warn!("HTTP requests to localhost are allowed - this may be a security risk");
+            tracing::warn!(
+                "HTTP requests to localhost are allowed - this may be a security risk in production"
+            );
+        }
+
+        if self.network.allow_private_networks && !self.development.enabled {
+            tracing::warn!(
+                "Network access to private IP ranges is allowed - this may be a security risk"
+            );
+        }
+
+        if self.fs.follow_symlinks {
+            tracing::warn!("Following symbolic links is enabled - this may be a security risk");
+        }
+
+        // Validate network policies
+        if self.network.allow_ports.is_empty() && self.network.enabled {
+            tracing::warn!("Network enabled but no allowed ports configured");
+        }
+
+        // Check for common dangerous ports in allow_ports
+        let dangerous_ports = [22, 23, 3389]; // SSH, Telnet, RDP
+        for network_port in &self.network.allow_ports {
+            let port = network_port.port();
+            if dangerous_ports.contains(&port) {
+                tracing::warn!(
+                    "Port {} (potentially dangerous) is in allow_ports list",
+                    port
+                );
+            }
+        }
+
+        // Validate audit configuration
+        if self.audit.retain_logs_days == 0 {
+            tracing::warn!("Log retention is 0 days - logs will not be retained");
+        }
+
+        // Validate secrets configuration
+        if self.secrets.min_secret_length < 16 {
+            tracing::warn!(
+                "min_secret_length is {} - recommendation is 32+ for production",
+                self.secrets.min_secret_length
+            );
+        }
+
+        // Validate alerting configuration
+        if self.alerting.enabled
+            && self.alerting.email_recipients.is_empty()
+            && self.alerting.webhook_url.is_none()
+        {
+            tracing::warn!("Alerting enabled but no recipients or webhook configured");
+        }
+
+        if self.alerting.violation_threshold == 0 {
+            return Err(SecurityError::ConfigError {
+                message: "Alerting violation_threshold must be > 0".to_string(),
+            });
+        }
+
+        // Validate emergency configuration
+        if self.emergency.lockdown_enabled && self.emergency.lockdown_allowed_tools.is_empty() {
+            tracing::warn!(
+                "Emergency lockdown is active but no tools are allowed - system may be inoperable"
+            );
         }
 
         Ok(())
