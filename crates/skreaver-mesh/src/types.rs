@@ -99,18 +99,6 @@ impl AgentId {
         Ok(Self(s.to_string()))
     }
 
-    /// Create a new agent ID without validation
-    ///
-    /// # Deprecated
-    /// Use `AgentId::parse()` instead to ensure input validation.
-    #[deprecated(
-        since = "0.4.1",
-        note = "Use AgentId::parse() for validated construction"
-    )]
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
     /// Get the agent ID as a string slice
     pub fn as_str(&self) -> &str {
         &self.0
@@ -125,17 +113,25 @@ impl FromStr for AgentId {
     }
 }
 
-/// Deprecated: Use `AgentId::parse()` instead for validated construction
 impl From<String> for AgentId {
+    /// Creates an AgentId from a String.
+    ///
+    /// # Panics
+    /// Panics if the string fails validation (empty, whitespace-only, invalid characters).
+    /// For non-panicking construction, use `AgentId::parse()` instead.
     fn from(s: String) -> Self {
-        Self(s)
+        Self::parse(&s).unwrap_or_else(|e| panic!("Invalid AgentId '{}': {}", s, e))
     }
 }
 
-/// Deprecated: Use `AgentId::parse()` instead for validated construction
 impl From<&str> for AgentId {
+    /// Creates an AgentId from a string slice.
+    ///
+    /// # Panics
+    /// Panics if the string fails validation (empty, whitespace-only, invalid characters).
+    /// For non-panicking construction, use `AgentId::parse()` instead.
     fn from(s: &str) -> Self {
-        Self(s.to_string())
+        Self::parse(s).unwrap_or_else(|e| panic!("Invalid AgentId '{}': {}", s, e))
     }
 }
 
@@ -209,18 +205,6 @@ impl Topic {
         Ok(Self(s.to_string()))
     }
 
-    /// Create a new topic without validation
-    ///
-    /// # Deprecated
-    /// Use `Topic::parse()` instead to ensure input validation.
-    #[deprecated(
-        since = "0.4.1",
-        note = "Use Topic::parse() for validated construction"
-    )]
-    pub fn new(topic: impl Into<String>) -> Self {
-        Self(topic.into())
-    }
-
     /// Get the topic as a string slice
     pub fn as_str(&self) -> &str {
         &self.0
@@ -235,17 +219,25 @@ impl FromStr for Topic {
     }
 }
 
-/// Deprecated: Use `Topic::parse()` instead for validated construction
 impl From<String> for Topic {
+    /// Creates a Topic from a String.
+    ///
+    /// # Panics
+    /// Panics if the string fails validation (empty, whitespace-only, invalid characters).
+    /// For non-panicking construction, use `Topic::parse()` instead.
     fn from(s: String) -> Self {
-        Self(s)
+        Self::parse(&s).unwrap_or_else(|e| panic!("Invalid Topic '{}': {}", s, e))
     }
 }
 
-/// Deprecated: Use `Topic::parse()` instead for validated construction
 impl From<&str> for Topic {
+    /// Creates a Topic from a string slice.
+    ///
+    /// # Panics
+    /// Panics if the string fails validation (empty, whitespace-only, invalid characters).
+    /// For non-panicking construction, use `Topic::parse()` instead.
     fn from(s: &str) -> Self {
-        Self(s.to_string())
+        Self::parse(s).unwrap_or_else(|e| panic!("Invalid Topic '{}': {}", s, e))
     }
 }
 
@@ -260,33 +252,41 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(deprecated)]
     fn test_agent_id_creation() {
-        let id = AgentId::new("agent-1");
+        let id = AgentId::parse("agent-1").unwrap();
         assert_eq!(id.as_str(), "agent-1");
         assert_eq!(id.to_string(), "agent-1");
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_agent_id_from_string() {
         let id: AgentId = "agent-2".into();
         assert_eq!(id.as_str(), "agent-2");
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_topic_creation() {
-        let topic = Topic::new("notifications");
+        let topic = Topic::parse("notifications").unwrap();
         assert_eq!(topic.as_str(), "notifications");
         assert_eq!(topic.to_string(), "notifications");
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_topic_from_str() {
         let topic: Topic = "events".into();
         assert_eq!(topic.as_str(), "events");
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid AgentId")]
+    fn test_agent_id_from_panics_on_empty() {
+        let _: AgentId = "".into();
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid Topic")]
+    fn test_topic_from_panics_on_invalid() {
+        let _: Topic = "../path".into();
     }
 
     // Validation tests for AgentId

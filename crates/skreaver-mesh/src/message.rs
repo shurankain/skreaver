@@ -95,19 +95,67 @@ impl Route {
     }
 }
 
-/// Unique identifier for a message
+/// Error type for MessageId validation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MessageIdError {
+    /// The provided string is not a valid UUID
+    InvalidFormat(String),
+}
+
+impl std::fmt::Display for MessageIdError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageIdError::InvalidFormat(s) => {
+                write!(f, "Invalid MessageId format (expected UUID): '{}'", s)
+            }
+        }
+    }
+}
+
+impl std::error::Error for MessageIdError {}
+
+/// Unique identifier for a message (UUID v4)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MessageId(String);
 
 impl MessageId {
-    /// Create a new random message ID
+    /// Create a new random message ID (UUID v4)
     pub fn new() -> Self {
         Self(Uuid::new_v4().to_string())
     }
 
-    /// Create a message ID from a string
+    /// Parse and validate a message ID from a string
+    ///
+    /// Returns an error if the string is not a valid UUID format.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use skreaver_mesh::MessageId;
+    ///
+    /// // Valid UUID
+    /// let id = MessageId::parse("550e8400-e29b-41d4-a716-446655440000").unwrap();
+    ///
+    /// // Invalid format
+    /// assert!(MessageId::parse("not-a-uuid").is_err());
+    /// assert!(MessageId::parse("").is_err());
+    /// ```
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, MessageIdError> {
+        let s = id.as_ref();
+
+        // Validate UUID format
+        Uuid::parse_str(s).map_err(|_| MessageIdError::InvalidFormat(s.to_string()))?;
+
+        Ok(Self(s.to_string()))
+    }
+
+    /// Create a message ID from a string without validation
+    ///
+    /// # Panics
+    /// Panics if the string is not a valid UUID format.
+    /// For non-panicking construction, use `MessageId::parse()` instead.
     pub fn from_string(id: String) -> Self {
-        Self(id)
+        Self::parse(&id).unwrap_or_else(|e| panic!("Invalid MessageId: {}", e))
     }
 
     /// Get the message ID as a string slice
@@ -1008,5 +1056,65 @@ mod tests {
         let json = serde_json::to_value(&binary).unwrap();
         assert_eq!(json["type"], "binary");
         assert_eq!(json["data"], "/wCA"); // base64 of [255, 0, 128]
+    }
+
+    #[test]
+    fn test_message_id_generation() {
+        let id1 = MessageId::new();
+        let id2 = MessageId::new();
+
+        // IDs should be different
+        assert_ne!(id1.as_str(), id2.as_str());
+
+        // Should be valid UUIDs
+        assert!(MessageId::parse(id1.as_str()).is_ok());
+        assert!(MessageId::parse(id2.as_str()).is_ok());
+    }
+
+    #[test]
+    fn test_message_id_parse_valid() {
+        // Standard UUID v4
+        let valid_uuid = "550e8400-e29b-41d4-a716-446655440000";
+        let id = MessageId::parse(valid_uuid).unwrap();
+        assert_eq!(id.as_str(), valid_uuid);
+
+        // Uppercase UUID
+        let uppercase = "550E8400-E29B-41D4-A716-446655440000";
+        assert!(MessageId::parse(uppercase).is_ok());
+    }
+
+    #[test]
+    fn test_message_id_parse_invalid() {
+        // Empty string
+        assert!(MessageId::parse("").is_err());
+
+        // Not a UUID
+        assert!(MessageId::parse("not-a-uuid").is_err());
+
+        // Partial UUID
+        assert!(MessageId::parse("550e8400-e29b").is_err());
+
+        // Invalid characters
+        assert!(MessageId::parse("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx").is_err());
+
+        // Too short
+        assert!(MessageId::parse("550e8400").is_err());
+
+        // Random string
+        assert!(MessageId::parse("hello-world").is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid MessageId")]
+    fn test_message_id_from_string_panics() {
+        MessageId::from_string("not-a-uuid".to_string());
+    }
+
+    #[test]
+    fn test_message_id_error_display() {
+        let err = MessageIdError::InvalidFormat("bad-id".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Invalid MessageId format"));
+        assert!(msg.contains("bad-id"));
     }
 }

@@ -61,8 +61,8 @@ pub use dlq::{DeadLetterQueue, DlqConfig, DlqEntry, DlqStats};
 pub use error::{MeshError, MeshResult};
 pub use mesh::AgentMesh;
 pub use message::{
-    AnonymousRoute, BroadcastRoute, Message, MessageBuilder, MessageId, MessageMetadata,
-    MessagePayload, Route, SystemRoute, TypedMessage, UnicastRoute, Unrouted,
+    AnonymousRoute, BroadcastRoute, Message, MessageBuilder, MessageId, MessageIdError,
+    MessageMetadata, MessagePayload, Route, SystemRoute, TypedMessage, UnicastRoute, Unrouted,
 };
 pub use metrics::{MeshMetrics, MeshMetricsCollector};
 pub use patterns::{
