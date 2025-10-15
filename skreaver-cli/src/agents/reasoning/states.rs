@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Represents the different states of the reasoning process.
+/// Note: This enum is kept for backward compatibility and serialization.
+/// The typestate pattern (Initial, Analyzing, etc. structs) is used for compile-time safety.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ReasoningState {
     Initial,

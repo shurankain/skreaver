@@ -215,12 +215,12 @@ impl SecureStorage {
         use aes_gcm::aead::rand_core::RngCore;
         let mut nonce_bytes = [0u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         // Encrypt the value
         let ciphertext = self
             .cipher
-            .encrypt(nonce, value.as_bytes())
+            .encrypt(&nonce, value.as_bytes())
             .map_err(|_| AuthError::EncryptionFailed)?;
 
         // Combine nonce + ciphertext and encode as base64
@@ -262,12 +262,16 @@ impl SecureStorage {
         }
 
         let (nonce_bytes, ciphertext) = combined.split_at(12);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        // Convert slice to array for Nonce::from
+        let nonce_array: [u8; 12] = nonce_bytes
+            .try_into()
+            .map_err(|_| AuthError::DecryptionFailed)?;
+        let nonce = Nonce::from(nonce_array);
 
         // Decrypt the value
         let plaintext = self
             .cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|_| AuthError::DecryptionFailed)?;
 
         // Convert to string
