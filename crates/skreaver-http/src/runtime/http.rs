@@ -15,6 +15,7 @@ use crate::runtime::{
     rate_limit::{RateLimitConfig, RateLimitState},
 };
 use skreaver_core::Agent;
+use skreaver_core::auth::rbac::RoleManager;
 use skreaver_core::security::SecurityConfig;
 use skreaver_observability::{ObservabilityConfig, init_observability};
 use skreaver_tools::{SecureToolRegistry, ToolRegistry};
@@ -170,11 +171,15 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             default_config
         };
 
-        // Wrap tool registry with security policy enforcement
+        // Wrap tool registry with security policy and RBAC enforcement
         let security_config_arc = Arc::new(security_config);
-        let secure_registry =
-            SecureToolRegistry::new(tool_registry, Arc::clone(&security_config_arc));
-        tracing::info!("Tool registry wrapped with security policy enforcement");
+        let role_manager = Arc::new(RoleManager::with_defaults());
+        let secure_registry = SecureToolRegistry::new(
+            tool_registry,
+            Arc::clone(&security_config_arc),
+            role_manager,
+        );
+        tracing::info!("Tool registry wrapped with security policy and RBAC enforcement");
 
         let backpressure_manager = Arc::new(BackpressureManager::new(config.backpressure.clone()));
 

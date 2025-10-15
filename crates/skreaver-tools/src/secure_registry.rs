@@ -5,6 +5,7 @@
 //! dispatching tool calls.
 
 use super::{ExecutionResult, ToolCall, ToolRegistry};
+use skreaver_core::auth::rbac::{Role, RoleManager};
 use skreaver_core::collections::NonEmptyVec;
 use skreaver_core::security::config::SecurityConfig;
 use std::sync::Arc;
@@ -12,13 +13,15 @@ use std::sync::Arc;
 /// A secure tool registry wrapper that enforces RBAC policies
 ///
 /// `SecureToolRegistry` wraps any `ToolRegistry` implementation and adds
-/// permission checking before tool dispatch. It checks the security policy
-/// for each tool and blocks execution if the tool is not allowed.
+/// permission checking before tool dispatch. It checks both:
+/// - Security configuration policies (capability-based)
+/// - RBAC policies (role and permission-based)
 ///
 /// # Security Model
 ///
-/// - Each tool call is checked against the security configuration
-/// - Tools can be completely disabled via policy (fs_enabled, http_enabled, network_enabled)
+/// - Each tool call is checked against security configuration AND RBAC policies
+/// - Tools can be completely disabled via security config (fs_enabled, http_enabled, network_enabled)
+/// - Tools can require specific roles/permissions via RoleManager
 /// - Failed permission checks return `ExecutionResult::Failure` with a clear error message
 /// - The underlying registry is never called if permissions are denied
 ///
@@ -27,45 +30,74 @@ use std::sync::Arc;
 /// ```rust
 /// use skreaver_tools::{InMemoryToolRegistry, SecureToolRegistry, ToolRegistry};
 /// use skreaver_core::security::SecurityConfig;
+/// use skreaver_core::auth::rbac::RoleManager;
 /// use std::sync::Arc;
 ///
 /// let registry = InMemoryToolRegistry::new();
 /// let security_config = Arc::new(SecurityConfig::create_default());
-/// let secure_registry = SecureToolRegistry::new(registry, security_config);
+/// let role_manager = Arc::new(RoleManager::with_defaults());
+/// let secure_registry = SecureToolRegistry::new(registry, security_config, role_manager);
 ///
-/// // Tool calls will now be checked against security policies
+/// // Tool calls will now be checked against both security config and RBAC policies
 /// ```
 #[derive(Clone)]
 pub struct SecureToolRegistry<T: ToolRegistry> {
     inner: T,
     security_config: Arc<SecurityConfig>,
+    role_manager: Arc<RoleManager>,
+    // Default role and permissions used when no user context is available
+    // This provides baseline RBAC enforcement
+    default_role: Role,
 }
 
 impl<T: ToolRegistry> SecureToolRegistry<T> {
-    /// Create a new secure tool registry
+    /// Create a new secure tool registry with role-based access control
     ///
     /// # Parameters
     ///
     /// * `inner` - The underlying tool registry to wrap
-    /// * `security_config` - The security configuration containing RBAC policies
+    /// * `security_config` - The security configuration containing capability policies
+    /// * `role_manager` - The role manager containing RBAC policies
     ///
     /// # Returns
     ///
-    /// A new `SecureToolRegistry` that enforces RBAC
-    pub fn new(inner: T, security_config: Arc<SecurityConfig>) -> Self {
+    /// A new `SecureToolRegistry` that enforces both security config and RBAC policies
+    pub fn new(
+        inner: T,
+        security_config: Arc<SecurityConfig>,
+        role_manager: Arc<RoleManager>,
+    ) -> Self {
         Self {
             inner,
             security_config,
+            role_manager,
+            default_role: Role::Agent, // Default to Agent role for backward compatibility
         }
     }
 
-    /// Check if a tool is allowed to execute based on security policy
+    /// Create a new secure tool registry with custom default role
     ///
-    /// This method checks the tool-specific security policy to determine
-    /// if the tool should be allowed to execute. It checks:
-    /// - File system access permissions
-    /// - HTTP access permissions
-    /// - Network access permissions
+    /// This allows specifying a different default role for RBAC checks when
+    /// no user context is available.
+    pub fn with_default_role(
+        inner: T,
+        security_config: Arc<SecurityConfig>,
+        role_manager: Arc<RoleManager>,
+        default_role: Role,
+    ) -> Self {
+        Self {
+            inner,
+            security_config,
+            role_manager,
+            default_role,
+        }
+    }
+
+    /// Check if a tool is allowed to execute based on security policy and RBAC
+    ///
+    /// This method checks both:
+    /// 1. Security configuration (capability-based policies)
+    /// 2. RBAC policies (role and permission-based)
     ///
     /// # Parameters
     ///
@@ -75,11 +107,8 @@ impl<T: ToolRegistry> SecureToolRegistry<T> {
     ///
     /// `Ok(())` if the tool is allowed, `Err(String)` with error message if denied
     fn check_permissions(&self, tool_name: &str) -> Result<(), String> {
+        // Step 1: Check security configuration (capability-based)
         let policy = self.security_config.get_tool_policy(tool_name);
-
-        // Check if the tool requires capabilities that are disabled
-        // For now, we check if at least one capability is enabled
-        // In the future, this could be more sophisticated based on tool requirements
 
         let has_any_capability =
             policy.fs_policy.enabled || policy.http_policy.enabled || policy.network_policy.enabled;
@@ -102,6 +131,21 @@ impl<T: ToolRegistry> SecureToolRegistry<T> {
                     tool_name
                 ));
             }
+        }
+
+        // Step 2: Check RBAC policies (role and permission-based)
+        let roles = vec![self.default_role.clone()];
+        let permissions = self.default_role.permissions();
+
+        if !self
+            .role_manager
+            .check_tool_access(tool_name, &roles, &permissions)
+        {
+            return Err(format!(
+                "Permission denied: Tool '{}' requires higher privileges. \
+                 Current role '{}' does not have sufficient permissions.",
+                tool_name, self.default_role
+            ));
         }
 
         Ok(())
@@ -257,6 +301,7 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
 mod tests {
     use super::*;
     use crate::{InMemoryToolRegistry, Tool};
+    use skreaver_core::auth::rbac::RoleManager;
     use skreaver_core::security::policy::ToolPolicy;
     use std::collections::HashMap;
 
@@ -279,8 +324,9 @@ mod tests {
         let registry = InMemoryToolRegistry::new().with_tool("test_tool", Arc::new(TestTool));
 
         let config = SecurityConfig::create_default();
+        let role_manager = Arc::new(RoleManager::with_defaults());
         // Default config has filesystem and HTTP enabled
-        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
+        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         let result =
             secure_registry.dispatch(ToolCall::new("test_tool", "hello").expect("Valid tool name"));
@@ -313,7 +359,8 @@ mod tests {
         );
         config.tools = tool_policies;
 
-        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
+        let role_manager = Arc::new(RoleManager::with_defaults());
+        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         let result = secure_registry
             .dispatch(ToolCall::new("blocked_tool", "hello").expect("Valid tool name"));
@@ -338,7 +385,8 @@ mod tests {
         config.emergency.lockdown_enabled = true;
         config.emergency.lockdown_allowed_tools = vec!["allowed_tool".to_string()];
 
-        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
+        let role_manager = Arc::new(RoleManager::with_defaults());
+        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         // Allowed tool should work
         let allowed_result = secure_registry
@@ -380,7 +428,8 @@ mod tests {
         );
         config.tools = tool_policies;
 
-        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config));
+        let role_manager = Arc::new(RoleManager::with_defaults());
+        let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         let calls = NonEmptyVec::new(
             ToolCall::new("allowed_tool", "hello").expect("Valid tool name"),
