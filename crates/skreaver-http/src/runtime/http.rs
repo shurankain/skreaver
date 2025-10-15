@@ -131,14 +131,29 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
                     cfg
                 }
                 Err(e) => {
-                    panic!(
-                        "Failed to load security configuration from {}: {}\n\
-                        CRITICAL: Could not read security configuration file. \
-                        Please ensure the file exists and is readable, or remove the \
-                        security_config_path setting to use defaults.",
-                        config_path.display(),
-                        e
-                    )
+                    // Check if this is a "file not found" error - warn and use defaults
+                    // This allows development/testing without requiring config files
+                    if e.to_string().contains("No such file or directory")
+                        || e.to_string().contains("cannot find the path")
+                    {
+                        tracing::warn!(
+                            "Security configuration file not found: {} - using defaults. \
+                            Error: {}",
+                            config_path.display(),
+                            e
+                        );
+                        SecurityConfig::create_default()
+                    } else {
+                        // Other errors (permission denied, invalid TOML, etc.) are critical
+                        panic!(
+                            "Failed to load security configuration from {}: {}\n\
+                            CRITICAL: Could not read security configuration file. \
+                            Please ensure the file exists and is readable, or remove the \
+                            security_config_path setting to use defaults.",
+                            config_path.display(),
+                            e
+                        )
+                    }
                 }
             }
         } else {
