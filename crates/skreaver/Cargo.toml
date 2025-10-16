@@ -19,7 +19,7 @@ sqlite = ["skreaver-memory/sqlite"]
 postgres = ["skreaver-memory/postgres"]
 redis = ["skreaver-memory/redis"]
 streaming = ["skreaver-http/streaming"]
-unstable-websocket = ["streaming", "skreaver-http/unstable-websocket"]
+websocket = ["streaming", "skreaver-http/websocket"]
 testing = ["skreaver-testing"]
 # Observability features
 metrics = ["dep:skreaver-observability", "skreaver-observability/metrics"]

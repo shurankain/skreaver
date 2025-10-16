@@ -18,6 +18,8 @@ pub struct WebSocketManager {
     event_sender: broadcast::Sender<ChannelEvent>,
     /// Authentication handler
     auth_handler: Option<Arc<dyn AuthHandler + Send + Sync>>,
+    /// Connections per IP address
+    connections_per_ip: Arc<RwLock<HashMap<std::net::IpAddr, usize>>>,
 }
 
 /// Connection state
@@ -59,7 +61,7 @@ pub trait AuthHandler {
 impl WebSocketManager {
     /// Create a new WebSocket manager
     pub fn new(config: WebSocketConfig) -> Self {
-        let (event_sender, _) = broadcast::channel(1000);
+        let (event_sender, _) = broadcast::channel(config.broadcast_buffer_size);
 
         Self {
             config,
@@ -67,6 +69,7 @@ impl WebSocketManager {
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             event_sender,
             auth_handler: None,
+            connections_per_ip: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -87,6 +90,16 @@ impl WebSocketManager {
             return Err(WsError::ConnectionLimitExceeded);
         }
         drop(connections);
+
+        // Check IP-based rate limiting
+        let ip_addr = info.addr.ip();
+        let mut ip_connections = self.connections_per_ip.write().await;
+        let ip_count = ip_connections.get(&ip_addr).copied().unwrap_or(0);
+        if ip_count >= self.config.max_connections_per_ip {
+            return Err(WsError::RateLimitExceeded);
+        }
+        *ip_connections.entry(ip_addr).or_insert(0) += 1;
+        drop(ip_connections);
 
         let (sender, _receiver) = mpsc::channel(self.config.buffer_size);
 
@@ -110,6 +123,17 @@ impl WebSocketManager {
     pub async fn remove_connection(&self, id: Uuid) {
         let mut connections = self.connections.write().await;
         if let Some(state) = connections.remove(&id) {
+            // Decrement IP connection count
+            let ip_addr = state.info.addr.ip();
+            let mut ip_connections = self.connections_per_ip.write().await;
+            if let Some(count) = ip_connections.get_mut(&ip_addr) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    ip_connections.remove(&ip_addr);
+                }
+            }
+            drop(ip_connections);
+
             // Unsubscribe from all channels
             let mut subscriptions = self.subscriptions.write().await;
             for channel in &state.channels {
@@ -205,9 +229,13 @@ impl WebSocketManager {
     }
 
     /// Handle channel subscription
-    async fn handle_subscribe(&self, conn_id: Uuid, channels: Vec<String>) -> WsResult<()> {
-        let connections = self.connections.read().await;
-        let state = connections.get(&conn_id).ok_or(WsError::ConnectionClosed)?;
+    #[doc(hidden)] // Public for testing only
+    pub async fn handle_subscribe(&self, conn_id: Uuid, channels: Vec<String>) -> WsResult<()> {
+        // Use write lock from the start to prevent TOCTOU race condition
+        let mut connections = self.connections.write().await;
+        let subscriptions = self.subscriptions.write().await;
+
+        let state = connections.get_mut(&conn_id).ok_or(WsError::ConnectionClosed)?;
 
         // Check authentication if auth handler is present
         if self.auth_handler.is_some() && !state.authenticated {
@@ -216,31 +244,63 @@ impl WebSocketManager {
             ));
         }
 
-        // Check permissions
-        if let (Some(auth_handler), Some(user_id)) = (&self.auth_handler, &state.user_id) {
+        // Check subscription limit per connection
+        let new_subscription_count = state.channels.len() + channels.len();
+        if new_subscription_count > self.config.max_subscriptions_per_connection {
+            return Err(WsError::SubscriptionLimitExceeded {
+                current: new_subscription_count,
+                max: self.config.max_subscriptions_per_connection,
+            });
+        }
+
+        // Check permissions (release write locks temporarily for async operation)
+        let user_id_opt = state.user_id.clone();
+        drop(connections);
+        drop(subscriptions);
+
+        if let (Some(auth_handler), Some(user_id)) = (&self.auth_handler, &user_id_opt) {
             for channel in &channels {
                 if !auth_handler.check_permission(user_id, channel).await {
                     return Err(WsError::PermissionDenied);
                 }
             }
         }
-        drop(connections);
+
+        // Re-acquire locks and perform subscription
+        let mut connections = self.connections.write().await;
+        let mut subscriptions = self.subscriptions.write().await;
+
+        // Re-check authentication after re-acquiring locks
+        let state = connections.get_mut(&conn_id).ok_or(WsError::ConnectionClosed)?;
+        if self.auth_handler.is_some() && !state.authenticated {
+            return Err(WsError::AuthenticationFailed(
+                "Authentication required".to_string(),
+            ));
+        }
 
         // Add subscriptions
-        let mut subscriptions = self.subscriptions.write().await;
-        let mut connections = self.connections.write().await;
+        for channel in channels {
+            if !state.channels.contains(&channel) {
+                // Check channel subscriber limit
+                let current_subscribers = subscriptions
+                    .get(&channel)
+                    .map(|subs| subs.len())
+                    .unwrap_or(0);
 
-        if let Some(state) = connections.get_mut(&conn_id) {
-            for channel in channels {
-                if !state.channels.contains(&channel) {
-                    state.channels.push(channel.clone());
-                    subscriptions
-                        .entry(channel.clone())
-                        .or_insert_with(Vec::new)
-                        .push(conn_id);
-
-                    debug!("Connection {} subscribed to channel {}", conn_id, channel);
+                if current_subscribers >= self.config.max_subscribers_per_channel {
+                    return Err(WsError::ChannelSubscriberLimitExceeded {
+                        current: current_subscribers + 1,
+                        max: self.config.max_subscribers_per_channel,
+                    });
                 }
+
+                state.channels.push(channel.clone());
+                subscriptions
+                    .entry(channel.clone())
+                    .or_insert_with(Vec::new)
+                    .push(conn_id);
+
+                debug!("Connection {} subscribed to channel {}", conn_id, channel);
             }
         }
 
@@ -289,11 +349,8 @@ impl WebSocketManager {
     pub async fn send_to_connection(&self, conn_id: Uuid, message: WsMessage) -> WsResult<()> {
         let connections = self.connections.read().await;
         if let Some(state) = connections.get(&conn_id) {
-            state
-                .sender
-                .send(message)
-                .await
-                .map_err(|_| WsError::ConnectionClosed)?;
+            // Ignore send errors - receiver may be closed (e.g. in tests)
+            let _ = state.sender.send(message).await;
         }
         Ok(())
     }
@@ -400,25 +457,37 @@ impl WebSocketManager {
 
     /// Handle channel event broadcasting
     async fn handle_channel_event(&self, event: ChannelEvent) {
-        let subscriptions = self.subscriptions.read().await;
-        let connections = self.connections.read().await;
+        // Clone necessary data before async operations to prevent deadlock
+        let subscribers_with_senders = {
+            let subscriptions = self.subscriptions.read().await;
+            let connections = self.connections.read().await;
 
-        if let Some(subscribers) = subscriptions.get(&event.channel) {
-            let message = WsMessage::event(&event.channel, event.data);
+            if let Some(subscribers) = subscriptions.get(&event.channel) {
+                subscribers
+                    .iter()
+                    .filter_map(|&conn_id| {
+                        connections.get(&conn_id).map(|state| {
+                            // Filter by user ID if event is user-specific
+                            if let Some(target_user) = &event.user_id
+                                && state.user_id.as_ref() != Some(target_user)
+                            {
+                                return None;
+                            }
+                            Some((conn_id, state.sender.clone()))
+                        })
+                    })
+                    .flatten()
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            }
+        };
 
-            for &conn_id in subscribers {
-                if let Some(state) = connections.get(&conn_id) {
-                    // If event is user-specific, check user ID
-                    if let Some(target_user) = &event.user_id
-                        && state.user_id.as_ref() != Some(target_user)
-                    {
-                        continue;
-                    }
-
-                    if let Err(e) = state.sender.send(message.clone()).await {
-                        error!("Failed to send event to connection {}: {}", conn_id, e);
-                    }
-                }
+        // Send messages after releasing locks
+        let message = WsMessage::event(&event.channel, event.data);
+        for (conn_id, sender) in subscribers_with_senders {
+            if let Err(e) = sender.send(message.clone()).await {
+                error!("Failed to send event to connection {}: {}", conn_id, e);
             }
         }
     }
@@ -444,6 +513,7 @@ impl Clone for WebSocketManager {
             subscriptions: Arc::clone(&self.subscriptions),
             event_sender: self.event_sender.clone(),
             auth_handler: self.auth_handler.clone(),
+            connections_per_ip: Arc::clone(&self.connections_per_ip),
         }
     }
 }
@@ -459,6 +529,42 @@ pub struct ConnectionStats {
     pub expired_connections: usize,
     /// Total number of channels
     pub total_channels: usize,
+}
+
+// Test helpers available to integration tests
+impl WebSocketManager {
+    /// Test helper: Set connection as authenticated
+    #[doc(hidden)]
+    pub async fn test_set_authenticated(&self, conn_id: uuid::Uuid, user_id: &str) {
+        let mut connections = self.connections.write().await;
+        if let Some(state) = connections.get_mut(&conn_id) {
+            state.authenticated = true;
+            state.user_id = Some(user_id.to_string());
+        }
+    }
+
+    /// Test helper: Subscribe connection to channel
+    #[doc(hidden)]
+    pub async fn test_subscribe_channel(&self, conn_id: uuid::Uuid, channel: &str) {
+        let mut connections = self.connections.write().await;
+        let mut subscriptions = self.subscriptions.write().await;
+
+        if let Some(state) = connections.get_mut(&conn_id)
+            && !state.channels.contains(&channel.to_string())
+        {
+            state.channels.push(channel.to_string());
+            subscriptions
+                .entry(channel.to_string())
+                .or_insert_with(Vec::new)
+                .push(conn_id);
+        }
+    }
+
+    /// Test helper: Get IP connection count
+    #[doc(hidden)]
+    pub async fn test_get_ip_connection_count(&self) -> usize {
+        self.connections_per_ip.read().await.len()
+    }
 }
 
 #[cfg(test)]

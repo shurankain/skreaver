@@ -11,14 +11,14 @@
 //! - **OpenAPI UI** (`openapi-ui`): Swagger UI for API documentation
 //! - **Compression** (`compression`): HTTP compression middleware
 //! - **Streaming** (`streaming`): Server-sent events and streaming support
-//! - **WebSocket** (`unstable-websocket`): WebSocket support (unstable)
+//! - **WebSocket** (`websocket`): Real-time bidirectional communication with protocol versioning and heartbeat
 
 pub mod runtime;
 
 #[cfg(feature = "openapi")]
 pub mod openapi;
 
-#[cfg(feature = "unstable-websocket")]
+#[cfg(feature = "websocket")]
 pub mod websocket;
 
 // Re-export main types for public API
@@ -30,7 +30,7 @@ pub use openapi::*;
 
 // Note: websocket module has its own 'handlers' module that conflicts with runtime::handlers
 // We selectively re-export websocket types to avoid ambiguity
-#[cfg(feature = "unstable-websocket")]
+#[cfg(feature = "websocket")]
 pub use websocket::{
     ConnectionInfo, WebSocketConfig, WebSocketManager, WsError, WsMessage, handlers as ws_handlers,
     protocol,

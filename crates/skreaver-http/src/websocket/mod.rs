@@ -39,12 +39,22 @@ pub struct WebSocketConfig {
     pub connection_timeout: Duration,
     /// Ping interval in seconds
     pub ping_interval: Duration,
+    /// Pong timeout in seconds (time to wait for pong after ping)
+    pub pong_timeout: Duration,
     /// Maximum message size in bytes
     pub max_message_size: usize,
     /// Enable message compression
     pub enable_compression: bool,
     /// Buffer size for incoming messages
     pub buffer_size: usize,
+    /// Maximum subscriptions per connection
+    pub max_subscriptions_per_connection: usize,
+    /// Maximum subscribers per channel
+    pub max_subscribers_per_channel: usize,
+    /// Maximum connections per IP address
+    pub max_connections_per_ip: usize,
+    /// Broadcast channel buffer size
+    pub broadcast_buffer_size: usize,
 }
 
 impl Default for WebSocketConfig {
@@ -53,9 +63,14 @@ impl Default for WebSocketConfig {
             max_connections: 1000,
             connection_timeout: Duration::from_secs(60),
             ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(10),
             max_message_size: 64 * 1024, // 64KB
             enable_compression: true,
             buffer_size: 100,
+            max_subscriptions_per_connection: 50,
+            max_subscribers_per_channel: 10000,
+            max_connections_per_ip: 10,
+            broadcast_buffer_size: 1000,
         }
     }
 }
@@ -186,6 +201,15 @@ pub enum WsError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Subscription limit exceeded: {current} subscriptions (max: {max})")]
+    SubscriptionLimitExceeded { current: usize, max: usize },
+
+    #[error("Channel subscriber limit exceeded: {current} subscribers (max: {max})")]
+    ChannelSubscriberLimitExceeded { current: usize, max: usize },
+
+    #[error("Rate limit exceeded for IP address")]
+    RateLimitExceeded,
 }
 
 impl WsError {
@@ -209,6 +233,17 @@ impl WsError {
             ),
             WsError::PermissionDenied => WsMessage::error("PERMISSION_DENIED", "Permission denied"),
             WsError::Internal(msg) => WsMessage::error("INTERNAL_ERROR", msg),
+            WsError::SubscriptionLimitExceeded { current, max } => WsMessage::error(
+                "SUBSCRIPTION_LIMIT_EXCEEDED",
+                &format!("Subscription limit exceeded: {} subscriptions (max: {})", current, max),
+            ),
+            WsError::ChannelSubscriberLimitExceeded { current, max } => WsMessage::error(
+                "CHANNEL_SUBSCRIBER_LIMIT_EXCEEDED",
+                &format!("Channel subscriber limit exceeded: {} subscribers (max: {})", current, max),
+            ),
+            WsError::RateLimitExceeded => {
+                WsMessage::error("RATE_LIMIT_EXCEEDED", "Rate limit exceeded for IP address")
+            }
         }
     }
 }
@@ -273,27 +308,44 @@ async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSock
     });
 
     let manager_clone = Arc::clone(&manager);
+    let max_message_size = manager.config.max_message_size;
     let receive_task = tokio::spawn(async move {
         while let Some(msg) = receiver.next().await {
             match msg {
-                Ok(Message::Text(text)) => match serde_json::from_str::<WsMessage>(&text) {
-                    Ok(ws_msg) => {
-                        if let Err(e) = manager_clone.handle_message(conn_id, ws_msg).await {
-                            error!("Error handling message from {}: {}", conn_id, e);
-                            let error_msg = e.to_message();
+                Ok(Message::Text(text)) => {
+                    // Validate message size before deserialization
+                    if text.len() > max_message_size {
+                        error!("Message too large from {}: {} bytes", conn_id, text.len());
+                        let error_msg = WsError::MessageTooLarge {
+                            size: text.len(),
+                            max: max_message_size,
+                        }
+                        .to_message();
+                        if tx.send(error_msg).await.is_err() {
+                            break;
+                        }
+                        continue;
+                    }
+
+                    match serde_json::from_str::<WsMessage>(&text) {
+                        Ok(ws_msg) => {
+                            if let Err(e) = manager_clone.handle_message(conn_id, ws_msg).await {
+                                error!("Error handling message from {}: {}", conn_id, e);
+                                let error_msg = e.to_message();
+                                if tx.send(error_msg).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Invalid JSON message from {}: {}", conn_id, e);
+                            let error_msg = WsError::InvalidMessage(e.to_string()).to_message();
                             if tx.send(error_msg).await.is_err() {
                                 break;
                             }
                         }
                     }
-                    Err(e) => {
-                        error!("Invalid JSON message from {}: {}", conn_id, e);
-                        let error_msg = WsError::InvalidMessage(e.to_string()).to_message();
-                        if tx.send(error_msg).await.is_err() {
-                            break;
-                        }
-                    }
-                },
+                }
                 Ok(Message::Binary(_)) => {
                     warn!("Binary messages not supported from {}", conn_id);
                 }
@@ -318,11 +370,23 @@ async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSock
         }
     });
 
-    // Wait for any task to complete
+    // Wait for any task to complete and handle panics
     tokio::select! {
-        _ = ping_task => {},
-        _ = send_task => {},
-        _ = receive_task => {},
+        result = ping_task => {
+            if let Err(e) = result {
+                error!("Ping task panicked for connection {}: {:?}", conn_id, e);
+            }
+        }
+        result = send_task => {
+            if let Err(e) = result {
+                error!("Send task panicked for connection {}: {:?}", conn_id, e);
+            }
+        }
+        result = receive_task => {
+            if let Err(e) = result {
+                error!("Receive task panicked for connection {}: {:?}", conn_id, e);
+            }
+        }
     }
 
     // Cleanup
@@ -340,9 +404,14 @@ mod tests {
         assert_eq!(config.max_connections, 1000);
         assert_eq!(config.connection_timeout, Duration::from_secs(60));
         assert_eq!(config.ping_interval, Duration::from_secs(30));
+        assert_eq!(config.pong_timeout, Duration::from_secs(10));
         assert_eq!(config.max_message_size, 64 * 1024);
         assert!(config.enable_compression);
         assert_eq!(config.buffer_size, 100);
+        assert_eq!(config.max_subscriptions_per_connection, 50);
+        assert_eq!(config.max_subscribers_per_channel, 10000);
+        assert_eq!(config.max_connections_per_ip, 10);
+        assert_eq!(config.broadcast_buffer_size, 1000);
     }
 
     #[test]
