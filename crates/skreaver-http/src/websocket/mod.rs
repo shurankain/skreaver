@@ -235,11 +235,17 @@ impl WsError {
             WsError::Internal(msg) => WsMessage::error("INTERNAL_ERROR", msg),
             WsError::SubscriptionLimitExceeded { current, max } => WsMessage::error(
                 "SUBSCRIPTION_LIMIT_EXCEEDED",
-                &format!("Subscription limit exceeded: {} subscriptions (max: {})", current, max),
+                &format!(
+                    "Subscription limit exceeded: {} subscriptions (max: {})",
+                    current, max
+                ),
             ),
             WsError::ChannelSubscriberLimitExceeded { current, max } => WsMessage::error(
                 "CHANNEL_SUBSCRIBER_LIMIT_EXCEEDED",
-                &format!("Channel subscriber limit exceeded: {} subscribers (max: {})", current, max),
+                &format!(
+                    "Channel subscriber limit exceeded: {} subscribers (max: {})",
+                    current, max
+                ),
             ),
             WsError::RateLimitExceeded => {
                 WsMessage::error("RATE_LIMIT_EXCEEDED", "Rate limit exceeded for IP address")

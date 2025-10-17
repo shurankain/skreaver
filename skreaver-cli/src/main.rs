@@ -6,7 +6,7 @@ mod scaffold;
 
 use agents::{run_echo_agent, run_multi_agent, run_reasoning_agent, run_standard_tools_agent};
 use perf::run_perf_command;
-use scaffold::{generate_agent, generate_tool};
+use scaffold::{generate_agent, generate_tool, list_templates};
 
 #[derive(Parser, Debug)]
 #[command(name = "skreaver", version = "0.3.0")]
@@ -51,6 +51,12 @@ enum Commands {
         /// Output directory
         #[arg(long)]
         output: String,
+    },
+    /// List available templates
+    List {
+        /// Template category (agents, tools)
+        #[arg(long, default_value = "tools")]
+        category: String,
     },
 }
 
@@ -172,6 +178,9 @@ fn main() {
                 eprintln!("❌ Error: {}", e);
                 std::process::exit(1);
             }
+        }
+        Commands::List { category } => {
+            list_templates(&category);
         }
     }
 }

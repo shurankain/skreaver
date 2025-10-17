@@ -153,7 +153,8 @@ async fn test_ip_rate_limiting() {
 async fn test_concurrent_subscription_race_condition() {
     // This test verifies the TOCTOU fix
     let config = WebSocketConfig::default();
-    let manager = Arc::new(WebSocketManager::new(config).with_auth_handler(Arc::new(TestAuthHandler)));
+    let manager =
+        Arc::new(WebSocketManager::new(config).with_auth_handler(Arc::new(TestAuthHandler)));
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
@@ -273,7 +274,9 @@ async fn test_broadcast_without_deadlock() {
 
         // Set authenticated and subscribe
         manager.test_set_authenticated(conn_id, "test_user").await;
-        manager.test_subscribe_channel(conn_id, "test_channel").await;
+        manager
+            .test_subscribe_channel(conn_id, "test_channel")
+            .await;
     }
 
     // Broadcast multiple messages concurrently

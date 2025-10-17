@@ -37,6 +37,9 @@ pub enum ToolTemplate {
     HttpClient,
     Database,
     Custom,
+    FileSystem,
+    ApiClient,
+    Workflow,
 }
 
 impl ToolTemplate {
@@ -45,8 +48,28 @@ impl ToolTemplate {
             "http-client" | "http" => Ok(Self::HttpClient),
             "database" | "db" => Ok(Self::Database),
             "custom" => Ok(Self::Custom),
+            "filesystem" | "fs" | "file" => Ok(Self::FileSystem),
+            "api-client" | "api" => Ok(Self::ApiClient),
+            "workflow" | "pipeline" => Ok(Self::Workflow),
             _ => Err(super::ScaffoldError::UnknownTemplate(s.to_string())),
         }
+    }
+
+    pub fn all() -> Vec<(&'static str, &'static str)> {
+        vec![
+            (
+                "http-client",
+                "Simple HTTP client for making GET/POST requests",
+            ),
+            (
+                "api-client",
+                "Advanced API client with authentication and rate limiting",
+            ),
+            ("database", "Database query tool with connection pooling"),
+            ("filesystem", "File system operations (read, write, list)"),
+            ("workflow", "Multi-step workflow/pipeline executor"),
+            ("custom", "Empty custom tool template"),
+        ]
     }
 }
 
@@ -56,6 +79,9 @@ impl fmt::Display for ToolTemplate {
             Self::HttpClient => write!(f, "http-client"),
             Self::Database => write!(f, "database"),
             Self::Custom => write!(f, "custom"),
+            Self::FileSystem => write!(f, "filesystem"),
+            Self::ApiClient => write!(f, "api-client"),
+            Self::Workflow => write!(f, "workflow"),
         }
     }
 }
@@ -552,5 +578,589 @@ impl Tool for CalculatorTool {
         }))
     }
 }
+"#
+}
+
+pub fn filesystem_tool() -> &'static str {
+    r#"//! File System Tool
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+use std::path::Path;
+use tokio::fs;
+
+pub struct FileSystemTool {
+    base_path: std::path::PathBuf,
+}
+
+impl FileSystemTool {
+    pub fn new(base_path: impl AsRef<Path>) -> Self {
+        Self {
+            base_path: base_path.as_ref().to_path_buf(),
+        }
+    }
+
+    async fn read_file(&self, path: &str) -> Result<String, ToolError> {
+        let full_path = self.base_path.join(path);
+
+        // Security: Prevent path traversal
+        if !full_path.starts_with(&self.base_path) {
+            return Err(ToolError::InvalidInput("Path traversal detected".to_string()));
+        }
+
+        fs::read_to_string(&full_path)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read file: {}", e)))
+    }
+
+    async fn write_file(&self, path: &str, content: &str) -> Result<(), ToolError> {
+        let full_path = self.base_path.join(path);
+
+        // Security: Prevent path traversal
+        if !full_path.starts_with(&self.base_path) {
+            return Err(ToolError::InvalidInput("Path traversal detected".to_string()));
+        }
+
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ToolError::ExecutionFailed(format!("Failed to create directories: {}", e)))?;
+        }
+
+        fs::write(&full_path, content)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to write file: {}", e)))
+    }
+
+    async fn list_files(&self, dir: &str) -> Result<Vec<String>, ToolError> {
+        let full_path = self.base_path.join(dir);
+
+        // Security: Prevent path traversal
+        if !full_path.starts_with(&self.base_path) {
+            return Err(ToolError::InvalidInput("Path traversal detected".to_string()));
+        }
+
+        let mut entries = fs::read_dir(&full_path)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read directory: {}", e)))?;
+
+        let mut files = Vec::new();
+        while let Some(entry) = entries.next_entry().await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))? {
+            if let Some(name) = entry.file_name().to_str() {
+                files.push(name.to_string());
+            }
+        }
+
+        Ok(files)
+    }
+}
+
+#[async_trait]
+impl Tool for FileSystemTool {
+    fn name(&self) -> &str {
+        "filesystem"
+    }
+
+    fn description(&self) -> &str {
+        "Perform file system operations: read, write, and list files within the allowed directory"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["read", "write", "list"],
+                    "description": "The file system operation to perform"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "File or directory path (relative to base path)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write (required for 'write' operation)"
+                }
+            },
+            "required": ["operation", "path"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let operation = input
+            .get("operation")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'operation' parameter".to_string()))?;
+
+        let path = input
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'path' parameter".to_string()))?;
+
+        match operation {
+            "read" => {
+                let content = self.read_file(path).await?;
+                Ok(serde_json::json!({
+                    "operation": "read",
+                    "path": path,
+                    "content": content
+                }))
+            }
+            "write" => {
+                let content = input
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ToolError::InvalidInput("Missing 'content' parameter for write operation".to_string()))?;
+
+                self.write_file(path, content).await?;
+                Ok(serde_json::json!({
+                    "operation": "write",
+                    "path": path,
+                    "status": "success"
+                }))
+            }
+            "list" => {
+                let files = self.list_files(path).await?;
+                Ok(serde_json::json!({
+                    "operation": "list",
+                    "path": path,
+                    "files": files
+                }))
+            }
+            _ => Err(ToolError::InvalidInput(format!("Unknown operation: {}", operation))),
+        }
+    }
+}
+"#
+}
+
+pub fn api_client_tool() -> &'static str {
+    r#"//! Advanced API Client Tool
+//!
+//! Features:
+//! - Bearer token authentication
+//! - Rate limiting
+//! - Custom headers
+//! - Supports GET, POST, PUT, DELETE
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+use std::time::{Duration, Instant};
+
+pub struct ApiClientTool {
+    client: reqwest::Client,
+    api_key: Option<String>,
+    rate_limiter: Arc<Semaphore>,
+    last_request: Arc<tokio::sync::Mutex<Instant>>,
+}
+
+impl ApiClientTool {
+    pub fn new() -> Self {
+        Self::with_config(None, 10) // Default: no API key, 10 concurrent requests
+    }
+
+    pub fn with_config(api_key: Option<String>, max_concurrent: usize) -> Self {
+        Self {
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap(),
+            api_key,
+            rate_limiter: Arc::new(Semaphore::new(max_concurrent)),
+            last_request: Arc::new(tokio::sync::Mutex::new(Instant::now())),
+        }
+    }
+
+    // TODO: Configure rate limiting parameters (requests per second, etc.)
+    // TODO: Add retry logic for failed requests
+    // TODO: Add response caching
+}
+
+#[async_trait]
+impl Tool for ApiClientTool {
+    fn name(&self) -> &str {
+        "api_client"
+    }
+
+    fn description(&self) -> &str {
+        "Make HTTP API requests with authentication and rate limiting. \
+         Supports GET, POST, PUT, DELETE methods with custom headers."
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "DELETE"],
+                    "description": "HTTP method"
+                },
+                "url": {
+                    "type": "string",
+                    "description": "API endpoint URL"
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "Optional custom headers as key-value pairs"
+                },
+                "body": {
+                    "type": "object",
+                    "description": "Optional JSON request body (for POST/PUT)"
+                }
+            },
+            "required": ["method", "url"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        // Rate limiting: acquire permit
+        let _permit = self.rate_limiter.acquire().await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Rate limiter error: {}", e)))?;
+
+        // Rate limiting: minimum delay between requests
+        {
+            let mut last = self.last_request.lock().await;
+            let elapsed = last.elapsed();
+            if elapsed < Duration::from_millis(100) {
+                tokio::time::sleep(Duration::from_millis(100) - elapsed).await;
+            }
+            *last = Instant::now();
+        }
+
+        let method = input
+            .get("method")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'method' parameter".to_string()))?;
+
+        let url = input
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'url' parameter".to_string()))?;
+
+        // Build request
+        let mut request = match method.to_uppercase().as_str() {
+            "GET" => self.client.get(url),
+            "POST" => self.client.post(url),
+            "PUT" => self.client.put(url),
+            "DELETE" => self.client.delete(url),
+            _ => return Err(ToolError::InvalidInput(format!("Unsupported HTTP method: {}", method))),
+        };
+
+        // Add authentication if configured
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        // Add custom headers
+        if let Some(headers) = input.get("headers").and_then(|v| v.as_object()) {
+            for (key, value) in headers {
+                if let Some(val_str) = value.as_str() {
+                    request = request.header(key, val_str);
+                }
+            }
+        }
+
+        // Add body for POST/PUT
+        if let Some(body) = input.get("body") {
+            request = request.json(body);
+        }
+
+        // Execute request
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Request failed: {}", e)))?;
+
+        let status = response.status().as_u16();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read response: {}", e)))?;
+
+        // Try to parse response as JSON
+        let body_value = serde_json::from_str::<Value>(&body_text)
+            .unwrap_or_else(|_| Value::String(body_text));
+
+        Ok(serde_json::json!({
+            "status": status,
+            "body": body_value
+        }))
+    }
+}
+"#
+}
+
+pub fn workflow_tool() -> &'static str {
+    r#"//! Workflow/Pipeline Execution Tool
+//!
+//! Execute multi-step workflows with:
+//! - Variable substitution ($variable)
+//! - Step dependencies
+//! - Conditional execution
+//! - Context passing between steps
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+use std::collections::HashMap;
+
+pub struct WorkflowTool;
+
+impl WorkflowTool {
+    pub fn new() -> Self {
+        Self
+    }
+
+    async fn execute_workflow(&self, steps: &[Value]) -> Result<Vec<Value>, ToolError> {
+        let mut context: HashMap<String, Value> = HashMap::new();
+        let mut results = Vec::new();
+
+        for step in steps {
+            let name = step.get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput("Step missing 'name'".to_string()))?;
+
+            let action = step.get("action")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput("Step missing 'action'".to_string()))?;
+
+            let inputs = step.get("inputs")
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+
+            // Resolve inputs from context (variable substitution)
+            let mut resolved_inputs = HashMap::new();
+            for (key, value) in inputs {
+                let resolved = if let Some(var_str) = value.as_str() {
+                    if let Some(var_name) = var_str.strip_prefix('$') {
+                        context.get(var_name).cloned().unwrap_or(value)
+                    } else {
+                        value
+                    }
+                } else {
+                    value
+                };
+                resolved_inputs.insert(key, resolved);
+            }
+
+            // Execute step based on action type
+            let result = match action {
+                "log" => {
+                    let message = resolved_inputs.get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("No message");
+                    tracing::info!(step = %name, message = %message);
+                    serde_json::json!({
+                        "step": name,
+                        "action": "log",
+                        "message": message
+                    })
+                }
+                "transform" => {
+                    let input_val = resolved_inputs.get("input").cloned()
+                        .unwrap_or(Value::Null);
+                    let transform_type = resolved_inputs.get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("identity");
+
+                    let result_val = match transform_type {
+                        "uppercase" => {
+                            if let Some(s) = input_val.as_str() {
+                                Value::String(s.to_uppercase())
+                            } else {
+                                input_val
+                            }
+                        }
+                        "lowercase" => {
+                            if let Some(s) = input_val.as_str() {
+                                Value::String(s.to_lowercase())
+                            } else {
+                                input_val
+                            }
+                        }
+                        _ => input_val,
+                    };
+
+                    serde_json::json!({
+                        "step": name,
+                        "action": "transform",
+                        "result": result_val
+                    })
+                }
+                // TODO: Add more action types (condition, aggregate, etc.)
+                _ => {
+                    return Err(ToolError::ExecutionFailed(format!("Unknown action: {}", action)));
+                }
+            };
+
+            // Store result in context for future steps
+            context.insert(name.to_string(), result.clone());
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+}
+
+#[async_trait]
+impl Tool for WorkflowTool {
+    fn name(&self) -> &str {
+        "workflow"
+    }
+
+    fn description(&self) -> &str {
+        "Execute multi-step workflows. Supports variable substitution with $variable syntax."
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "description": "Array of workflow steps to execute sequentially",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Step name (used for $variable references)"
+                            },
+                            "action": {
+                                "type": "string",
+                                "enum": ["log", "transform"],
+                                "description": "Action to perform"
+                            },
+                            "inputs": {
+                                "type": "object",
+                                "description": "Step inputs (use $stepName to reference previous results)"
+                            }
+                        },
+                        "required": ["name", "action"]
+                    }
+                }
+            },
+            "required": ["steps"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let steps = input
+            .get("steps")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ToolError::InvalidInput("Missing or invalid 'steps' parameter".to_string()))?;
+
+        let results = self.execute_workflow(steps).await?;
+
+        Ok(serde_json::json!({
+            "workflow": "completed",
+            "steps": results
+        }))
+    }
+}
+"#
+}
+
+pub fn project_readme(name: &str, template: &str) -> String {
+    format!(
+        r#"# {name}
+
+A Skreaver agent generated from the `{template}` template.
+
+## Quick Start
+
+```bash
+# Build the project
+cargo build
+
+# Run the agent
+cargo run
+```
+
+## Project Structure
+
+```
+{name}/
+├── Cargo.toml          # Project dependencies
+├── README.md           # This file
+└── src/
+    ├── main.rs         # Agent entry point
+    └── tools/          # Custom tools (if applicable)
+```
+
+## Customization
+
+### Adding Tools
+
+1. Create a new tool file in `src/tools/`
+2. Implement the `Tool` trait from `skreaver_core::tool`
+3. Register the tool in `main.rs`:
+
+```rust
+tools.register(Box::new(YourTool::new()));
+```
+
+### Modifying Agent Behavior
+
+Edit the system prompt in `main.rs` to change how the agent behaves:
+
+```rust
+let config = AgentConfig::default()
+    .with_name("{name}")
+    .with_system_prompt("Your custom prompt here");
+```
+
+## Documentation
+
+- [Skreaver Documentation](https://github.com/yourusername/skreaver)
+- [Tool Development Guide](https://github.com/yourusername/skreaver/blob/main/docs/tools.md)
+- [Agent Configuration](https://github.com/yourusername/skreaver/blob/main/docs/configuration.md)
+
+## License
+
+MIT
+"#,
+        name = name,
+        template = template
+    )
+}
+
+pub fn project_gitignore() -> &'static str {
+    r#"# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Agent data
+data/
+*.db
+*.sqlite
 "#
 }

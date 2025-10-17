@@ -235,7 +235,9 @@ impl WebSocketManager {
         let mut connections = self.connections.write().await;
         let subscriptions = self.subscriptions.write().await;
 
-        let state = connections.get_mut(&conn_id).ok_or(WsError::ConnectionClosed)?;
+        let state = connections
+            .get_mut(&conn_id)
+            .ok_or(WsError::ConnectionClosed)?;
 
         // Check authentication if auth handler is present
         if self.auth_handler.is_some() && !state.authenticated {
@@ -271,7 +273,9 @@ impl WebSocketManager {
         let mut subscriptions = self.subscriptions.write().await;
 
         // Re-check authentication after re-acquiring locks
-        let state = connections.get_mut(&conn_id).ok_or(WsError::ConnectionClosed)?;
+        let state = connections
+            .get_mut(&conn_id)
+            .ok_or(WsError::ConnectionClosed)?;
         if self.auth_handler.is_some() && !state.authenticated {
             return Err(WsError::AuthenticationFailed(
                 "Authentication required".to_string(),
