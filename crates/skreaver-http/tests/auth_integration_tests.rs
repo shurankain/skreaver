@@ -54,7 +54,7 @@ async fn test_public_endpoints_work_without_auth() {
         "/health should be accessible without auth"
     );
 
-    // Test /ready endpoint
+    // Test /ready endpoint (may return 200 or 503 depending on component health)
     let response = app
         .clone()
         .oneshot(
@@ -66,10 +66,10 @@ async fn test_public_endpoints_work_without_auth() {
         .await
         .unwrap();
 
-    assert_eq!(
-        response.status(),
-        StatusCode::OK,
-        "/ready should be accessible without auth"
+    assert!(
+        response.status() == StatusCode::OK || response.status() == StatusCode::SERVICE_UNAVAILABLE,
+        "/ready should be accessible without auth (got {})",
+        response.status()
     );
 
     // Test /metrics endpoint

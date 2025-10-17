@@ -973,23 +973,42 @@ mod tests {
         let runtime = create_test_runtime();
         let app = runtime.router();
 
-        // Public endpoints should work without auth
-        let endpoints = vec!["/health", "/ready", "/metrics"];
+        // Test /health endpoint
+        let request = Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Endpoint /health should be accessible without auth and return 200"
+        );
 
-        for endpoint in endpoints {
-            let request = Request::builder()
-                .uri(endpoint)
-                .body(Body::empty())
-                .unwrap();
+        // Test /ready endpoint (may return 200 or 503 depending on component health)
+        let request = Request::builder()
+            .uri("/ready")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert!(
+            response.status() == StatusCode::OK
+                || response.status() == StatusCode::SERVICE_UNAVAILABLE,
+            "Endpoint /ready should be accessible without auth (got {})",
+            response.status()
+        );
 
-            let response = app.clone().oneshot(request).await.unwrap();
-            assert_eq!(
-                response.status(),
-                StatusCode::OK,
-                "Endpoint {} should be accessible without auth",
-                endpoint
-            );
-        }
+        // Test /metrics endpoint
+        let request = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Endpoint /metrics should be accessible without auth and return 200"
+        );
     }
 
     #[tokio::test]
