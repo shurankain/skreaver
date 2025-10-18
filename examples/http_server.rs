@@ -7,7 +7,7 @@
 use skreaver::{
     Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryMemory, InMemoryToolRegistry,
     JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall,
-    runtime::HttpAgentRuntime,
+    runtime::{HttpAgentRuntime, shutdown_signal},
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -157,6 +157,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("       -H 'Content-Type: application/json' \\");
     println!("       -d '{{\"input\": \"demo_json\"}}'");
 
-    axum::serve(listener, app).await?;
+    // Start server with graceful shutdown
+    // This handles SIGTERM (from Kubernetes) and SIGINT (Ctrl+C)
+    println!();
+    println!("💡 Graceful shutdown enabled:");
+    println!("   - Send SIGTERM (kill <pid>) for graceful shutdown");
+    println!("   - Press Ctrl+C for graceful shutdown");
+    println!("   - All in-flight requests will be completed before shutdown");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    println!("✅ Server shutdown complete");
     Ok(())
 }

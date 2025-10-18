@@ -80,6 +80,8 @@ pub mod rate_limit;
 pub mod router;
 /// Security management and input validation.
 pub mod security;
+/// Graceful shutdown handling for production deployments.
+pub mod shutdown;
 /// Streaming responses for long-running operations.
 pub mod streaming;
 /// Type definitions for HTTP runtime (requests, responses, etc.).
@@ -97,3 +99,4 @@ pub use coordinator::Coordinator;
 pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};
 pub use security::{ApiKeyData, SecretKey, SecurityConfig};
+pub use shutdown::{shutdown_signal, shutdown_signal_with_timeout, shutdown_with_cleanup};
