@@ -12,6 +12,11 @@ use tracing::info;
 /// - SIGTERM (sent by Kubernetes during pod termination)
 /// - SIGINT (Ctrl+C for local development)
 ///
+/// # Panics
+///
+/// Panics if signal handlers cannot be installed (e.g., if signal handling is not supported
+/// on the platform or if another handler is already registered).
+///
 /// # Examples
 ///
 /// ```no_run
@@ -50,10 +55,10 @@ pub async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {
+        () = ctrl_c => {
             info!("Received SIGINT (Ctrl+C), initiating graceful shutdown");
         },
-        _ = terminate => {
+        () = terminate => {
             info!("Received SIGTERM, initiating graceful shutdown");
         },
     }
@@ -153,7 +158,6 @@ where
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tokio::time::timeout;
 
     #[tokio::test]
     async fn test_shutdown_signal_timeout() {
