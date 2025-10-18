@@ -98,7 +98,10 @@ pub async fn shutdown_signal() {
 pub async fn shutdown_signal_with_timeout(timeout: std::time::Duration) {
     shutdown_signal().await;
 
-    info!("Graceful shutdown initiated, waiting up to {:?} for connections to drain", timeout);
+    info!(
+        "Graceful shutdown initiated, waiting up to {:?} for connections to drain",
+        timeout
+    );
 
     // The timeout is enforced by Axum's graceful shutdown mechanism
     // This is just informational logging

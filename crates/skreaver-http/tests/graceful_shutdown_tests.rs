@@ -3,10 +3,12 @@
 //! These tests verify that the graceful shutdown signal handlers compile
 //! and integrate correctly with the HTTP runtime.
 
-use skreaver_http::runtime::{HttpAgentRuntime, shutdown_signal, shutdown_signal_with_timeout, shutdown_with_cleanup};
+use skreaver_http::runtime::{
+    HttpAgentRuntime, shutdown_signal, shutdown_signal_with_timeout, shutdown_with_cleanup,
+};
 use skreaver_tools::InMemoryToolRegistry;
-use tokio::net::TcpListener;
 use std::time::Duration;
+use tokio::net::TcpListener;
 
 /// Test that shutdown_signal compiles and can be used with axum::serve
 #[tokio::test]
@@ -20,8 +22,7 @@ async fn test_shutdown_signal_compiles() {
 
     // Create the server with graceful shutdown
     // We don't actually run it, just verify it compiles
-    let _server = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal());
+    let _server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
 
     // Test passes if this compiles
 }
@@ -55,8 +56,7 @@ async fn test_shutdown_with_cleanup_compiles() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     };
 
-    let _server = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_with_cleanup(cleanup));
+    let _server = axum::serve(listener, app).with_graceful_shutdown(shutdown_with_cleanup(cleanup));
 
     // Test passes if this compiles
 }
