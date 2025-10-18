@@ -97,10 +97,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create router
     let app = runtime.router();
 
-    // Start server
+    // Start server with graceful shutdown (CRITICAL for Kubernetes)
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
+}
+```
+
+**Note**: The `.with_graceful_shutdown()` call is **critical** for production Kubernetes deployments. It ensures:
+- ✅ Zero-downtime rolling updates
+- ✅ Safe pod termination without data loss
+- ✅ Graceful handling of SIGTERM signals from Kubernetes
+
+See [GRACEFUL_SHUTDOWN_IMPLEMENTATION.md](GRACEFUL_SHUTDOWN_IMPLEMENTATION.md) for details.
+
+Example with shutdown signal import:
+
+```rust
+use skreaver::{
+    Agent, HttpAgentRuntime, InMemoryToolRegistry,
+    runtime::shutdown_signal, // ← Import shutdown_signal
+};
+
+// ... agent setup ...
+
+axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 }
 ```
 
@@ -518,6 +543,9 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: skreaver-http
+      # Graceful shutdown configuration
+      # Allows time for in-flight requests to complete before forceful termination
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -1232,6 +1260,117 @@ velero backup create skreaver-backup \
    # Update DNS/ingress
    kubectl apply -f skreaver-ingress.yaml
    ```
+
+---
+
+## Graceful Shutdown
+
+**Status**: ✅ **Implemented** (v0.5.0)
+
+Skreaver now supports graceful shutdown for production Kubernetes deployments. This is **critical** for zero-downtime rolling updates.
+
+### What It Does
+
+When Kubernetes sends SIGTERM to terminate a pod:
+1. ✅ Server stops accepting new connections
+2. ✅ Existing in-flight requests complete
+3. ✅ Database transactions finish
+4. ✅ Tool executions complete
+5. ✅ Server shuts down cleanly
+
+**Result**: Zero request failures during rolling updates, scale-down, or pod evictions.
+
+### Implementation
+
+All examples in this guide include graceful shutdown:
+
+```rust
+use skreaver::runtime::{HttpAgentRuntime, shutdown_signal};
+
+axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal())  // ← This line is CRITICAL
+    .await?;
+```
+
+### Kubernetes Configuration
+
+```yaml
+spec:
+  template:
+    spec:
+      # Allow 30 seconds for graceful shutdown before SIGKILL
+      terminationGracePeriodSeconds: 30
+```
+
+**Recommended Values**:
+- **Standard web services**: 30 seconds (default)
+- **Long-running operations**: 60-90 seconds
+- **Batch processing**: 120+ seconds
+
+### Verification
+
+Test graceful shutdown locally:
+
+```bash
+# Start server
+cargo run --example http_server
+
+# Send SIGTERM (simulates Kubernetes pod termination)
+kill -TERM <pid>
+
+# Expected output:
+# Received SIGTERM, initiating graceful shutdown
+# Shutdown signal processed, Axum will now drain connections
+# ✅ Server shutdown complete
+```
+
+Test in Kubernetes:
+
+```bash
+# Trigger rolling update
+kubectl set image deployment/skreaver-http skreaver-http=myregistry/skreaver:v2
+
+# Watch pods terminate gracefully
+kubectl logs -f <old-pod-name>
+
+# Expected: No 502/503 errors during rollout
+```
+
+### Advanced Usage
+
+**With custom timeout**:
+```rust
+use skreaver::runtime::shutdown_signal_with_timeout;
+use std::time::Duration;
+
+axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_signal_with_timeout(Duration::from_secs(60)))
+    .await?;
+```
+
+**With cleanup tasks**:
+```rust
+use skreaver::runtime::shutdown_with_cleanup;
+
+let cleanup = || async {
+    println!("Flushing metrics...");
+    metrics_client.flush().await;
+    println!("Closing database connections...");
+    db_pool.close().await;
+};
+
+axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown_with_cleanup(cleanup))
+    .await?;
+```
+
+### Documentation
+
+See [GRACEFUL_SHUTDOWN_IMPLEMENTATION.md](GRACEFUL_SHUTDOWN_IMPLEMENTATION.md) for:
+- Complete implementation details
+- Performance impact analysis
+- Kubernetes best practices
+- Testing procedures
 
 ---
 
