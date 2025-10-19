@@ -33,6 +33,15 @@ pub struct CoreMetrics {
     // HTTP metrics (for skreaver-http integration)
     pub http_requests_total: CounterVec, // cardinality: ≤30
     pub http_request_duration_seconds: HistogramVec, // cardinality: ≤30
+    pub http_requests_by_status: CounterVec, // cardinality: ≤30 (route, method, status_code)
+    pub http_request_size_bytes: HistogramVec, // cardinality: ≤30 (route, method)
+    pub http_response_size_bytes: HistogramVec, // cardinality: ≤30 (route, method)
+    pub http_requests_in_flight: Gauge,  // cardinality: 1
+
+    // Per-agent metrics
+    pub agent_requests_total: CounterVec, // cardinality: dynamic (agent_id, operation)
+    pub agent_errors_by_type: CounterVec, // cardinality: dynamic (agent_id, error_type)
+    pub agent_tool_executions: CounterVec, // cardinality: dynamic (agent_id, tool)
 
     // Security metrics (GAP-003 & GAP-004 resolution)
     pub security_auth_attempts_total: CounterVec, // cardinality: ≤5 (result: success|failure|invalid)
@@ -141,6 +150,77 @@ impl CoreMetrics {
             &["limit_type"]
         )?;
 
+        // Enhanced HTTP metrics
+        let http_requests_by_status = register_counter_vec!(
+            Opts::new(
+                format!("{}_http_requests_by_status", namespace),
+                "Total HTTP requests by route, method, and status code"
+            ),
+            &["route", "method", "status"]
+        )?;
+
+        let http_request_size_bytes = register_histogram_vec!(
+            HistogramOpts::new(
+                format!("{}_http_request_size_bytes", namespace),
+                "HTTP request body size in bytes"
+            )
+            .buckets(vec![
+                100.0,
+                1_000.0,
+                10_000.0,
+                100_000.0,
+                1_000_000.0,
+                10_000_000.0
+            ]),
+            &["route", "method"]
+        )?;
+
+        let http_response_size_bytes = register_histogram_vec!(
+            HistogramOpts::new(
+                format!("{}_http_response_size_bytes", namespace),
+                "HTTP response body size in bytes"
+            )
+            .buckets(vec![
+                100.0,
+                1_000.0,
+                10_000.0,
+                100_000.0,
+                1_000_000.0,
+                10_000_000.0
+            ]),
+            &["route", "method"]
+        )?;
+
+        let http_requests_in_flight = register_gauge!(Opts::new(
+            format!("{}_http_requests_in_flight", namespace),
+            "Number of HTTP requests currently being processed"
+        ))?;
+
+        // Per-agent metrics
+        let agent_requests_total = register_counter_vec!(
+            Opts::new(
+                format!("{}_agent_requests_total", namespace),
+                "Total requests per agent by operation"
+            ),
+            &["agent_id", "operation"]
+        )?;
+
+        let agent_errors_by_type = register_counter_vec!(
+            Opts::new(
+                format!("{}_agent_errors_by_type", namespace),
+                "Total errors per agent by error type"
+            ),
+            &["agent_id", "error_type"]
+        )?;
+
+        let agent_tool_executions = register_counter_vec!(
+            Opts::new(
+                format!("{}_agent_tool_executions", namespace),
+                "Total tool executions per agent"
+            ),
+            &["agent_id", "tool"]
+        )?;
+
         Ok(Self {
             agent_sessions_active,
             agent_errors_total,
@@ -149,6 +229,13 @@ impl CoreMetrics {
             memory_ops_total,
             http_requests_total,
             http_request_duration_seconds,
+            http_requests_by_status,
+            http_request_size_bytes,
+            http_response_size_bytes,
+            http_requests_in_flight,
+            agent_requests_total,
+            agent_errors_by_type,
+            agent_tool_executions,
             security_auth_attempts_total,
             security_rbac_checks_total,
             security_policy_violations_total,
@@ -294,6 +381,105 @@ impl MetricsRegistry {
             .with_label_values(&[route, method])
             .observe(duration.as_secs_f64());
 
+        Ok(())
+    }
+
+    /// Record HTTP request with enhanced metrics (status code, request/response sizes)
+    ///
+    /// # Errors
+    ///
+    /// Returns error if cardinality limits are exceeded
+    pub fn record_http_request_detailed(
+        &self,
+        route: &str,
+        method: &str,
+        status_code: u16,
+        duration: std::time::Duration,
+        request_size: usize,
+        response_size: usize,
+    ) -> Result<(), MetricsError> {
+        // Record basic metrics
+        self.record_http_request(route, method, duration)?;
+
+        // Record status code
+        let status = status_code.to_string();
+        self.core_metrics
+            .http_requests_by_status
+            .with_label_values(&[route, method, &status])
+            .inc();
+
+        // Record request/response sizes
+        self.core_metrics
+            .http_request_size_bytes
+            .with_label_values(&[route, method])
+            .observe(request_size as f64);
+
+        self.core_metrics
+            .http_response_size_bytes
+            .with_label_values(&[route, method])
+            .observe(response_size as f64);
+
+        Ok(())
+    }
+
+    /// Increment in-flight requests counter
+    pub fn inc_requests_in_flight(&self) {
+        self.core_metrics.http_requests_in_flight.inc();
+    }
+
+    /// Decrement in-flight requests counter
+    pub fn dec_requests_in_flight(&self) {
+        self.core_metrics.http_requests_in_flight.dec();
+    }
+
+    /// Record per-agent request
+    ///
+    /// # Errors
+    ///
+    /// Returns error if recording fails
+    pub fn record_agent_request(
+        &self,
+        agent_id: &str,
+        operation: &str,
+    ) -> Result<(), MetricsError> {
+        self.core_metrics
+            .agent_requests_total
+            .with_label_values(&[agent_id, operation])
+            .inc();
+        Ok(())
+    }
+
+    /// Record per-agent error
+    ///
+    /// # Errors
+    ///
+    /// Returns error if recording fails
+    pub fn record_agent_error_by_type(
+        &self,
+        agent_id: &str,
+        error_type: &str,
+    ) -> Result<(), MetricsError> {
+        self.core_metrics
+            .agent_errors_by_type
+            .with_label_values(&[agent_id, error_type])
+            .inc();
+        Ok(())
+    }
+
+    /// Record per-agent tool execution
+    ///
+    /// # Errors
+    ///
+    /// Returns error if recording fails
+    pub fn record_agent_tool_execution(
+        &self,
+        agent_id: &str,
+        tool: &str,
+    ) -> Result<(), MetricsError> {
+        self.core_metrics
+            .agent_tool_executions
+            .with_label_values(&[agent_id, tool])
+            .inc();
         Ok(())
     }
 
