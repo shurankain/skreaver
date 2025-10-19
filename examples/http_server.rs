@@ -7,7 +7,7 @@
 use skreaver::{
     Agent, ExecutionResult, FileReadTool, HttpGetTool, InMemoryMemory, InMemoryToolRegistry,
     JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall,
-    runtime::{HttpAgentRuntime, shutdown_signal},
+    runtime::{HttpAgentRuntime, HttpRuntimeConfigBuilder, shutdown_signal},
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -102,6 +102,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Starting Skreaver HTTP Server Example");
     println!("========================================");
 
+    // Load configuration from environment variables
+    // This allows runtime configuration without rebuilding the application.
+    // See config module documentation for all available environment variables.
+    let config = HttpRuntimeConfigBuilder::from_env()
+        .map_err(|e| format!("Failed to load config from environment: {}", e))?
+        .build()
+        .map_err(|e| format!("Failed to validate config: {}", e))?;
+
+    println!("📋 Configuration loaded:");
+    println!(
+        "   - Request timeout: {} seconds",
+        config.request_timeout_secs
+    );
+    println!(
+        "   - Max body size: {} MB",
+        config.max_body_size / (1024 * 1024)
+    );
+    println!("   - CORS enabled: {}", config.enable_cors);
+    println!(
+        "   - Rate limit (global): {} req/min",
+        config.rate_limit.global_rpm
+    );
+    println!(
+        "   - Rate limit (per IP): {} req/min",
+        config.rate_limit.per_ip_rpm
+    );
+    println!(
+        "   - Backpressure max queue: {}",
+        config.backpressure.max_queue_size
+    );
+    println!();
+
     // Create tool registry with standard tools
     let registry = InMemoryToolRegistry::new()
         .with_tool("http_get", Arc::new(HttpGetTool::new()))
@@ -109,8 +141,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_tool("text_uppercase", Arc::new(TextUppercaseTool::new()))
         .with_tool("json_parse", Arc::new(JsonParseTool::new()));
 
-    // Create HTTP runtime
-    let runtime = HttpAgentRuntime::new(registry);
+    // Create HTTP runtime with environment-based configuration
+    let runtime = HttpAgentRuntime::with_config(registry, config);
 
     // Create and add demo agents
     let demo_agent_1 = HttpDemoAgent {

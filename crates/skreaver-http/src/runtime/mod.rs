@@ -64,6 +64,8 @@ pub mod api_types;
 pub mod auth;
 /// Backpressure and request queue management.
 pub mod backpressure;
+/// Environment-based configuration loading.
+pub mod config;
 /// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
 /// API documentation endpoints.
@@ -95,6 +97,7 @@ pub use api_types::{
     AgentObservation, AgentResponse, AgentSpec, AgentType, DeliveryError, ResponseDelivery,
 };
 pub use backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, RequestPriority};
+pub use config::{ConfigError, HttpRuntimeConfigBuilder};
 pub use coordinator::Coordinator;
 pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};
