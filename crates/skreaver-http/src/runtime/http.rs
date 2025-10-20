@@ -38,6 +38,8 @@ pub struct HttpAgentRuntime<T: ToolRegistry> {
     pub agent_factory: Arc<AgentFactory>,
     /// Security configuration loaded from file or defaults
     pub security_config: Arc<SecurityConfig>,
+    /// Connection tracker for HTTP connection limits
+    pub connection_tracker: Arc<crate::runtime::connection_limits::ConnectionTracker>,
 }
 
 /// HTTP runtime configuration
@@ -200,6 +202,17 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         agent_factory.register_builder(Box::new(AdvancedAgentBuilder));
         agent_factory.register_builder(Box::new(AnalyticsAgentBuilder));
 
+        // Create connection tracker with configuration
+        let connection_tracker = Arc::new(
+            crate::runtime::connection_limits::ConnectionTracker::new(config.connection_limits.clone())
+        );
+        tracing::info!(
+            "Connection limits enabled: max={}, per_ip={}, enabled={}",
+            config.connection_limits.max_connections,
+            config.connection_limits.max_connections_per_ip,
+            config.connection_limits.enabled
+        );
+
         Self {
             agents: agent_factory.agents(),
             tool_registry: Arc::new(secure_registry),
@@ -207,6 +220,7 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             backpressure_manager,
             agent_factory: Arc::new(agent_factory),
             security_config: security_config_arc,
+            connection_tracker,
         }
     }
 

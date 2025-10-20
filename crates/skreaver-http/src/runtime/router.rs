@@ -8,10 +8,12 @@ use axum::{
 };
 use skreaver_tools::ToolRegistry;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use std::sync::Arc;
 
 use crate::runtime::{
     HttpAgentRuntime, HttpRuntimeConfig,
     auth::require_auth,
+    connection_limits::connection_limit_middleware,
     docs::{openapi_spec, swagger_ui},
     handlers::{
         batch_observe_agent,
@@ -44,6 +46,9 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
 
     /// Create the Axum router with custom configuration
     pub fn router_with_config(self, config: HttpRuntimeConfig) -> Router {
+        // Clone connection tracker for middleware
+        let connection_tracker = Arc::clone(&self.connection_tracker);
+
         // Protected routes - require authentication
         // Use route_layer to apply middleware to specific routes before merging
         let protected_routes = Router::new()
@@ -77,6 +82,11 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             .merge(protected_routes)
             .with_state(self)
             .layer(TraceLayer::new_for_http());
+
+        // Add connection limit middleware (applies to all routes)
+        router = router.layer(middleware::from_fn(move |addr, req, next| {
+            connection_limit_middleware(addr, Arc::clone(&connection_tracker), req, next)
+        }));
 
         // Add CORS if enabled
         if config.enable_cors {

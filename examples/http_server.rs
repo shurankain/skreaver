@@ -197,7 +197,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   - Press Ctrl+C for graceful shutdown");
     println!("   - All in-flight requests will be completed before shutdown");
 
-    axum::serve(listener, app)
+    // Serve with ConnectInfo to enable IP tracking for connection limits
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>()
+    )
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
