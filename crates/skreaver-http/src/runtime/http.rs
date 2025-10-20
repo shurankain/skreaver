@@ -47,6 +47,8 @@ pub struct HttpRuntimeConfig {
     pub rate_limit: RateLimitConfig,
     /// Backpressure and queue management configuration
     pub backpressure: BackpressureConfig,
+    /// Connection limits configuration
+    pub connection_limits: crate::runtime::connection_limits::ConnectionLimitConfig,
     /// Request timeout in seconds
     pub request_timeout_secs: u64,
     /// Maximum request body size in bytes
@@ -67,6 +69,7 @@ impl Default for HttpRuntimeConfig {
         Self {
             rate_limit: RateLimitConfig::default(),
             backpressure: BackpressureConfig::default(),
+            connection_limits: crate::runtime::connection_limits::ConnectionLimitConfig::default(),
             request_timeout_secs: 30,
             max_body_size: 16 * 1024 * 1024, // 16MB
             enable_cors: true,

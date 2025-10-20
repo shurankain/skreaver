@@ -66,6 +66,8 @@ pub mod auth;
 pub mod backpressure;
 /// Environment-based configuration loading.
 pub mod config;
+/// HTTP connection limits and tracking.
+pub mod connection_limits;
 /// Central coordinator for agent execution and tool dispatch.
 pub mod coordinator;
 /// API documentation endpoints.
@@ -98,6 +100,7 @@ pub use api_types::{
 };
 pub use backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, RequestPriority};
 pub use config::{ConfigError, HttpRuntimeConfigBuilder};
+pub use connection_limits::{ConnectionLimitConfig, ConnectionStats, ConnectionTracker};
 pub use coordinator::Coordinator;
 pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};

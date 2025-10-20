@@ -36,7 +36,8 @@
 //! - `SKREAVER_OBSERVABILITY_NAMESPACE` - Metrics namespace prefix (default: "skreaver")
 
 use crate::runtime::{
-    HttpRuntimeConfig, backpressure::BackpressureConfig, rate_limit::RateLimitConfig,
+    HttpRuntimeConfig, backpressure::BackpressureConfig, connection_limits::ConnectionLimitConfig,
+    rate_limit::RateLimitConfig,
 };
 use skreaver_observability::ObservabilityConfig;
 use std::{env, path::PathBuf, time::Duration};
@@ -56,6 +57,7 @@ pub enum ConfigError {
 pub struct HttpRuntimeConfigBuilder {
     rate_limit: RateLimitConfig,
     backpressure: BackpressureConfig,
+    connection_limits: ConnectionLimitConfig,
     request_timeout_secs: u64,
     max_body_size: usize,
     enable_cors: bool,
@@ -69,6 +71,7 @@ impl Default for HttpRuntimeConfigBuilder {
         Self {
             rate_limit: RateLimitConfig::default(),
             backpressure: BackpressureConfig::default(),
+            connection_limits: ConnectionLimitConfig::default(),
             request_timeout_secs: 30,
             max_body_size: 16 * 1024 * 1024, // 16MB
             enable_cors: true,
@@ -153,6 +156,19 @@ impl HttpRuntimeConfigBuilder {
         }
         builder = builder.backpressure(backpressure);
 
+        // Connection Limits
+        let mut connection_limits = ConnectionLimitConfig::default();
+        if let Some(max) = get_env_usize("SKREAVER_CONNECTION_LIMIT_MAX")? {
+            connection_limits.max_connections = max;
+        }
+        if let Some(max_per_ip) = get_env_usize("SKREAVER_CONNECTION_LIMIT_PER_IP")? {
+            connection_limits.max_connections_per_ip = max_per_ip;
+        }
+        if let Some(enabled) = get_env_bool("SKREAVER_CONNECTION_LIMIT_ENABLED")? {
+            connection_limits.enabled = enabled;
+        }
+        builder = builder.connection_limits(connection_limits);
+
         // Observability
         let mut observability = ObservabilityConfig::default();
         if let Some(enable) = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_METRICS")? {
@@ -186,6 +202,13 @@ impl HttpRuntimeConfigBuilder {
     #[must_use]
     pub fn backpressure(mut self, backpressure: BackpressureConfig) -> Self {
         self.backpressure = backpressure;
+        self
+    }
+
+    /// Set connection limits configuration
+    #[must_use]
+    pub fn connection_limits(mut self, connection_limits: ConnectionLimitConfig) -> Self {
+        self.connection_limits = connection_limits;
         self
     }
 
@@ -243,6 +266,7 @@ impl HttpRuntimeConfigBuilder {
         Ok(HttpRuntimeConfig {
             rate_limit: self.rate_limit,
             backpressure: self.backpressure,
+            connection_limits: self.connection_limits,
             request_timeout_secs: self.request_timeout_secs,
             max_body_size: self.max_body_size,
             enable_cors: self.enable_cors,
