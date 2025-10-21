@@ -9,7 +9,8 @@ use skreaver::{
     JsonParseTool, MemoryReader, MemoryUpdate, MemoryWriter, TextUppercaseTool, ToolCall,
     runtime::{
         HttpAgentRuntime, HttpRuntimeConfig, auth::create_jwt_token,
-        backpressure::BackpressureConfig, rate_limit::RateLimitConfig,
+        backpressure::BackpressureConfig, connection_limits::ConnectionLimitConfig,
+        rate_limit::RateLimitConfig,
     },
 };
 use std::sync::Arc;
@@ -244,6 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let http_config = HttpRuntimeConfig {
         rate_limit: rate_config,
         backpressure: BackpressureConfig::default(),
+        connection_limits: ConnectionLimitConfig::default(),
         request_timeout_secs: 30,
         max_body_size: 16 * 1024 * 1024, // 16MB
         enable_cors: true,
