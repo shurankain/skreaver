@@ -6,7 +6,7 @@
 //! Similar to WebSocket connection limits, but for regular HTTP connections.
 
 use axum::{
-    extract::ConnectInfo,
+    extract::{ConnectInfo, FromRequestParts},
     http::{Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -198,13 +198,27 @@ impl Drop for ConnectionGuard {
 }
 
 /// Middleware for connection tracking and limiting
+///
+/// This middleware tracks and limits HTTP connections both globally and per-IP.
+/// It gracefully handles missing ConnectInfo (e.g., in tests) by using a default IP.
 pub async fn connection_limit_middleware(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    tracker: Arc<ConnectionTracker>,
-    request: Request<axum::body::Body>,
+    axum::extract::State(tracker): axum::extract::State<Arc<ConnectionTracker>>,
+    mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    let ip = addr.ip();
+    // Try to extract ConnectInfo, fallback to 127.0.0.1 for tests/environments without it
+    let (mut parts, body) = request.into_parts();
+
+    let ip = match ConnectInfo::<SocketAddr>::from_request_parts(&mut parts, &()).await {
+        Ok(ConnectInfo(addr)) => addr.ip(),
+        Err(_) => {
+            // No ConnectInfo available (e.g., in tests), use default
+            "127.0.0.1".parse().unwrap()
+        }
+    };
+
+    // Reconstruct request
+    request = Request::from_parts(parts, body);
 
     // Check limits before processing
     if let Err(status) = tracker.check_limits(ip).await {

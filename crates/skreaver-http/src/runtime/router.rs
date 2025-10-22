@@ -84,9 +84,11 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             .layer(TraceLayer::new_for_http());
 
         // Add connection limit middleware (applies to all routes)
-        router = router.layer(middleware::from_fn(move |addr, req, next| {
-            connection_limit_middleware(addr, Arc::clone(&connection_tracker), req, next)
-        }));
+        // Use from_fn_with_state to pass the tracker as state
+        router = router.layer(middleware::from_fn_with_state(
+            connection_tracker,
+            connection_limit_middleware,
+        ));
 
         // Add CORS if enabled
         if config.enable_cors {
