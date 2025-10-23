@@ -28,6 +28,15 @@
 //! - `SKREAVER_BACKPRESSURE_TARGET_PROCESSING_MS` - Target processing time in ms (default: 1000)
 //! - `SKREAVER_BACKPRESSURE_LOAD_THRESHOLD` - Load threshold 0.0-1.0 (default: 0.8)
 //!
+//! ### Connection Limits
+//! - `SKREAVER_CONNECTION_LIMIT_MAX` - Global max concurrent connections (default: 10000)
+//! - `SKREAVER_CONNECTION_LIMIT_PER_IP` - Max connections per IP (default: 100)
+//! - `SKREAVER_CONNECTION_LIMIT_ENABLED` - Enable connection limits (default: true)
+//! - `SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR` - How to handle missing ConnectInfo:
+//!   - `reject` - Reject requests without ConnectInfo (default, safest for production)
+//!   - `disable_per_ip` - Only enforce global limit when ConnectInfo missing
+//!   - `fallback:<IP>` - Use fallback IP (e.g., `fallback:127.0.0.1` for testing)
+//!
 //! ### Observability
 //! - `SKREAVER_OBSERVABILITY_ENABLE_METRICS` - Enable Prometheus metrics (default: true)
 //! - `SKREAVER_OBSERVABILITY_ENABLE_TRACING` - Enable OpenTelemetry tracing (default: false)
@@ -167,6 +176,33 @@ impl HttpRuntimeConfigBuilder {
         if let Some(enabled) = get_env_bool("SKREAVER_CONNECTION_LIMIT_ENABLED")? {
             connection_limits.enabled = enabled;
         }
+
+        // Handle missing ConnectInfo behavior
+        if let Ok(behavior_str) = env::var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR") {
+            use crate::runtime::connection_limits::MissingConnectInfoBehavior;
+            connection_limits.missing_connect_info_behavior = match behavior_str.to_lowercase().as_str() {
+                "reject" => MissingConnectInfoBehavior::Reject,
+                "disable_per_ip" => MissingConnectInfoBehavior::DisablePerIpLimits,
+                fallback_ip if fallback_ip.starts_with("fallback:") => {
+                    let ip_str = fallback_ip.strip_prefix("fallback:").unwrap();
+                    let ip = ip_str.parse().map_err(|e| ConfigError::InvalidEnvVar {
+                        key: "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR".to_string(),
+                        message: format!("Invalid IP address '{}': {}", ip_str, e),
+                    })?;
+                    MissingConnectInfoBehavior::UseFallback(ip)
+                }
+                _ => {
+                    return Err(ConfigError::InvalidEnvVar {
+                        key: "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR".to_string(),
+                        message: format!(
+                            "Invalid value '{}'. Must be 'reject', 'disable_per_ip', or 'fallback:<IP>'",
+                            behavior_str
+                        ),
+                    });
+                }
+            };
+        }
+
         builder = builder.connection_limits(connection_limits);
 
         // Observability

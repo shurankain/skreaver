@@ -22,6 +22,41 @@ use std::{
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
+/// Behavior when ConnectInfo is missing from the request
+///
+/// This determines how the connection limit middleware handles requests
+/// that don't have client IP information (e.g., behind certain proxies).
+#[derive(Debug, Clone, PartialEq)]
+pub enum MissingConnectInfoBehavior {
+    /// Reject requests without ConnectInfo with 400 Bad Request
+    ///
+    /// Safest option for production. Requires proxy to forward client IP.
+    /// Use X-Forwarded-For header or PROXY protocol with your load balancer.
+    Reject,
+
+    /// Use a fallback IP address for tracking
+    ///
+    /// Useful for development/testing, but in production this means all
+    /// requests without ConnectInfo share the same connection limit.
+    /// This can cause legitimate users to be rate-limited together.
+    UseFallback(IpAddr),
+
+    /// Disable per-IP limits when ConnectInfo is missing
+    ///
+    /// Only global connection limit is enforced. Use when you trust the
+    /// infrastructure and want to allow requests through.
+    DisablePerIpLimits,
+}
+
+impl Default for MissingConnectInfoBehavior {
+    fn default() -> Self {
+        // Default to fallback for ease of development and testing
+        // Production deployments should explicitly configure this to Reject for maximum security
+        // via environment variable: SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR=reject
+        Self::UseFallback("127.0.0.1".parse().unwrap())
+    }
+}
+
 /// Configuration for HTTP connection limits
 #[derive(Debug, Clone)]
 pub struct ConnectionLimitConfig {
@@ -31,6 +66,8 @@ pub struct ConnectionLimitConfig {
     pub max_connections_per_ip: usize,
     /// Enable connection limiting (default: true)
     pub enabled: bool,
+    /// Behavior when ConnectInfo is missing from request
+    pub missing_connect_info_behavior: MissingConnectInfoBehavior,
 }
 
 impl Default for ConnectionLimitConfig {
@@ -39,6 +76,7 @@ impl Default for ConnectionLimitConfig {
             max_connections: 10_000,
             max_connections_per_ip: 100,
             enabled: true,
+            missing_connect_info_behavior: MissingConnectInfoBehavior::default(),
         }
     }
 }
@@ -72,6 +110,11 @@ impl ConnectionTracker {
     pub async fn connections_for_ip(&self, ip: &IpAddr) -> usize {
         let connections = self.connections_per_ip.read().await;
         connections.get(ip).copied().unwrap_or(0)
+    }
+
+    /// Get a reference to the configuration
+    pub fn config(&self) -> &ConnectionLimitConfig {
+        &self.config
     }
 
     /// Check if we can accept a new connection from the given IP
@@ -200,49 +243,90 @@ impl Drop for ConnectionGuard {
 /// Middleware for connection tracking and limiting
 ///
 /// This middleware tracks and limits HTTP connections both globally and per-IP.
-/// It gracefully handles missing ConnectInfo (e.g., in tests) by using a default IP.
+/// It handles missing ConnectInfo based on the configured behavior.
 pub async fn connection_limit_middleware(
     axum::extract::State(tracker): axum::extract::State<Arc<ConnectionTracker>>,
     mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    // Try to extract ConnectInfo, fallback to 127.0.0.1 for tests/environments without it
+    // Try to extract ConnectInfo
     let (mut parts, body) = request.into_parts();
 
-    let ip = match ConnectInfo::<SocketAddr>::from_request_parts(&mut parts, &()).await {
-        Ok(ConnectInfo(addr)) => addr.ip(),
+    let ip_option = match ConnectInfo::<SocketAddr>::from_request_parts(&mut parts, &()).await {
+        Ok(ConnectInfo(addr)) => Some(addr.ip()),
         Err(_) => {
-            // No ConnectInfo available (e.g., in tests), use default
-            "127.0.0.1".parse().unwrap()
+            // No ConnectInfo available - handle based on configuration
+            match &tracker.config.missing_connect_info_behavior {
+                MissingConnectInfoBehavior::Reject => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        "Missing connection info. Configure your proxy to forward client IP addresses."
+                    ).into_response();
+                }
+                MissingConnectInfoBehavior::UseFallback(fallback_ip) => {
+                    debug!("ConnectInfo missing, using fallback IP: {}", fallback_ip);
+                    Some(*fallback_ip)
+                }
+                MissingConnectInfoBehavior::DisablePerIpLimits => {
+                    debug!("ConnectInfo missing, per-IP limits disabled for this request");
+                    None
+                }
+            }
         }
     };
 
     // Reconstruct request
     request = Request::from_parts(parts, body);
 
-    // Check limits before processing
-    if let Err(status) = tracker.check_limits(ip).await {
+    // Check global limit first (always enforced)
+    let total = tracker.active_connections.load(Ordering::Relaxed);
+    if total >= tracker.config.max_connections {
+        warn!(
+            "Global connection limit exceeded: {} >= {}",
+            total, tracker.config.max_connections
+        );
         return (
-            status,
+            StatusCode::SERVICE_UNAVAILABLE,
             format!(
-                "Connection limit exceeded. Try again later. (Global: {}/{}, Per-IP: {}/{})",
-                tracker.active_connections(),
-                tracker.config.max_connections,
-                tracker.connections_for_ip(&ip).await,
-                tracker.config.max_connections_per_ip
+                "Global connection limit exceeded: {}/{}",
+                total, tracker.config.max_connections
             ),
         )
             .into_response();
     }
 
-    // Increment counters
-    tracker.increment(ip).await;
+    // If we have an IP, check per-IP limits and track
+    if let Some(ip) = ip_option {
+        // Check per-IP limit
+        if let Err(status) = tracker.check_limits(ip).await {
+            return (
+                status,
+                format!(
+                    "Connection limit exceeded. Try again later. (Global: {}/{}, Per-IP: {}/{})",
+                    tracker.active_connections(),
+                    tracker.config.max_connections,
+                    tracker.connections_for_ip(&ip).await,
+                    tracker.config.max_connections_per_ip
+                ),
+            )
+                .into_response();
+        }
 
-    // Create guard to ensure decrement on drop
-    let _guard = ConnectionGuard::new(tracker.as_ref().clone(), ip);
+        // Increment counters
+        tracker.increment(ip).await;
 
-    // Process request
-    next.run(request).await
+        // Create guard to ensure decrement on drop
+        let _guard = ConnectionGuard::new(tracker.as_ref().clone(), ip);
+
+        // Process request
+        next.run(request).await
+    } else {
+        // No IP tracking - only global limit enforced
+        tracker.active_connections.fetch_add(1, Ordering::Relaxed);
+        let response = next.run(request).await;
+        tracker.active_connections.fetch_sub(1, Ordering::Relaxed);
+        response
+    }
 }
 
 #[cfg(test)]
@@ -255,6 +339,9 @@ mod tests {
             max_connections: 100,
             max_connections_per_ip: 10,
             enabled: true,
+            missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
+                "127.0.0.1".parse().unwrap()
+            ),
         };
         let tracker = ConnectionTracker::new(config);
 
@@ -278,6 +365,9 @@ mod tests {
             max_connections: 2,
             max_connections_per_ip: 10,
             enabled: true,
+            missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
+                "127.0.0.1".parse().unwrap()
+            ),
         };
         let tracker = ConnectionTracker::new(config);
 
@@ -305,6 +395,9 @@ mod tests {
             max_connections: 100,
             max_connections_per_ip: 2,
             enabled: true,
+            missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
+                "127.0.0.1".parse().unwrap()
+            ),
         };
         let tracker = ConnectionTracker::new(config);
 
@@ -330,6 +423,9 @@ mod tests {
             max_connections: 1,
             max_connections_per_ip: 1,
             enabled: false,
+            missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
+                "127.0.0.1".parse().unwrap()
+            ),
         };
         let tracker = ConnectionTracker::new(config);
 
