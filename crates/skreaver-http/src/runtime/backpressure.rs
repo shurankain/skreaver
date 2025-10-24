@@ -1187,7 +1187,7 @@ mod tests {
     async fn test_system_overload_rejection_metrics() {
         let config = BackpressureConfig {
             enable_adaptive_backpressure: true,
-            load_threshold: 0.01, // Very low threshold
+            load_threshold: 0.01,     // Very low threshold
             global_max_concurrent: 1, // Low global limit to make it easy to trigger overload
             ..BackpressureConfig::default()
         };
@@ -1214,7 +1214,10 @@ mod tests {
             .await;
 
         // Should be rejected with SystemOverloaded error
-        assert!(matches!(result, Err(BackpressureError::SystemOverloaded { .. })));
+        assert!(matches!(
+            result,
+            Err(BackpressureError::SystemOverloaded { .. })
+        ));
 
         // Verify rejection was counted
         let metrics = manager.get_agent_metrics("test-agent").await.unwrap();

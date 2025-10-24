@@ -28,17 +28,17 @@ impl AuthToken {
     /// Parse authorization header value into typed token
     pub fn from_header(header_value: &str) -> Result<Self, AuthTokenError> {
         let header_value = header_value.trim();
-        
+
         if header_value.is_empty() {
             return Err(AuthTokenError::EmptyToken);
         }
-        
+
         // Handle Bearer token
         if let Some(token) = header_value.strip_prefix("Bearer ") {
             if token.is_empty() {
                 return Err(AuthTokenError::EmptyToken);
             }
-            
+
             // Check if it's an API key (starts with sk-)
             if token.starts_with("sk-") {
                 return Ok(AuthToken::ApiKey(token.to_string()));
@@ -46,25 +46,25 @@ impl AuthToken {
                 return Ok(AuthToken::Jwt(token.to_string()));
             }
         }
-        
+
         Err(AuthTokenError::InvalidFormat)
     }
-    
+
     /// Parse API key from X-API-Key header
     pub fn from_api_key_header(header_value: &str) -> Result<Self, AuthTokenError> {
         let header_value = header_value.trim();
-        
+
         if header_value.is_empty() {
             return Err(AuthTokenError::EmptyToken);
         }
-        
+
         if !header_value.starts_with("sk-") {
             return Err(AuthTokenError::InvalidApiKeyFormat);
         }
-        
+
         Ok(AuthToken::ApiKey(header_value.to_string()))
     }
-    
+
     /// Get the underlying token value
     pub fn value(&self) -> &str {
         match self {
@@ -76,7 +76,7 @@ impl AuthToken {
 
 impl FromStr for AuthToken {
     type Err = AuthTokenError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::from_header(&format!("Bearer {}", s))
     }
@@ -86,9 +86,14 @@ impl std::fmt::Display for AuthTokenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Missing => write!(f, "No authentication token provided"),
-            Self::InvalidFormat => write!(f, "Invalid authentication format - expected Bearer token or API key"),
+            Self::InvalidFormat => write!(
+                f,
+                "Invalid authentication format - expected Bearer token or API key"
+            ),
             Self::EmptyToken => write!(f, "Empty authentication token"),
-            Self::InvalidApiKeyFormat => write!(f, "Invalid API key format - must start with 'sk-'"),
+            Self::InvalidApiKeyFormat => {
+                write!(f, "Invalid API key format - must start with 'sk-'")
+            }
         }
     }
 }
@@ -101,7 +106,8 @@ mod tests {
 
     #[test]
     fn test_jwt_token_parsing() {
-        let token = AuthToken::from_header("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...").unwrap();
+        let token =
+            AuthToken::from_header("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...").unwrap();
         match token {
             AuthToken::Jwt(value) => assert!(value.starts_with("eyJ")),
             _ => panic!("Expected JWT token"),
@@ -132,12 +138,12 @@ mod tests {
             AuthToken::from_header("InvalidToken"),
             Err(AuthTokenError::InvalidFormat)
         ));
-        
+
         assert!(matches!(
             AuthToken::from_header("Bearer "),
             Err(AuthTokenError::EmptyToken)
         ));
-        
+
         assert!(matches!(
             AuthToken::from_api_key_header("invalid-key"),
             Err(AuthTokenError::InvalidApiKeyFormat)

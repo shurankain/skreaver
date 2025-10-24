@@ -106,7 +106,10 @@ pub use backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, Re
 pub use config::{ConfigError, HttpRuntimeConfigBuilder};
 pub use connection_limits::{ConnectionLimitConfig, ConnectionStats, ConnectionTracker};
 pub use coordinator::Coordinator;
-pub use error::{ErrorResponse, RequestId, RequestIdExtension, RuntimeError, RuntimeResult, request_id_middleware};
+pub use error::{
+    ErrorResponse, RequestId, RequestIdExtension, RuntimeError, RuntimeResult,
+    request_id_middleware,
+};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};
 pub use security::{ApiKeyData, SecretKey, SecurityConfig};
 pub use shutdown::{shutdown_signal, shutdown_signal_with_timeout, shutdown_with_cleanup};

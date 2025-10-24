@@ -685,7 +685,10 @@ mod tests {
             .with_tag("purpose".to_string(), "production".to_string());
 
         assert_eq!(metadata.tags.get("team"), Some(&"backend".to_string()));
-        assert_eq!(metadata.tags.get("purpose"), Some(&"production".to_string()));
+        assert_eq!(
+            metadata.tags.get("purpose"),
+            Some(&"production".to_string())
+        );
         assert_eq!(metadata.tags.len(), 2);
     }
 
@@ -695,8 +698,14 @@ mod tests {
             .with_custom("region".to_string(), serde_json::json!("us-west-2"))
             .with_custom("deployment_id".to_string(), serde_json::json!(12345));
 
-        assert_eq!(metadata.custom.get("region"), Some(&serde_json::json!("us-west-2")));
-        assert_eq!(metadata.custom.get("deployment_id"), Some(&serde_json::json!(12345)));
+        assert_eq!(
+            metadata.custom.get("region"),
+            Some(&serde_json::json!("us-west-2"))
+        );
+        assert_eq!(
+            metadata.custom.get("deployment_id"),
+            Some(&serde_json::json!(12345))
+        );
         assert_eq!(metadata.custom.len(), 2);
     }
 

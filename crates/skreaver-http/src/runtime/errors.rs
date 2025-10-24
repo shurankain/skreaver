@@ -6,7 +6,10 @@
 use axum::{
     Json,
     extract::Request,
-    http::{StatusCode, header::{self, HeaderValue}},
+    http::{
+        StatusCode,
+        header::{self, HeaderValue},
+    },
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -72,10 +75,7 @@ pub struct RequestIdExtension(pub RequestId);
 ///     .route("/", get(handler))
 ///     .layer(middleware::from_fn(request_id_middleware));
 /// ```
-pub async fn request_id_middleware(
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn request_id_middleware(mut request: Request, next: Next) -> Response {
     // Try to extract request ID from X-Request-ID header
     let request_id = request
         .headers()
@@ -85,7 +85,9 @@ pub async fn request_id_middleware(
         .unwrap_or_default();
 
     // Store in extensions for handlers and error responses
-    request.extensions_mut().insert(RequestIdExtension(request_id.clone()));
+    request
+        .extensions_mut()
+        .insert(RequestIdExtension(request_id.clone()));
 
     // Process request
     let mut response = next.run(request).await;

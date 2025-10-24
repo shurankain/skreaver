@@ -203,9 +203,10 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         agent_factory.register_builder(Box::new(AnalyticsAgentBuilder));
 
         // Create connection tracker with configuration
-        let connection_tracker = Arc::new(
-            crate::runtime::connection_limits::ConnectionTracker::new(config.connection_limits.clone())
-        );
+        let connection_tracker =
+            Arc::new(crate::runtime::connection_limits::ConnectionTracker::new(
+                config.connection_limits.clone(),
+            ));
         tracing::info!(
             "Connection limits enabled: max={}, per_ip={}, enabled={}",
             config.connection_limits.max_connections,

@@ -1,11 +1,11 @@
 //! Integration tests for HTTP connection limits
 
+use serial_test::serial;
 use skreaver_http::runtime::{
     ConnectionLimitConfig, HttpAgentRuntime, HttpRuntimeConfigBuilder,
     connection_limits::MissingConnectInfoBehavior,
 };
 use skreaver_tools::InMemoryToolRegistry;
-use serial_test::serial;
 
 // Test helper - no agent needed for connection limit tests
 
@@ -32,7 +32,7 @@ async fn test_connection_limits_custom_config() {
             max_connections_per_ip: 5,
             enabled: true,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
-                "127.0.0.1".parse().unwrap()
+                "127.0.0.1".parse().unwrap(),
             ),
         })
         .build()
@@ -53,9 +53,9 @@ async fn test_connection_limits_can_be_disabled() {
         .connection_limits(ConnectionLimitConfig {
             max_connections: 10,
             max_connections_per_ip: 1,
-            enabled: false,  // Disabled
+            enabled: false, // Disabled
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
-                "127.0.0.1".parse().unwrap()
+                "127.0.0.1".parse().unwrap(),
             ),
         })
         .build()
@@ -114,8 +114,12 @@ async fn test_missing_connect_info_behavior_env() {
     let runtime = HttpAgentRuntime::with_config(registry, config);
 
     // Verify behavior is set correctly
-    match runtime.connection_tracker.config().missing_connect_info_behavior {
-        MissingConnectInfoBehavior::Reject => {}, // Expected
+    match runtime
+        .connection_tracker
+        .config()
+        .missing_connect_info_behavior
+    {
+        MissingConnectInfoBehavior::Reject => {} // Expected
         _ => panic!("Expected Reject behavior"),
     }
 
@@ -129,7 +133,10 @@ async fn test_missing_connect_info_behavior_env() {
 async fn test_missing_connect_info_behavior_fallback() {
     // Test fallback behavior with IP
     unsafe {
-        std::env::set_var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR", "fallback:10.0.0.1");
+        std::env::set_var(
+            "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR",
+            "fallback:10.0.0.1",
+        );
     }
 
     let registry = InMemoryToolRegistry::new();
@@ -141,7 +148,11 @@ async fn test_missing_connect_info_behavior_fallback() {
     let runtime = HttpAgentRuntime::with_config(registry, config);
 
     // Verify fallback IP is set correctly
-    match &runtime.connection_tracker.config().missing_connect_info_behavior {
+    match &runtime
+        .connection_tracker
+        .config()
+        .missing_connect_info_behavior
+    {
         MissingConnectInfoBehavior::UseFallback(ip) => {
             assert_eq!(ip.to_string(), "10.0.0.1");
         }
@@ -158,7 +169,10 @@ async fn test_missing_connect_info_behavior_fallback() {
 async fn test_missing_connect_info_behavior_disable_per_ip() {
     // Test disable per-IP limits behavior
     unsafe {
-        std::env::set_var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR", "disable_per_ip");
+        std::env::set_var(
+            "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR",
+            "disable_per_ip",
+        );
     }
 
     let registry = InMemoryToolRegistry::new();
@@ -170,8 +184,12 @@ async fn test_missing_connect_info_behavior_disable_per_ip() {
     let runtime = HttpAgentRuntime::with_config(registry, config);
 
     // Verify behavior is set correctly
-    match runtime.connection_tracker.config().missing_connect_info_behavior {
-        MissingConnectInfoBehavior::DisablePerIpLimits => {}, // Expected
+    match runtime
+        .connection_tracker
+        .config()
+        .missing_connect_info_behavior
+    {
+        MissingConnectInfoBehavior::DisablePerIpLimits => {} // Expected
         _ => panic!("Expected DisablePerIpLimits behavior"),
     }
 

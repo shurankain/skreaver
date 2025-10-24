@@ -200,10 +200,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Serve with ConnectInfo to enable IP tracking for connection limits
     axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>()
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     println!("✅ Server shutdown complete");
     Ok(())

@@ -340,7 +340,7 @@ mod tests {
             max_connections_per_ip: 10,
             enabled: true,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
-                "127.0.0.1".parse().unwrap()
+                "127.0.0.1".parse().unwrap(),
             ),
         };
         let tracker = ConnectionTracker::new(config);
@@ -366,7 +366,7 @@ mod tests {
             max_connections_per_ip: 10,
             enabled: true,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
-                "127.0.0.1".parse().unwrap()
+                "127.0.0.1".parse().unwrap(),
             ),
         };
         let tracker = ConnectionTracker::new(config);
@@ -396,7 +396,7 @@ mod tests {
             max_connections_per_ip: 2,
             enabled: true,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
-                "127.0.0.1".parse().unwrap()
+                "127.0.0.1".parse().unwrap(),
             ),
         };
         let tracker = ConnectionTracker::new(config);
@@ -424,7 +424,7 @@ mod tests {
             max_connections_per_ip: 1,
             enabled: false,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
-                "127.0.0.1".parse().unwrap()
+                "127.0.0.1".parse().unwrap(),
             ),
         };
         let tracker = ConnectionTracker::new(config);

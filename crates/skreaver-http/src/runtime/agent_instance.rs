@@ -431,8 +431,12 @@ mod tests {
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
         // Add tags
-        instance.add_tag("region".to_string(), "us-east-1".to_string()).await;
-        instance.add_tag("purpose".to_string(), "testing".to_string()).await;
+        instance
+            .add_tag("region".to_string(), "us-east-1".to_string())
+            .await;
+        instance
+            .add_tag("purpose".to_string(), "testing".to_string())
+            .await;
 
         let metadata = instance.get_instance_metadata().await;
 
@@ -458,13 +462,23 @@ mod tests {
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
         // Add custom metadata
-        instance.add_custom_metadata("deployment_id".to_string(), serde_json::json!(12345)).await;
-        instance.add_custom_metadata("config_version".to_string(), serde_json::json!("v2.1.0")).await;
+        instance
+            .add_custom_metadata("deployment_id".to_string(), serde_json::json!(12345))
+            .await;
+        instance
+            .add_custom_metadata("config_version".to_string(), serde_json::json!("v2.1.0"))
+            .await;
 
         let metadata = instance.get_instance_metadata().await;
 
-        assert_eq!(metadata.custom.get("deployment_id"), Some(&serde_json::json!(12345)));
-        assert_eq!(metadata.custom.get("config_version"), Some(&serde_json::json!("v2.1.0")));
+        assert_eq!(
+            metadata.custom.get("deployment_id"),
+            Some(&serde_json::json!(12345))
+        );
+        assert_eq!(
+            metadata.custom.get("config_version"),
+            Some(&serde_json::json!("v2.1.0"))
+        );
         assert_eq!(metadata.custom.len(), 2);
     }
 
@@ -485,10 +499,14 @@ mod tests {
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
         // Update metadata using the updater function
-        instance.update_instance_metadata(|metadata| {
-            metadata.environment = Some("production".to_string());
-            metadata.tags.insert("critical".to_string(), "true".to_string());
-        }).await;
+        instance
+            .update_instance_metadata(|metadata| {
+                metadata.environment = Some("production".to_string());
+                metadata
+                    .tags
+                    .insert("critical".to_string(), "true".to_string());
+            })
+            .await;
 
         let metadata = instance.get_instance_metadata().await;
 

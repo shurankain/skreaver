@@ -2,7 +2,10 @@
 
 use axum::{
     extract::Request,
-    http::{StatusCode, header::{self, HeaderValue}},
+    http::{
+        StatusCode,
+        header::{self, HeaderValue},
+    },
     middleware::Next,
     response::{IntoResponse, Json, Response},
 };
@@ -58,10 +61,7 @@ pub struct RequestIdExtension(pub RequestId);
 ///
 /// Extracts X-Request-ID header or generates new UUID, stores in extensions,
 /// and adds to response headers for distributed tracing.
-pub async fn request_id_middleware(
-    mut request: Request,
-    next: Next,
-) -> Response {
+pub async fn request_id_middleware(mut request: Request, next: Next) -> Response {
     // Extract or generate request ID
     let request_id = request
         .headers()
@@ -71,17 +71,18 @@ pub async fn request_id_middleware(
         .unwrap_or_default();
 
     // Store in extensions
-    request.extensions_mut().insert(RequestIdExtension(request_id.clone()));
+    request
+        .extensions_mut()
+        .insert(RequestIdExtension(request_id.clone()));
 
     // Process request
     let mut response = next.run(request).await;
 
     // Add to response headers
     if let Ok(value) = HeaderValue::from_str(request_id.as_str()) {
-        response.headers_mut().insert(
-            header::HeaderName::from_static("x-request-id"),
-            value,
-        );
+        response
+            .headers_mut()
+            .insert(header::HeaderName::from_static("x-request-id"), value);
     }
 
     response
@@ -228,7 +229,7 @@ impl RuntimeError {
             },
         }
     }
-    
+
     /// Get the error code for API responses
     pub fn error_code(&self) -> &'static str {
         match self {
@@ -257,39 +258,89 @@ impl RuntimeError {
             },
         }
     }
-    
+
     /// Create error response with optional details
     pub fn to_response(&self, request_id: Option<String>) -> ErrorResponse {
         let mut details = HashMap::new();
-        
+
         // Add error-specific details
         match self {
-            Self::Agent(AgentError::InvalidState { agent_id, current_state, required_state }) => {
-                details.insert("agent_id".to_string(), serde_json::Value::String(agent_id.clone()));
-                details.insert("current_state".to_string(), serde_json::Value::String(current_state.clone()));
-                details.insert("required_state".to_string(), serde_json::Value::String(required_state.clone()));
+            Self::Agent(AgentError::InvalidState {
+                agent_id,
+                current_state,
+                required_state,
+            }) => {
+                details.insert(
+                    "agent_id".to_string(),
+                    serde_json::Value::String(agent_id.clone()),
+                );
+                details.insert(
+                    "current_state".to_string(),
+                    serde_json::Value::String(current_state.clone()),
+                );
+                details.insert(
+                    "required_state".to_string(),
+                    serde_json::Value::String(required_state.clone()),
+                );
             }
-            Self::Auth(AuthError::Forbidden { required_permissions, user_permissions }) => {
-                details.insert("required_permissions".to_string(), 
-                              serde_json::Value::Array(required_permissions.iter().map(|p| serde_json::Value::String(p.clone())).collect()));
-                details.insert("user_permissions".to_string(), 
-                              serde_json::Value::Array(user_permissions.iter().map(|p| serde_json::Value::String(p.clone())).collect()));
+            Self::Auth(AuthError::Forbidden {
+                required_permissions,
+                user_permissions,
+            }) => {
+                details.insert(
+                    "required_permissions".to_string(),
+                    serde_json::Value::Array(
+                        required_permissions
+                            .iter()
+                            .map(|p| serde_json::Value::String(p.clone()))
+                            .collect(),
+                    ),
+                );
+                details.insert(
+                    "user_permissions".to_string(),
+                    serde_json::Value::Array(
+                        user_permissions
+                            .iter()
+                            .map(|p| serde_json::Value::String(p.clone()))
+                            .collect(),
+                    ),
+                );
             }
             Self::RateLimit(rate_error) => {
-                details.insert("retry_after".to_string(), serde_json::Value::Number(rate_error.retry_after.into()));
+                details.insert(
+                    "retry_after".to_string(),
+                    serde_json::Value::Number(rate_error.retry_after.into()),
+                );
             }
-            Self::Validation(ValidationError::InvalidField { field, value, reason }) => {
-                details.insert("field".to_string(), serde_json::Value::String(field.clone()));
-                details.insert("value".to_string(), serde_json::Value::String(value.clone()));
-                details.insert("reason".to_string(), serde_json::Value::String(reason.clone()));
+            Self::Validation(ValidationError::InvalidField {
+                field,
+                value,
+                reason,
+            }) => {
+                details.insert(
+                    "field".to_string(),
+                    serde_json::Value::String(field.clone()),
+                );
+                details.insert(
+                    "value".to_string(),
+                    serde_json::Value::String(value.clone()),
+                );
+                details.insert(
+                    "reason".to_string(),
+                    serde_json::Value::String(reason.clone()),
+                );
             }
             _ => {}
         }
-        
+
         ErrorResponse {
             code: self.error_code().to_string(),
             message: self.to_string(),
-            details: if details.is_empty() { None } else { Some(details) },
+            details: if details.is_empty() {
+                None
+            } else {
+                Some(details)
+            },
             request_id,
             timestamp: chrono::Utc::now(),
         }
@@ -317,9 +368,16 @@ impl std::fmt::Display for AgentError {
             Self::NotFound(id) => write!(f, "Agent with ID '{}' not found", id),
             Self::InvalidId(err) => write!(f, "Invalid agent ID: {}", err),
             Self::ExecutionFailed(err) => write!(f, "Agent execution failed: {}", err),
-            Self::InvalidState { agent_id, current_state, required_state } => {
-                write!(f, "Agent '{}' is in state '{}' but operation requires '{}'", 
-                       agent_id, current_state, required_state)
+            Self::InvalidState {
+                agent_id,
+                current_state,
+                required_state,
+            } => {
+                write!(
+                    f,
+                    "Agent '{}' is in state '{}' but operation requires '{}'",
+                    agent_id, current_state, required_state
+                )
             }
             Self::CreationFailed(reason) => write!(f, "Failed to create agent: {}", reason),
         }
@@ -332,8 +390,15 @@ impl std::fmt::Display for AuthError {
             Self::Missing => write!(f, "Authentication is required"),
             Self::InvalidToken(err) => write!(f, "Invalid authentication token: {}", err),
             Self::Expired => write!(f, "Authentication token has expired"),
-            Self::Forbidden { required_permissions, .. } => {
-                write!(f, "Insufficient permissions. Required: {}", required_permissions.join(", "))
+            Self::Forbidden {
+                required_permissions,
+                ..
+            } => {
+                write!(
+                    f,
+                    "Insufficient permissions. Required: {}",
+                    required_permissions.join(", ")
+                )
             }
             Self::UserNotFound(user) => write!(f, "User '{}' not found", user),
         }
@@ -344,7 +409,9 @@ impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidRateLimit(msg) => write!(f, "Invalid rate limit configuration: {}", msg),
-            Self::InvalidTimeout(timeout) => write!(f, "Invalid timeout configuration: {}s", timeout),
+            Self::InvalidTimeout(timeout) => {
+                write!(f, "Invalid timeout configuration: {}s", timeout)
+            }
             Self::MissingConfig(key) => write!(f, "Missing required configuration: {}", key),
         }
     }
@@ -365,8 +432,16 @@ impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingField(field) => write!(f, "Missing required field: {}", field),
-            Self::InvalidField { field, value, reason } => {
-                write!(f, "Invalid field '{}' with value '{}': {}", field, value, reason)
+            Self::InvalidField {
+                field,
+                value,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Invalid field '{}' with value '{}': {}",
+                    field, value, reason
+                )
             }
             Self::RequestTooLarge => write!(f, "Request body is too large"),
             Self::InvalidJson(msg) => write!(f, "Invalid JSON: {}", msg),
@@ -450,7 +525,7 @@ mod tests {
     fn test_error_response_serialization() {
         let error = RuntimeError::Validation(ValidationError::MissingField("name".to_string()));
         let response = error.to_response(Some("req-123".to_string()));
-        
+
         assert_eq!(response.code, "missing_field");
         assert!(response.message.contains("name"));
         assert_eq!(response.request_id, Some("req-123".to_string()));

@@ -180,7 +180,10 @@ impl HttpRuntimeConfigBuilder {
         // Handle missing ConnectInfo behavior
         if let Ok(behavior_str) = env::var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR") {
             use crate::runtime::connection_limits::MissingConnectInfoBehavior;
-            connection_limits.missing_connect_info_behavior = match behavior_str.to_lowercase().as_str() {
+            connection_limits.missing_connect_info_behavior = match behavior_str
+                .to_lowercase()
+                .as_str()
+            {
                 "reject" => MissingConnectInfoBehavior::Reject,
                 "disable_per_ip" => MissingConnectInfoBehavior::DisablePerIpLimits,
                 fallback_ip if fallback_ip.starts_with("fallback:") => {
