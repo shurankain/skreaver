@@ -1,6 +1,7 @@
 //! Agent instance management with proper state tracking
 
 use crate::runtime::agent_status::AgentStatusEnum;
+use crate::runtime::api_types::AgentInstanceMetadata;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -91,8 +92,10 @@ pub struct AgentInstance {
     pub tool_call_count: Arc<AtomicU64>,
     /// Agent coordinator (boxed trait object)
     pub coordinator: Box<dyn CoordinatorTrait + Send + Sync>,
-    /// Optional metadata for the agent
+    /// Optional metadata for the agent (deprecated - use instance_metadata)
     pub metadata: Arc<RwLock<std::collections::HashMap<String, String>>>,
+    /// Structured instance metadata for comprehensive tracking
+    pub instance_metadata: Arc<RwLock<AgentInstanceMetadata>>,
 }
 
 /// Trait for agent coordinators to allow dynamic dispatch
@@ -102,7 +105,7 @@ pub trait CoordinatorTrait {
 }
 
 impl AgentInstance {
-    /// Create a new agent instance
+    /// Create a new agent instance with default metadata
     pub fn new(
         id: AgentId,
         agent_type: String,
@@ -120,6 +123,30 @@ impl AgentInstance {
             tool_call_count: Arc::new(AtomicU64::new(0)),
             coordinator,
             metadata: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            instance_metadata: Arc::new(RwLock::new(AgentInstanceMetadata::default())),
+        }
+    }
+
+    /// Create a new agent instance with custom metadata
+    pub fn new_with_metadata(
+        id: AgentId,
+        agent_type: String,
+        coordinator: Box<dyn CoordinatorTrait + Send + Sync>,
+        instance_metadata: AgentInstanceMetadata,
+    ) -> Self {
+        let now = Utc::now();
+
+        Self {
+            id,
+            agent_type,
+            status: Arc::new(RwLock::new(AgentStatusEnum::Ready)),
+            created_at: now,
+            last_activity: Arc::new(RwLock::new(now)),
+            observation_count: Arc::new(AtomicU64::new(0)),
+            tool_call_count: Arc::new(AtomicU64::new(0)),
+            coordinator,
+            metadata: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            instance_metadata: Arc::new(RwLock::new(instance_metadata)),
         }
     }
 
@@ -182,6 +209,32 @@ impl AgentInstance {
     pub async fn get_metadata(&self, key: &str) -> Option<String> {
         let metadata = self.metadata.read().await;
         metadata.get(key).cloned()
+    }
+
+    /// Get instance metadata
+    pub async fn get_instance_metadata(&self) -> AgentInstanceMetadata {
+        self.instance_metadata.read().await.clone()
+    }
+
+    /// Update instance metadata
+    pub async fn update_instance_metadata<F>(&self, updater: F)
+    where
+        F: FnOnce(&mut AgentInstanceMetadata),
+    {
+        let mut metadata = self.instance_metadata.write().await;
+        updater(&mut metadata);
+    }
+
+    /// Add a tag to instance metadata
+    pub async fn add_tag(&self, key: String, value: String) {
+        let mut metadata = self.instance_metadata.write().await;
+        metadata.tags.insert(key, value);
+    }
+
+    /// Add custom metadata field
+    pub async fn add_custom_metadata(&self, key: String, value: serde_json::Value) {
+        let mut metadata = self.instance_metadata.write().await;
+        metadata.custom.insert(key, value);
     }
 
     /// Execute a step with proper state management
@@ -305,5 +358,141 @@ mod tests {
             AgentStatusEnum::Processing { .. }
         ));
         assert!(!instance.can_accept_observations().await);
+    }
+
+    #[tokio::test]
+    async fn test_instance_metadata_default() {
+        struct MockCoordinator;
+        impl CoordinatorTrait for MockCoordinator {
+            fn step(&mut self, _input: String) -> String {
+                "response".to_string()
+            }
+            fn get_agent_type(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let instance =
+            AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
+
+        let metadata = instance.get_instance_metadata().await;
+
+        // Default metadata should have a generated instance_id and version
+        assert!(!metadata.instance_id.is_empty());
+        assert!(metadata.version.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_instance_metadata_custom() {
+        struct MockCoordinator;
+        impl CoordinatorTrait for MockCoordinator {
+            fn step(&mut self, _input: String) -> String {
+                "response".to_string()
+            }
+            fn get_agent_type(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        let custom_metadata = AgentInstanceMetadata::minimal("custom-instance-id".to_string())
+            .with_tag("team".to_string(), "data-science".to_string())
+            .with_tag("env".to_string(), "staging".to_string());
+
+        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let instance = AgentInstance::new_with_metadata(
+            agent_id,
+            "MockAgent".to_string(),
+            Box::new(MockCoordinator),
+            custom_metadata,
+        );
+
+        let metadata = instance.get_instance_metadata().await;
+
+        assert_eq!(metadata.instance_id, "custom-instance-id");
+        assert_eq!(metadata.tags.get("team"), Some(&"data-science".to_string()));
+        assert_eq!(metadata.tags.get("env"), Some(&"staging".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_add_tag() {
+        struct MockCoordinator;
+        impl CoordinatorTrait for MockCoordinator {
+            fn step(&mut self, _input: String) -> String {
+                "response".to_string()
+            }
+            fn get_agent_type(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let instance =
+            AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
+
+        // Add tags
+        instance.add_tag("region".to_string(), "us-east-1".to_string()).await;
+        instance.add_tag("purpose".to_string(), "testing".to_string()).await;
+
+        let metadata = instance.get_instance_metadata().await;
+
+        assert_eq!(metadata.tags.get("region"), Some(&"us-east-1".to_string()));
+        assert_eq!(metadata.tags.get("purpose"), Some(&"testing".to_string()));
+        assert_eq!(metadata.tags.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_add_custom_metadata() {
+        struct MockCoordinator;
+        impl CoordinatorTrait for MockCoordinator {
+            fn step(&mut self, _input: String) -> String {
+                "response".to_string()
+            }
+            fn get_agent_type(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let instance =
+            AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
+
+        // Add custom metadata
+        instance.add_custom_metadata("deployment_id".to_string(), serde_json::json!(12345)).await;
+        instance.add_custom_metadata("config_version".to_string(), serde_json::json!("v2.1.0")).await;
+
+        let metadata = instance.get_instance_metadata().await;
+
+        assert_eq!(metadata.custom.get("deployment_id"), Some(&serde_json::json!(12345)));
+        assert_eq!(metadata.custom.get("config_version"), Some(&serde_json::json!("v2.1.0")));
+        assert_eq!(metadata.custom.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_instance_metadata() {
+        struct MockCoordinator;
+        impl CoordinatorTrait for MockCoordinator {
+            fn step(&mut self, _input: String) -> String {
+                "response".to_string()
+            }
+            fn get_agent_type(&self) -> &'static str {
+                "mock"
+            }
+        }
+
+        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let instance =
+            AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
+
+        // Update metadata using the updater function
+        instance.update_instance_metadata(|metadata| {
+            metadata.environment = Some("production".to_string());
+            metadata.tags.insert("critical".to_string(), "true".to_string());
+        }).await;
+
+        let metadata = instance.get_instance_metadata().await;
+
+        assert_eq!(metadata.environment, Some("production".to_string()));
+        assert_eq!(metadata.tags.get("critical"), Some(&"true".to_string()));
     }
 }

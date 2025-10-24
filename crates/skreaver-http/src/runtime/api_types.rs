@@ -368,6 +368,9 @@ pub struct AgentStatusResponse {
     /// Agent configuration
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, serde_json::Value>,
+    /// Instance metadata for tracking and monitoring
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_metadata: Option<AgentInstanceMetadata>,
 }
 
 /// Current resource usage for an agent
@@ -402,6 +405,81 @@ pub struct AgentMetrics {
     /// Last error (if any)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+}
+
+/// Comprehensive metadata for agent instances
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AgentInstanceMetadata {
+    /// Instance identifier (unique for each agent instance)
+    #[schema(example = "instance-abc123")]
+    pub instance_id: String,
+    /// Agent version (semantic versioning)
+    #[schema(example = "1.2.3")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Runtime environment (e.g., "production", "staging", "development")
+    #[schema(example = "production")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    /// Hostname or node where agent is running
+    #[schema(example = "agent-node-01")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    /// Process ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    /// Tags for categorization and filtering
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tags: HashMap<String, String>,
+    /// Custom metadata fields
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub custom: HashMap<String, serde_json::Value>,
+}
+
+impl AgentInstanceMetadata {
+    /// Create minimal metadata with just instance ID
+    pub fn minimal(instance_id: String) -> Self {
+        Self {
+            instance_id,
+            version: None,
+            environment: None,
+            hostname: None,
+            pid: None,
+            tags: HashMap::new(),
+            custom: HashMap::new(),
+        }
+    }
+
+    /// Create metadata with common runtime information
+    pub fn with_runtime_info(instance_id: String) -> Self {
+        Self {
+            instance_id,
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            environment: std::env::var("SKREAVER_ENV").ok(),
+            hostname: hostname::get().ok().and_then(|h| h.into_string().ok()),
+            pid: Some(std::process::id()),
+            tags: HashMap::new(),
+            custom: HashMap::new(),
+        }
+    }
+
+    /// Add a tag
+    pub fn with_tag(mut self, key: String, value: String) -> Self {
+        self.tags.insert(key, value);
+        self
+    }
+
+    /// Add custom metadata
+    pub fn with_custom(mut self, key: String, value: serde_json::Value) -> Self {
+        self.custom.insert(key, value);
+        self
+    }
+}
+
+impl Default for AgentInstanceMetadata {
+    fn default() -> Self {
+        Self::with_runtime_info(uuid::Uuid::new_v4().to_string())
+    }
 }
 
 /// Enhanced response for agent observation with timing and metadata
@@ -573,5 +651,78 @@ mod tests {
 
         let echo_endpoints = AgentEndpoints::for_agent("echo-456", &AgentType::Echo);
         assert!(echo_endpoints.stream.is_none());
+    }
+
+    #[test]
+    fn test_agent_instance_metadata_minimal() {
+        let metadata = AgentInstanceMetadata::minimal("test-instance-123".to_string());
+
+        assert_eq!(metadata.instance_id, "test-instance-123");
+        assert!(metadata.version.is_none());
+        assert!(metadata.environment.is_none());
+        assert!(metadata.hostname.is_none());
+        assert!(metadata.pid.is_none());
+        assert!(metadata.tags.is_empty());
+        assert!(metadata.custom.is_empty());
+    }
+
+    #[test]
+    fn test_agent_instance_metadata_with_runtime_info() {
+        let metadata = AgentInstanceMetadata::with_runtime_info("test-instance-456".to_string());
+
+        assert_eq!(metadata.instance_id, "test-instance-456");
+        assert!(metadata.version.is_some());
+        assert_eq!(metadata.version.unwrap(), env!("CARGO_PKG_VERSION"));
+        // hostname and pid may or may not be present depending on the environment
+        assert!(metadata.tags.is_empty());
+        assert!(metadata.custom.is_empty());
+    }
+
+    #[test]
+    fn test_agent_instance_metadata_with_tags() {
+        let metadata = AgentInstanceMetadata::minimal("test-instance-789".to_string())
+            .with_tag("team".to_string(), "backend".to_string())
+            .with_tag("purpose".to_string(), "production".to_string());
+
+        assert_eq!(metadata.tags.get("team"), Some(&"backend".to_string()));
+        assert_eq!(metadata.tags.get("purpose"), Some(&"production".to_string()));
+        assert_eq!(metadata.tags.len(), 2);
+    }
+
+    #[test]
+    fn test_agent_instance_metadata_with_custom() {
+        let metadata = AgentInstanceMetadata::minimal("test-instance-999".to_string())
+            .with_custom("region".to_string(), serde_json::json!("us-west-2"))
+            .with_custom("deployment_id".to_string(), serde_json::json!(12345));
+
+        assert_eq!(metadata.custom.get("region"), Some(&serde_json::json!("us-west-2")));
+        assert_eq!(metadata.custom.get("deployment_id"), Some(&serde_json::json!(12345)));
+        assert_eq!(metadata.custom.len(), 2);
+    }
+
+    #[test]
+    fn test_agent_instance_metadata_default() {
+        let metadata = AgentInstanceMetadata::default();
+
+        // Default should generate a UUID instance_id
+        assert!(!metadata.instance_id.is_empty());
+        // Default should include runtime info
+        assert!(metadata.version.is_some());
+    }
+
+    #[test]
+    fn test_agent_instance_metadata_serialization() {
+        let metadata = AgentInstanceMetadata::minimal("test-serial".to_string())
+            .with_tag("env".to_string(), "test".to_string());
+
+        // Test serialization
+        let json = serde_json::to_string(&metadata).unwrap();
+        assert!(json.contains("test-serial"));
+        assert!(json.contains("env"));
+
+        // Test deserialization
+        let deserialized: AgentInstanceMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.instance_id, "test-serial");
+        assert_eq!(deserialized.tags.get("env"), Some(&"test".to_string()));
     }
 }

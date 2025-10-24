@@ -68,6 +68,9 @@ html-escape = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
 
+# System metadata
+hostname = "0.4"
+
 [dev-dependencies]
 serial_test = "3.2.0"
 

@@ -155,6 +155,7 @@ impl AgentService {
             created_at: agent.created_at,
             last_activity: agent.get_last_activity().await,
             config: std::collections::HashMap::new(),
+            instance_metadata: Some(agent.get_instance_metadata().await),
         })
     }
     
