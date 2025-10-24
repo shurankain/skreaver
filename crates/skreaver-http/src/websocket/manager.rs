@@ -150,11 +150,17 @@ impl WebSocketManager {
                     ip_connections.remove(&ip_addr);
                 } else if *count > 1000 {
                     // Sanity check: if count is unreasonably high, log warning
-                    warn!("IP {} has unusually high connection count: {}", ip_addr, count);
+                    warn!(
+                        "IP {} has unusually high connection count: {}",
+                        ip_addr, count
+                    );
                 }
             } else {
                 // IP address not found in tracking map - this indicates inconsistency
-                warn!("Connection {} had IP {} not tracked in ip_connections map", id, ip_addr);
+                warn!(
+                    "Connection {} had IP {} not tracked in ip_connections map",
+                    id, ip_addr
+                );
             }
 
             // Unsubscribe from all channels with validation
@@ -167,7 +173,10 @@ impl WebSocketManager {
 
                     if before_len == after_len {
                         // Connection was not in subscriber list - inconsistency
-                        warn!("Connection {} was not in subscriber list for channel {}", id, channel);
+                        warn!(
+                            "Connection {} was not in subscriber list for channel {}",
+                            id, channel
+                        );
                     } else {
                         cleaned_channels += 1;
                     }
@@ -177,7 +186,10 @@ impl WebSocketManager {
                     }
                 } else {
                     // Channel not found in subscriptions map - inconsistency
-                    warn!("Connection {} subscribed to non-existent channel {}", id, channel);
+                    warn!(
+                        "Connection {} subscribed to non-existent channel {}",
+                        id, channel
+                    );
                 }
             }
 
@@ -329,8 +341,11 @@ impl WebSocketManager {
         }
 
         // Re-check subscription limit per connection (state may have changed)
-        let new_subscription_count = state.channels.len() +
-            channels.iter().filter(|ch| !state.channels.contains(ch)).count();
+        let new_subscription_count = state.channels.len()
+            + channels
+                .iter()
+                .filter(|ch| !state.channels.contains(ch))
+                .count();
         if new_subscription_count > self.config.max_subscriptions_per_connection {
             return Err(WsError::SubscriptionLimitExceeded {
                 current: new_subscription_count,
@@ -541,7 +556,10 @@ impl WebSocketManager {
 
             if actual_count == 0 {
                 // Orphaned IP entry
-                warn!("Found orphaned IP tracking entry for {} with count {}", ip, tracked_count);
+                warn!(
+                    "Found orphaned IP tracking entry for {} with count {}",
+                    ip, tracked_count
+                );
                 orphaned_ip_count += 1;
             } else if actual_count != *tracked_count {
                 // Count mismatch
@@ -888,7 +906,10 @@ mod tests {
         }
 
         // Exactly 5 should succeed (max_connections), 5 should fail
-        assert_eq!(success_count, 5, "Expected exactly 5 successful connections");
+        assert_eq!(
+            success_count, 5,
+            "Expected exactly 5 successful connections"
+        );
         assert_eq!(failure_count, 5, "Expected exactly 5 failed connections");
 
         // Verify final state
@@ -950,7 +971,10 @@ mod tests {
 
         // State should be consistent
         let stats = manager.get_stats().await;
-        assert_eq!(stats.total_connections, 5, "Expected 5 connections after concurrent add/remove");
+        assert_eq!(
+            stats.total_connections, 5,
+            "Expected 5 connections after concurrent add/remove"
+        );
     }
 
     #[tokio::test]
@@ -988,7 +1012,13 @@ mod tests {
         // Verify subscription count doesn't exceed limits
         let stats = manager.get_stats().await;
         // Since we have 20 attempts on 5 unique channels, we should end up with 5 subscriptions
-        assert!(stats.total_channels <= 10, "Channel subscriptions should not exceed per-connection limit");
-        assert_eq!(stats.total_channels, 5, "Should have exactly 5 unique channel subscriptions");
+        assert!(
+            stats.total_channels <= 10,
+            "Channel subscriptions should not exceed per-connection limit"
+        );
+        assert_eq!(
+            stats.total_channels, 5,
+            "Should have exactly 5 unique channel subscriptions"
+        );
     }
 }
