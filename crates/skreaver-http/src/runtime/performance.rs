@@ -237,7 +237,7 @@ impl RequestBatcher {
         }
         
         // Wait for response
-        rx.await.map_err(|_| "Request cancelled".to_string())?
+        rx.await.map_err(|e| format!("Request cancelled or channel closed: {}", e))?
     }
     
     fn start_batch_processor(&self) {

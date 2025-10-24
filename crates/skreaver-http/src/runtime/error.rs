@@ -153,17 +153,91 @@ pub enum ConfigError {
     MissingConfig(String),
 }
 
-/// Internal server errors
+/// Internal server errors with context preservation
 #[derive(Debug, Clone)]
 pub enum InternalError {
     /// Database connection failed
-    DatabaseError(String),
+    DatabaseError {
+        message: String,
+        #[allow(dead_code)]
+        context: Option<String>,
+    },
     /// Serialization/deserialization failed
-    SerializationError(String),
+    SerializationError {
+        message: String,
+        #[allow(dead_code)]
+        context: Option<String>,
+    },
     /// Concurrent access error
-    ConcurrencyError(String),
+    ConcurrencyError {
+        message: String,
+        #[allow(dead_code)]
+        context: Option<String>,
+    },
     /// Unexpected system error
-    Unexpected(String),
+    Unexpected {
+        message: String,
+        #[allow(dead_code)]
+        context: Option<String>,
+    },
+}
+
+impl InternalError {
+    /// Create a database error with context
+    pub fn database<S: Into<String>>(message: S) -> Self {
+        Self::DatabaseError {
+            message: message.into(),
+            context: None,
+        }
+    }
+
+    /// Create a database error with source error context
+    pub fn database_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+        Self::DatabaseError {
+            message: message.into(),
+            context: Some(format!("Caused by: {}", source)),
+        }
+    }
+
+    /// Create a serialization error with context
+    pub fn serialization<S: Into<String>>(message: S) -> Self {
+        Self::SerializationError {
+            message: message.into(),
+            context: None,
+        }
+    }
+
+    /// Create a serialization error with source error context
+    pub fn serialization_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+        Self::SerializationError {
+            message: message.into(),
+            context: Some(format!("Caused by: {}", source)),
+        }
+    }
+
+    /// Create a concurrency error with context
+    pub fn concurrency<S: Into<String>>(message: S) -> Self {
+        Self::ConcurrencyError {
+            message: message.into(),
+            context: None,
+        }
+    }
+
+    /// Create an unexpected error with context
+    pub fn unexpected<S: Into<String>>(message: S) -> Self {
+        Self::Unexpected {
+            message: message.into(),
+            context: None,
+        }
+    }
+
+    /// Create an unexpected error with source error context
+    pub fn unexpected_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+        Self::Unexpected {
+            message: message.into(),
+            context: Some(format!("Caused by: {}", source)),
+        }
+    }
 }
 
 /// Input validation errors
@@ -179,8 +253,22 @@ pub enum ValidationError {
     },
     /// Request body too large
     RequestTooLarge,
-    /// Invalid JSON structure
-    InvalidJson(String),
+    /// Invalid JSON structure with context
+    InvalidJson {
+        message: String,
+        #[allow(dead_code)]
+        context: Option<String>,
+    },
+}
+
+impl ValidationError {
+    /// Create an invalid JSON error with source context
+    pub fn invalid_json_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+        Self::InvalidJson {
+            message: message.into(),
+            context: Some(format!("Caused by: {}", source)),
+        }
+    }
 }
 
 /// Structured error response for HTTP API
@@ -254,7 +342,7 @@ impl RuntimeError {
                 ValidationError::MissingField(_) => "missing_field",
                 ValidationError::InvalidField { .. } => "invalid_field",
                 ValidationError::RequestTooLarge => "request_too_large",
-                ValidationError::InvalidJson(_) => "invalid_json",
+                ValidationError::InvalidJson { .. } => "invalid_json",
             },
         }
     }
@@ -420,10 +508,34 @@ impl std::fmt::Display for ConfigError {
 impl std::fmt::Display for InternalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DatabaseError(msg) => write!(f, "Database error: {}", msg),
-            Self::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
-            Self::ConcurrencyError(msg) => write!(f, "Concurrency error: {}", msg),
-            Self::Unexpected(msg) => write!(f, "Unexpected error: {}", msg),
+            Self::DatabaseError { message, context } => {
+                write!(f, "Database error: {}", message)?;
+                if let Some(ctx) = context {
+                    write!(f, " ({})", ctx)?;
+                }
+                Ok(())
+            }
+            Self::SerializationError { message, context } => {
+                write!(f, "Serialization error: {}", message)?;
+                if let Some(ctx) = context {
+                    write!(f, " ({})", ctx)?;
+                }
+                Ok(())
+            }
+            Self::ConcurrencyError { message, context } => {
+                write!(f, "Concurrency error: {}", message)?;
+                if let Some(ctx) = context {
+                    write!(f, " ({})", ctx)?;
+                }
+                Ok(())
+            }
+            Self::Unexpected { message, context } => {
+                write!(f, "Unexpected error: {}", message)?;
+                if let Some(ctx) = context {
+                    write!(f, " ({})", ctx)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -444,7 +556,13 @@ impl std::fmt::Display for ValidationError {
                 )
             }
             Self::RequestTooLarge => write!(f, "Request body is too large"),
-            Self::InvalidJson(msg) => write!(f, "Invalid JSON: {}", msg),
+            Self::InvalidJson { message, context } => {
+                write!(f, "Invalid JSON: {}", message)?;
+                if let Some(ctx) = context {
+                    write!(f, " ({})", ctx)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -529,5 +647,80 @@ mod tests {
         assert_eq!(response.code, "missing_field");
         assert!(response.message.contains("name"));
         assert_eq!(response.request_id, Some("req-123".to_string()));
+    }
+
+    #[test]
+    fn test_internal_error_with_context() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let error = InternalError::database_with_source("Failed to load configuration", &io_error);
+
+        let message = format!("{}", error);
+        assert!(message.contains("Database error: Failed to load configuration"));
+        assert!(message.contains("Caused by:"));
+        assert!(message.contains("file not found"));
+    }
+
+    #[test]
+    fn test_serialization_error_with_context() {
+        // Simulate a JSON parsing error
+        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}")
+            .unwrap_err();
+        let error = InternalError::serialization_with_source("Failed to parse response", &json_err);
+
+        let message = format!("{}", error);
+        assert!(message.contains("Serialization error: Failed to parse response"));
+        assert!(message.contains("Caused by:"));
+    }
+
+    #[test]
+    fn test_validation_error_with_json_context() {
+        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}")
+            .unwrap_err();
+        let error = ValidationError::invalid_json_with_source("Request body is malformed", &json_err);
+
+        let message = format!("{}", error);
+        assert!(message.contains("Invalid JSON: Request body is malformed"));
+        assert!(message.contains("Caused by:"));
+    }
+
+    #[test]
+    fn test_unexpected_error_with_source() {
+        use std::fmt;
+
+        #[derive(Debug)]
+        struct CustomError;
+        impl fmt::Display for CustomError {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "custom operation failed")
+            }
+        }
+        impl std::error::Error for CustomError {}
+
+        let custom_err = CustomError;
+        let error = InternalError::unexpected_with_source("System check failed", &custom_err);
+
+        let message = format!("{}", error);
+        assert!(message.contains("Unexpected error: System check failed"));
+        assert!(message.contains("Caused by: custom operation failed"));
+    }
+
+    #[test]
+    fn test_error_without_context() {
+        // Test that errors without context still work
+        let error = InternalError::database("Connection timeout");
+        let message = format!("{}", error);
+        assert_eq!(message, "Database error: Connection timeout");
+        assert!(!message.contains("Caused by"));
+    }
+
+    #[test]
+    fn test_error_context_in_runtime_error() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let internal_err = InternalError::database_with_source("Database connection failed", &io_error);
+        let runtime_err = RuntimeError::Internal(internal_err);
+
+        let message = format!("{}", runtime_err);
+        assert!(message.contains("Database error: Database connection failed"));
+        assert!(message.contains("Caused by: access denied"));
     }
 }

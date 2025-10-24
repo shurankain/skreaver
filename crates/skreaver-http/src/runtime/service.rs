@@ -328,9 +328,12 @@ impl AuthService {
             }
             crate::runtime::auth_token::AuthToken::ApiKey(key) => {
                 let key_info = self.secret_manager.validate_api_key(key, client_ip).await
-                    .map_err(|_| RuntimeError::Auth(crate::runtime::error::AuthError::InvalidToken(
-                        crate::runtime::auth_token::AuthTokenError::InvalidFormat
-                    )))?;
+                    .map_err(|e| {
+                        tracing::warn!("API key validation failed: {}", e);
+                        RuntimeError::Auth(crate::runtime::error::AuthError::InvalidToken(
+                            crate::runtime::auth_token::AuthTokenError::InvalidFormat
+                        ))
+                    })?;
                 
                 Ok(AuthContext {
                     user_id: format!("api-key-{}", &key[3..11]),
