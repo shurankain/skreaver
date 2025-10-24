@@ -168,14 +168,14 @@ impl AgentFactory {
         // Add metadata from spec
         if let Some(ref name) = spec.name {
             agent_instance
-                .set_metadata("name".to_string(), name.clone())
+                .add_tag("name".to_string(), name.clone())
                 .await;
         }
 
-        // Store spec configuration as metadata
+        // Store spec configuration as custom metadata
         for (key, value) in &spec.config {
             agent_instance
-                .set_metadata(format!("config.{}", key), value.to_string())
+                .add_custom_metadata(format!("config.{}", key), value.clone())
                 .await;
         }
 

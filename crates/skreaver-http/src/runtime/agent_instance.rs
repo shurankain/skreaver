@@ -92,8 +92,6 @@ pub struct AgentInstance {
     pub tool_call_count: Arc<AtomicU64>,
     /// Agent coordinator (boxed trait object)
     pub coordinator: Box<dyn CoordinatorTrait + Send + Sync>,
-    /// Optional metadata for the agent (deprecated - use instance_metadata)
-    pub metadata: Arc<RwLock<std::collections::HashMap<String, String>>>,
     /// Structured instance metadata for comprehensive tracking
     pub instance_metadata: Arc<RwLock<AgentInstanceMetadata>>,
 }
@@ -122,7 +120,6 @@ impl AgentInstance {
             observation_count: Arc::new(AtomicU64::new(0)),
             tool_call_count: Arc::new(AtomicU64::new(0)),
             coordinator,
-            metadata: Arc::new(RwLock::new(std::collections::HashMap::new())),
             instance_metadata: Arc::new(RwLock::new(AgentInstanceMetadata::default())),
         }
     }
@@ -145,7 +142,6 @@ impl AgentInstance {
             observation_count: Arc::new(AtomicU64::new(0)),
             tool_call_count: Arc::new(AtomicU64::new(0)),
             coordinator,
-            metadata: Arc::new(RwLock::new(std::collections::HashMap::new())),
             instance_metadata: Arc::new(RwLock::new(instance_metadata)),
         }
     }
@@ -200,15 +196,34 @@ impl AgentInstance {
     }
 
     /// Set metadata value
+    ///
+    /// # Deprecated
+    /// Use `add_tag()` for simple key-value pairs or `add_custom_metadata()` for complex data.
+    ///
+    /// Migration:
+    /// - `agent.set_metadata("key".to_string(), "value".to_string())` → `agent.add_tag("key".to_string(), "value".to_string())`
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use add_tag() for tags or add_custom_metadata() for complex metadata"
+    )]
     pub async fn set_metadata(&self, key: String, value: String) {
-        let mut metadata = self.metadata.write().await;
-        metadata.insert(key, value);
+        self.add_tag(key, value).await;
     }
 
     /// Get metadata value
+    ///
+    /// # Deprecated
+    /// Use `get_instance_metadata().tags.get(key)` or `get_instance_metadata().custom.get(key)`.
+    ///
+    /// Migration:
+    /// - `agent.get_metadata("key")` → `agent.get_instance_metadata().await.tags.get("key").cloned()`
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use get_instance_metadata().tags or get_instance_metadata().custom"
+    )]
     pub async fn get_metadata(&self, key: &str) -> Option<String> {
-        let metadata = self.metadata.read().await;
-        metadata.get(key).cloned()
+        let metadata = self.instance_metadata.read().await;
+        metadata.tags.get(key).cloned()
     }
 
     /// Get instance metadata

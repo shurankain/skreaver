@@ -2,7 +2,9 @@
 
 use super::errors::SecurityError;
 use super::limits::ResourceLimits;
-use super::policy::{FileSystemPolicy, HttpPolicy, NetworkPolicy, SecurityPolicy, ToolSecurityPolicy};
+use super::policy::{
+    FileSystemPolicy, HttpPolicy, NetworkPolicy, SecurityPolicy, ToolSecurityPolicy,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::marker::PhantomData;
