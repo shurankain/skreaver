@@ -370,6 +370,7 @@ struct AgentQueue {
     semaphore: Arc<Semaphore>,
     total_processed: u64,
     total_timeouts: u64,
+    total_rejections: u64,
     recent_processing_times: VecDeque<u64>,
 }
 
@@ -381,6 +382,7 @@ impl AgentQueue {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             total_processed: 0,
             total_timeouts: 0,
+            total_rejections: 0,
             recent_processing_times: VecDeque::new(),
         }
     }
@@ -467,6 +469,13 @@ impl BackpressureManager {
         if self.config.enable_adaptive_backpressure {
             let load = self.calculate_system_load().await;
             if load > self.config.load_threshold {
+                // Increment rejection counter for the agent
+                {
+                    let mut queues = self.agent_queues.write().await;
+                    if let Some(queue) = queues.get_mut(&agent_id) {
+                        queue.total_rejections += 1;
+                    }
+                }
                 return Err(BackpressureError::SystemOverloaded { load });
             }
         }
@@ -490,6 +499,7 @@ impl BackpressureManager {
 
             // Check queue capacity
             if queue.queue.len() >= self.config.max_queue_size {
+                queue.total_rejections += 1;
                 return Err(BackpressureError::QueueFull {
                     agent_id,
                     max_size: self.config.max_queue_size,
@@ -520,6 +530,13 @@ impl BackpressureManager {
         if self.config.enable_adaptive_backpressure {
             let load = self.calculate_system_load().await;
             if load > self.config.load_threshold {
+                // Increment rejection counter for the agent
+                {
+                    let mut queues = self.agent_queues.write().await;
+                    if let Some(queue) = queues.get_mut(&agent_id) {
+                        queue.total_rejections += 1;
+                    }
+                }
                 return Err(BackpressureError::SystemOverloaded { load });
             }
         }
@@ -543,6 +560,7 @@ impl BackpressureManager {
 
             // Check queue capacity
             if queue.queue.len() >= self.config.max_queue_size {
+                queue.total_rejections += 1;
                 return Err(BackpressureError::QueueFull {
                     agent_id,
                     max_size: self.config.max_queue_size,
@@ -810,7 +828,7 @@ impl BackpressureManager {
             active_requests: queue.active_requests.load(Ordering::Relaxed),
             total_processed: queue.total_processed,
             total_timeouts: queue.total_timeouts,
-            total_rejections: 0, // TODO: Track rejections
+            total_rejections: queue.total_rejections,
             avg_processing_time_ms: queue.avg_processing_time(),
             load_factor: self.calculate_agent_load(queue).await,
         })
@@ -827,6 +845,7 @@ impl BackpressureManager {
             .sum();
         let total_processed: u64 = queues.values().map(|q| q.total_processed).sum();
         let total_timeouts: u64 = queues.values().map(|q| q.total_timeouts).sum();
+        let total_rejections: u64 = queues.values().map(|q| q.total_rejections).sum();
 
         let avg_processing_time = if queues.is_empty() {
             0.0
@@ -843,7 +862,7 @@ impl BackpressureManager {
             active_requests: total_active,
             total_processed,
             total_timeouts,
-            total_rejections: 0,
+            total_rejections,
             avg_processing_time_ms: avg_processing_time,
             load_factor: self.calculate_system_load().await,
         }
@@ -1113,5 +1132,92 @@ mod tests {
         let failed = processing.fail("Processing failed".to_string());
 
         assert_eq!(failed.error(), "Processing failed");
+    }
+
+    #[tokio::test]
+    async fn test_rejection_metrics() {
+        let config = BackpressureConfig {
+            max_queue_size: 2,
+            ..BackpressureConfig::default()
+        };
+        let manager = BackpressureManager::new(config);
+        manager.start().await.unwrap();
+
+        // Queue two requests to fill the queue
+        let (_id1, _rx1) = manager
+            .queue_request("test-agent".to_string(), RequestPriority::Normal, None)
+            .await
+            .unwrap();
+        let (_id2, _rx2) = manager
+            .queue_request("test-agent".to_string(), RequestPriority::Normal, None)
+            .await
+            .unwrap();
+
+        // Verify metrics before rejections
+        let metrics = manager.get_agent_metrics("test-agent").await.unwrap();
+        assert_eq!(metrics.queue_size, 2);
+        assert_eq!(metrics.total_rejections, 0);
+
+        // Try to queue a third request - should be rejected due to queue full
+        let result = manager
+            .queue_request("test-agent".to_string(), RequestPriority::Normal, None)
+            .await;
+        assert!(matches!(result, Err(BackpressureError::QueueFull { .. })));
+
+        // Verify rejection was counted
+        let metrics = manager.get_agent_metrics("test-agent").await.unwrap();
+        assert_eq!(metrics.total_rejections, 1);
+
+        // Try another rejection
+        let result = manager
+            .queue_request("test-agent".to_string(), RequestPriority::Normal, None)
+            .await;
+        assert!(matches!(result, Err(BackpressureError::QueueFull { .. })));
+
+        // Verify second rejection was counted
+        let metrics = manager.get_agent_metrics("test-agent").await.unwrap();
+        assert_eq!(metrics.total_rejections, 2);
+
+        // Verify global metrics include rejections
+        let global_metrics = manager.get_global_metrics().await;
+        assert_eq!(global_metrics.total_rejections, 2);
+    }
+
+    #[tokio::test]
+    async fn test_system_overload_rejection_metrics() {
+        let config = BackpressureConfig {
+            enable_adaptive_backpressure: true,
+            load_threshold: 0.01, // Very low threshold
+            global_max_concurrent: 1, // Low global limit to make it easy to trigger overload
+            ..BackpressureConfig::default()
+        };
+        let manager = BackpressureManager::new(config);
+        manager.start().await.unwrap();
+
+        // First, queue a request to create the agent queue and increase load
+        let (_id1, _rx1) = manager
+            .queue_request("test-agent".to_string(), RequestPriority::Normal, None)
+            .await
+            .unwrap();
+
+        // Simulate active processing to increase system load
+        {
+            let queues = manager.agent_queues.read().await;
+            if let Some(queue) = queues.get("test-agent") {
+                queue.active_requests.store(1, Ordering::Relaxed);
+            }
+        }
+
+        // Now try to queue another request - should be rejected due to system overload
+        let result = manager
+            .queue_request("test-agent".to_string(), RequestPriority::Normal, None)
+            .await;
+
+        // Should be rejected with SystemOverloaded error
+        assert!(matches!(result, Err(BackpressureError::SystemOverloaded { .. })));
+
+        // Verify rejection was counted
+        let metrics = manager.get_agent_metrics("test-agent").await.unwrap();
+        assert_eq!(metrics.total_rejections, 1);
     }
 }
