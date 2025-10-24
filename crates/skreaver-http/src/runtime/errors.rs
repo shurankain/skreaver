@@ -5,7 +5,9 @@
 
 use axum::{
     Json,
-    http::StatusCode,
+    extract::Request,
+    http::{StatusCode, header::{self, HeaderValue}},
+    middleware::Next,
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
@@ -43,6 +45,60 @@ impl std::fmt::Display for RequestId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+/// Extension for storing RequestId in Axum request extensions
+///
+/// This allows request handlers and error responses to access the request ID
+/// that was generated or extracted by the middleware.
+#[derive(Debug, Clone)]
+pub struct RequestIdExtension(pub RequestId);
+
+/// Middleware that generates or extracts request IDs for distributed tracing
+///
+/// This middleware:
+/// - Tries to extract request ID from the `X-Request-ID` header
+/// - Generates a new UUID if no header is present
+/// - Stores the ID in request extensions for handlers and error responses
+/// - Adds the ID to the response `X-Request-ID` header
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use axum::{Router, routing::get, middleware};
+/// use skreaver_http::runtime::errors::request_id_middleware;
+///
+/// let app = Router::new()
+///     .route("/", get(handler))
+///     .layer(middleware::from_fn(request_id_middleware));
+/// ```
+pub async fn request_id_middleware(
+    mut request: Request,
+    next: Next,
+) -> Response {
+    // Try to extract request ID from X-Request-ID header
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| RequestId::from_string(s.to_string()))
+        .unwrap_or_default();
+
+    // Store in extensions for handlers and error responses
+    request.extensions_mut().insert(RequestIdExtension(request_id.clone()));
+
+    // Process request
+    let mut response = next.run(request).await;
+
+    // Add request ID to response header
+    if let Ok(header_value) = HeaderValue::from_str(request_id.as_str()) {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("x-request-id"),
+            header_value,
+        );
+    }
+
+    response
 }
 
 /// Structured error response for HTTP APIs

@@ -15,6 +15,7 @@ use crate::runtime::{
     auth::require_auth,
     connection_limits::connection_limit_middleware,
     docs::{openapi_spec, swagger_ui},
+    error::request_id_middleware,
     handlers::{
         batch_observe_agent,
         create_agent,
@@ -82,6 +83,9 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             .merge(protected_routes)
             .with_state(self)
             .layer(TraceLayer::new_for_http());
+
+        // Add request ID middleware (applies to all routes, should be early in the stack)
+        router = router.layer(middleware::from_fn(request_id_middleware));
 
         // Add connection limit middleware (applies to all routes)
         // Use from_fn_with_state to pass the tracker as state

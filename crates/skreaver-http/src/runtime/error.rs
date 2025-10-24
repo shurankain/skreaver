@@ -1,18 +1,91 @@
 //! Unified error handling system for HTTP runtime
 
 use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Json},
+    extract::Request,
+    http::{StatusCode, header::{self, HeaderValue}},
+    middleware::Next,
+    response::{IntoResponse, Json, Response},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::runtime::{
     agent_instance::{AgentExecutionError, AgentIdError},
     auth_token::AuthTokenError,
     rate_limit::RateLimitError,
 };
+
+/// Request ID for distributed tracing and error correlation
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RequestId(String);
+
+impl RequestId {
+    /// Generate a new random request ID
+    pub fn new() -> Self {
+        Self(Uuid::new_v4().to_string())
+    }
+
+    /// Create from existing string (for header extraction)
+    pub fn from_string(s: String) -> Self {
+        Self(s)
+    }
+
+    /// Get as string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for RequestId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for RequestId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Extension for storing RequestId in request context
+#[derive(Clone, Debug)]
+pub struct RequestIdExtension(pub RequestId);
+
+/// Middleware for request ID generation and propagation
+///
+/// Extracts X-Request-ID header or generates new UUID, stores in extensions,
+/// and adds to response headers for distributed tracing.
+pub async fn request_id_middleware(
+    mut request: Request,
+    next: Next,
+) -> Response {
+    // Extract or generate request ID
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| RequestId::from_string(s.to_string()))
+        .unwrap_or_default();
+
+    // Store in extensions
+    request.extensions_mut().insert(RequestIdExtension(request_id.clone()));
+
+    // Process request
+    let mut response = next.run(request).await;
+
+    // Add to response headers
+    if let Ok(value) = HeaderValue::from_str(request_id.as_str()) {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("x-request-id"),
+            value,
+        );
+    }
+
+    response
+}
 
 /// Comprehensive error system for HTTP runtime
 #[derive(Debug)]
@@ -228,7 +301,7 @@ impl std::fmt::Display for RuntimeError {
         match self {
             Self::Agent(err) => write!(f, "{}", err),
             Self::Auth(err) => write!(f, "{}", err),
-            Self::RateLimit(err) => write!(f, "{}", err),
+            Self::RateLimit(err) => write!(f, "Rate limit exceeded: {:?}", err),
             Self::Config(err) => write!(f, "{}", err),
             Self::Internal(err) => write!(f, "{}", err),
             Self::Validation(err) => write!(f, "{}", err),
@@ -340,9 +413,11 @@ impl From<AuthTokenError> for RuntimeError {
 
 // Axum response implementation
 impl IntoResponse for RuntimeError {
-    fn into_response(self) -> axum::response::Response {
+    fn into_response(self) -> Response {
         let status = self.status_code();
-        let response = self.to_response(None); // TODO: Add request ID from middleware
+        // Note: Request ID is now added by request_id_middleware to response headers
+        // The middleware ensures X-Request-ID header is present on all responses
+        let response = self.to_response(None);
         (status, Json(response)).into_response()
     }
 }

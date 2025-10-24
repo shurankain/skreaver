@@ -62,6 +62,8 @@ pub mod agent_status;
 pub mod api_types;
 /// Authentication middleware for HTTP runtime.
 pub mod auth;
+/// Authentication token types for compile-time safety.
+pub mod auth_token;
 /// Backpressure and request queue management.
 pub mod backpressure;
 /// Environment-based configuration loading.
@@ -72,6 +74,8 @@ pub mod connection_limits;
 pub mod coordinator;
 /// API documentation endpoints.
 pub mod docs;
+/// Runtime error handling with request tracing.
+pub mod error;
 /// Unified error handling system.
 pub mod errors;
 /// HTTP request handlers organized by functionality.
@@ -102,7 +106,7 @@ pub use backpressure::{BackpressureConfig, BackpressureManager, QueueMetrics, Re
 pub use config::{ConfigError, HttpRuntimeConfigBuilder};
 pub use connection_limits::{ConnectionLimitConfig, ConnectionStats, ConnectionTracker};
 pub use coordinator::Coordinator;
-pub use errors::{ErrorResponse, RequestId, RuntimeError, RuntimeResult};
+pub use error::{ErrorResponse, RequestId, RequestIdExtension, RuntimeError, RuntimeResult, request_id_middleware};
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};
 pub use security::{ApiKeyData, SecretKey, SecurityConfig};
 pub use shutdown::{shutdown_signal, shutdown_signal_with_timeout, shutdown_with_cleanup};
