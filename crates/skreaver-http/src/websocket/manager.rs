@@ -133,6 +133,8 @@ impl WebSocketManager {
     /// 1. connections
     /// 2. ip_connections
     /// 3. subscriptions
+    ///
+    /// Performs validation to ensure complete cleanup and detect inconsistencies.
     pub async fn remove_connection(&self, id: Uuid) {
         // Acquire all locks upfront in consistent order to prevent deadlocks
         let mut connections = self.connections.write().await;
@@ -140,26 +142,53 @@ impl WebSocketManager {
         let mut subscriptions = self.subscriptions.write().await;
 
         if let Some(state) = connections.remove(&id) {
-            // Decrement IP connection count
+            // Decrement IP connection count with validation
             let ip_addr = state.info.addr.ip();
             if let Some(count) = ip_connections.get_mut(&ip_addr) {
                 *count = count.saturating_sub(1);
                 if *count == 0 {
                     ip_connections.remove(&ip_addr);
+                } else if *count > 1000 {
+                    // Sanity check: if count is unreasonably high, log warning
+                    warn!("IP {} has unusually high connection count: {}", ip_addr, count);
                 }
+            } else {
+                // IP address not found in tracking map - this indicates inconsistency
+                warn!("Connection {} had IP {} not tracked in ip_connections map", id, ip_addr);
             }
 
-            // Unsubscribe from all channels
+            // Unsubscribe from all channels with validation
+            let mut cleaned_channels = 0;
             for channel in &state.channels {
                 if let Some(subscribers) = subscriptions.get_mut(channel) {
+                    let before_len = subscribers.len();
                     subscribers.retain(|&conn_id| conn_id != id);
+                    let after_len = subscribers.len();
+
+                    if before_len == after_len {
+                        // Connection was not in subscriber list - inconsistency
+                        warn!("Connection {} was not in subscriber list for channel {}", id, channel);
+                    } else {
+                        cleaned_channels += 1;
+                    }
+
                     if subscribers.is_empty() {
                         subscriptions.remove(channel);
                     }
+                } else {
+                    // Channel not found in subscriptions map - inconsistency
+                    warn!("Connection {} subscribed to non-existent channel {}", id, channel);
                 }
             }
 
+            debug!(
+                "Removed WebSocket connection {}: cleaned {} channel subscriptions",
+                id, cleaned_channels
+            );
             info!("Removed WebSocket connection: {}", id);
+        } else {
+            // Attempted to remove non-existent connection
+            debug!("Attempted to remove non-existent connection: {}", id);
         }
 
         // Explicit drops for clarity (locks released in reverse order)
@@ -462,17 +491,110 @@ impl WebSocketManager {
         count
     }
 
+    /// Detect and clean up orphaned state
+    ///
+    /// Checks for:
+    /// - Orphaned subscriptions (pointing to non-existent connections)
+    /// - Orphaned IP tracking entries (IPs with 0 connections but not removed)
+    /// - Inconsistent subscription counts
+    ///
+    /// Returns a tuple: (orphaned_subscriptions, orphaned_ips)
+    pub async fn cleanup_orphaned_state(&self) -> (usize, usize) {
+        let connections = self.connections.write().await;
+        let mut ip_connections = self.connections_per_ip.write().await;
+        let mut subscriptions = self.subscriptions.write().await;
+
+        let mut orphaned_subscription_count = 0;
+        let mut orphaned_ip_count = 0;
+
+        // Clean up orphaned subscriptions
+        let connection_ids: std::collections::HashSet<_> = connections.keys().copied().collect();
+
+        for (channel, subscribers) in subscriptions.iter_mut() {
+            let before_len = subscribers.len();
+            subscribers.retain(|conn_id| connection_ids.contains(conn_id));
+            let removed = before_len - subscribers.len();
+
+            if removed > 0 {
+                warn!(
+                    "Found {} orphaned subscriptions in channel {}",
+                    removed, channel
+                );
+                orphaned_subscription_count += removed;
+            }
+        }
+
+        // Remove empty channels
+        subscriptions.retain(|_, subscribers| !subscribers.is_empty());
+
+        // Validate and clean up IP tracking
+        let mut actual_ip_counts: std::collections::HashMap<std::net::IpAddr, usize> =
+            std::collections::HashMap::new();
+
+        for state in connections.values() {
+            *actual_ip_counts.entry(state.info.addr.ip()).or_insert(0) += 1;
+        }
+
+        // Check for discrepancies and orphaned entries
+        for (ip, tracked_count) in ip_connections.iter() {
+            let actual_count = actual_ip_counts.get(ip).copied().unwrap_or(0);
+
+            if actual_count == 0 {
+                // Orphaned IP entry
+                warn!("Found orphaned IP tracking entry for {} with count {}", ip, tracked_count);
+                orphaned_ip_count += 1;
+            } else if actual_count != *tracked_count {
+                // Count mismatch
+                warn!(
+                    "IP {} count mismatch: tracked={}, actual={}",
+                    ip, tracked_count, actual_count
+                );
+            }
+        }
+
+        // Remove orphaned IP entries
+        ip_connections.retain(|ip, _| actual_ip_counts.contains_key(ip));
+
+        // Correct any count mismatches
+        for (ip, actual_count) in actual_ip_counts {
+            ip_connections.insert(ip, actual_count);
+        }
+
+        drop(subscriptions);
+        drop(ip_connections);
+        drop(connections);
+
+        if orphaned_subscription_count > 0 || orphaned_ip_count > 0 {
+            info!(
+                "Cleaned up orphaned state: {} subscriptions, {} IP entries",
+                orphaned_subscription_count, orphaned_ip_count
+            );
+        }
+
+        (orphaned_subscription_count, orphaned_ip_count)
+    }
+
     /// Start background tasks
     pub async fn start_background_tasks(&self) {
         let manager = Arc::new(self.clone());
 
-        // Cleanup task
+        // Cleanup task for expired connections
         let cleanup_manager = Arc::clone(&manager);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
                 interval.tick().await;
                 cleanup_manager.cleanup_expired().await;
+            }
+        });
+
+        // Orphaned state cleanup task (runs less frequently)
+        let orphaned_cleanup_manager = Arc::clone(&manager);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // Every 5 minutes
+            loop {
+                interval.tick().await;
+                orphaned_cleanup_manager.cleanup_orphaned_state().await;
             }
         });
 
