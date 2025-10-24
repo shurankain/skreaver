@@ -155,7 +155,11 @@ impl HttpRuntimeConfigBuilder {
             backpressure.processing_timeout = Duration::from_secs(timeout);
         }
         if let Some(adaptive) = get_env_bool("SKREAVER_BACKPRESSURE_ENABLE_ADAPTIVE")? {
-            backpressure.enable_adaptive_backpressure = adaptive;
+            backpressure.mode = if adaptive {
+                crate::runtime::backpressure::BackpressureMode::Adaptive
+            } else {
+                crate::runtime::backpressure::BackpressureMode::Static
+            };
         }
         if let Some(target_ms) = get_env_u64("SKREAVER_BACKPRESSURE_TARGET_PROCESSING_MS")? {
             backpressure.target_processing_time_ms = target_ms;
@@ -174,7 +178,11 @@ impl HttpRuntimeConfigBuilder {
             connection_limits.max_connections_per_ip = max_per_ip;
         }
         if let Some(enabled) = get_env_bool("SKREAVER_CONNECTION_LIMIT_ENABLED")? {
-            connection_limits.enabled = enabled;
+            connection_limits.mode = if enabled {
+                crate::runtime::connection_limits::ConnectionLimitMode::Enabled
+            } else {
+                crate::runtime::connection_limits::ConnectionLimitMode::Disabled
+            };
         }
 
         // Handle missing ConnectInfo behavior

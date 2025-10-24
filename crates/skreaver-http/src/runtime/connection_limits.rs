@@ -57,6 +57,21 @@ impl Default for MissingConnectInfoBehavior {
     }
 }
 
+/// Connection limit enforcement mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionLimitMode {
+    /// Connection limiting is disabled - no enforcement
+    Disabled,
+    /// Connection limiting is enabled and enforced
+    Enabled,
+}
+
+impl Default for ConnectionLimitMode {
+    fn default() -> Self {
+        Self::Enabled
+    }
+}
+
 /// Configuration for HTTP connection limits
 #[derive(Debug, Clone)]
 pub struct ConnectionLimitConfig {
@@ -64,8 +79,8 @@ pub struct ConnectionLimitConfig {
     pub max_connections: usize,
     /// Maximum concurrent connections per IP address (default: 100)
     pub max_connections_per_ip: usize,
-    /// Enable connection limiting (default: true)
-    pub enabled: bool,
+    /// Connection limiting mode
+    pub mode: ConnectionLimitMode,
     /// Behavior when ConnectInfo is missing from request
     pub missing_connect_info_behavior: MissingConnectInfoBehavior,
 }
@@ -75,7 +90,7 @@ impl Default for ConnectionLimitConfig {
         Self {
             max_connections: 10_000,
             max_connections_per_ip: 100,
-            enabled: true,
+            mode: ConnectionLimitMode::default(),
             missing_connect_info_behavior: MissingConnectInfoBehavior::default(),
         }
     }
@@ -121,7 +136,7 @@ impl ConnectionTracker {
     ///
     /// Returns Ok(()) if connection can be accepted, Err with status code otherwise
     pub async fn check_limits(&self, ip: IpAddr) -> Result<(), StatusCode> {
-        if !self.config.enabled {
+        if self.config.mode == ConnectionLimitMode::Disabled {
             return Ok(());
         }
 
@@ -151,7 +166,7 @@ impl ConnectionTracker {
 
     /// Increment connection counters for the given IP
     pub async fn increment(&self, ip: IpAddr) {
-        if !self.config.enabled {
+        if self.config.mode == ConnectionLimitMode::Disabled {
             return;
         }
 
@@ -170,7 +185,7 @@ impl ConnectionTracker {
 
     /// Decrement connection counters for the given IP
     pub async fn decrement(&self, ip: IpAddr) {
-        if !self.config.enabled {
+        if self.config.mode == ConnectionLimitMode::Disabled {
             return;
         }
 
@@ -338,7 +353,7 @@ mod tests {
         let config = ConnectionLimitConfig {
             max_connections: 100,
             max_connections_per_ip: 10,
-            enabled: true,
+            mode: ConnectionLimitMode::Enabled,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
                 "127.0.0.1".parse().unwrap(),
             ),
@@ -364,7 +379,7 @@ mod tests {
         let config = ConnectionLimitConfig {
             max_connections: 2,
             max_connections_per_ip: 10,
-            enabled: true,
+            mode: ConnectionLimitMode::Enabled,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
                 "127.0.0.1".parse().unwrap(),
             ),
@@ -394,7 +409,7 @@ mod tests {
         let config = ConnectionLimitConfig {
             max_connections: 100,
             max_connections_per_ip: 2,
-            enabled: true,
+            mode: ConnectionLimitMode::Enabled,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
                 "127.0.0.1".parse().unwrap(),
             ),
@@ -422,7 +437,7 @@ mod tests {
         let config = ConnectionLimitConfig {
             max_connections: 1,
             max_connections_per_ip: 1,
-            enabled: false,
+            mode: ConnectionLimitMode::Disabled,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
                 "127.0.0.1".parse().unwrap(),
             ),

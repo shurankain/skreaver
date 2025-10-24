@@ -208,10 +208,10 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
                 config.connection_limits.clone(),
             ));
         tracing::info!(
-            "Connection limits enabled: max={}, per_ip={}, enabled={}",
+            "Connection limits: max={}, per_ip={}, mode={:?}",
             config.connection_limits.max_connections,
             config.connection_limits.max_connections_per_ip,
-            config.connection_limits.enabled
+            config.connection_limits.mode
         );
 
         Self {

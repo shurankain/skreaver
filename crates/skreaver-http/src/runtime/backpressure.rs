@@ -16,6 +16,21 @@ use tokio::sync::{RwLock, Semaphore, mpsc, oneshot};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+/// Backpressure strategy mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackpressureMode {
+    /// No adaptive backpressure - only enforce queue/concurrency limits
+    Static,
+    /// Adaptive backpressure based on system load and processing times
+    Adaptive,
+}
+
+impl Default for BackpressureMode {
+    fn default() -> Self {
+        Self::Adaptive
+    }
+}
+
 /// Configuration for backpressure and queue management
 #[derive(Debug, Clone)]
 pub struct BackpressureConfig {
@@ -29,8 +44,8 @@ pub struct BackpressureConfig {
     pub queue_timeout: Duration,
     /// Processing timeout for individual requests
     pub processing_timeout: Duration,
-    /// Enable adaptive backpressure based on system load
-    pub enable_adaptive_backpressure: bool,
+    /// Backpressure strategy mode
+    pub mode: BackpressureMode,
     /// Target processing time for adaptive backpressure (milliseconds)
     pub target_processing_time_ms: u64,
     /// Load factor threshold for triggering backpressure (0.0-1.0)
@@ -45,7 +60,7 @@ impl Default for BackpressureConfig {
             global_max_concurrent: 500,
             queue_timeout: Duration::from_secs(30),
             processing_timeout: Duration::from_secs(60),
-            enable_adaptive_backpressure: true,
+            mode: BackpressureMode::default(),
             target_processing_time_ms: 1000,
             load_threshold: 0.8,
         }
@@ -465,8 +480,8 @@ impl BackpressureManager {
         priority: RequestPriority,
         timeout: Option<Duration>,
     ) -> Result<(Uuid, ResponseReceiver<String>), BackpressureError> {
-        // Check system load first
-        if self.config.enable_adaptive_backpressure {
+        // Check system load first if adaptive mode is enabled
+        if self.config.mode == BackpressureMode::Adaptive {
             let load = self.calculate_system_load().await;
             if load > self.config.load_threshold {
                 // Increment rejection counter for the agent
@@ -526,8 +541,8 @@ impl BackpressureManager {
         priority: RequestPriority,
         timeout: Option<Duration>,
     ) -> Result<(Uuid, ResponseReceiver<String>), BackpressureError> {
-        // Check system load first
-        if self.config.enable_adaptive_backpressure {
+        // Check system load first if adaptive mode is enabled
+        if self.config.mode == BackpressureMode::Adaptive {
             let load = self.calculate_system_load().await;
             if load > self.config.load_threshold {
                 // Increment rejection counter for the agent
@@ -1186,7 +1201,7 @@ mod tests {
     #[tokio::test]
     async fn test_system_overload_rejection_metrics() {
         let config = BackpressureConfig {
-            enable_adaptive_backpressure: true,
+            mode: BackpressureMode::Adaptive,
             load_threshold: 0.01,     // Very low threshold
             global_max_concurrent: 1, // Low global limit to make it easy to trigger overload
             ..BackpressureConfig::default()

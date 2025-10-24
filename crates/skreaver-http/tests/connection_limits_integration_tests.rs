@@ -30,7 +30,7 @@ async fn test_connection_limits_custom_config() {
         .connection_limits(ConnectionLimitConfig {
             max_connections: 50,
             max_connections_per_ip: 5,
-            enabled: true,
+            mode: skreaver_http::runtime::connection_limits::ConnectionLimitMode::Enabled,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
                 "127.0.0.1".parse().unwrap(),
             ),
@@ -53,7 +53,7 @@ async fn test_connection_limits_can_be_disabled() {
         .connection_limits(ConnectionLimitConfig {
             max_connections: 10,
             max_connections_per_ip: 1,
-            enabled: false, // Disabled
+            mode: skreaver_http::runtime::connection_limits::ConnectionLimitMode::Disabled,
             missing_connect_info_behavior: MissingConnectInfoBehavior::UseFallback(
                 "127.0.0.1".parse().unwrap(),
             ),
