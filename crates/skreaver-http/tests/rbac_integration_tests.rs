@@ -11,7 +11,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use skreaver_core::auth::rbac::RoleManager;
-use skreaver_core::security::{SecurityConfig, policy::ToolPolicy};
+use skreaver_core::security::{SecurityConfig, policy::ToolSecurityPolicy};
 use skreaver_http::runtime::{HttpAgentRuntime, HttpRuntimeConfig};
 use skreaver_tools::{
     ExecutionResult, InMemoryToolRegistry, SecureToolRegistry, Tool, ToolRegistry,
@@ -57,7 +57,7 @@ fn create_app_with_blocked_tools() -> axum::Router {
     let mut tool_policies = HashMap::new();
     tool_policies.insert(
         "blocked_tool".to_string(),
-        ToolPolicy {
+        ToolSecurityPolicy {
             fs_enabled: Some(false),
             http_enabled: Some(false),
             network_enabled: Some(false),
@@ -146,7 +146,7 @@ async fn test_secure_registry_logs_blocked_attempts() {
     let mut tool_policies = HashMap::new();
     tool_policies.insert(
         "test_tool".to_string(),
-        ToolPolicy {
+        ToolSecurityPolicy {
             fs_enabled: Some(false),
             http_enabled: Some(false),
             network_enabled: Some(false),

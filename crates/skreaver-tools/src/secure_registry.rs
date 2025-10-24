@@ -302,7 +302,7 @@ mod tests {
     use super::*;
     use crate::{InMemoryToolRegistry, Tool};
     use skreaver_core::auth::rbac::RoleManager;
-    use skreaver_core::security::policy::ToolPolicy;
+    use skreaver_core::security::policy::ToolSecurityPolicy;
     use std::collections::HashMap;
 
     struct TestTool;
@@ -349,7 +349,7 @@ mod tests {
         let mut tool_policies = HashMap::new();
         tool_policies.insert(
             "blocked_tool".to_string(),
-            ToolPolicy {
+            ToolSecurityPolicy {
                 fs_enabled: Some(false),
                 http_enabled: Some(false),
                 network_enabled: Some(false),
@@ -418,7 +418,7 @@ mod tests {
         let mut tool_policies = HashMap::new();
         tool_policies.insert(
             "blocked_tool".to_string(),
-            ToolPolicy {
+            ToolSecurityPolicy {
                 fs_enabled: Some(false),
                 http_enabled: Some(false),
                 network_enabled: Some(false),

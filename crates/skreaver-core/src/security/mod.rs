@@ -27,7 +27,7 @@ pub use errors::{SecurityError, SecurityViolation};
 pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
     FileCountLimit, FileSizeLimit, NetworkPort, RedirectLimit, ResponseSizeLimit, SecurityPolicy,
-    TimeoutSeconds, ToolPolicy,
+    TimeoutSeconds, ToolSecurityPolicy,
 };
 #[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};

@@ -2,7 +2,7 @@
 
 use super::errors::SecurityError;
 use super::limits::ResourceLimits;
-use super::policy::{FileSystemPolicy, HttpPolicy, NetworkPolicy, SecurityPolicy, ToolPolicy};
+use super::policy::{FileSystemPolicy, HttpPolicy, NetworkPolicy, SecurityPolicy, ToolSecurityPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -175,7 +175,7 @@ pub struct SecurityConfig {
     pub resources: ResourceLimits,
     pub audit: AuditConfig,
     pub secrets: SecretConfig,
-    pub tools: HashMap<String, ToolPolicy>,
+    pub tools: HashMap<String, ToolSecurityPolicy>,
     pub alerting: AlertingConfig,
     pub development: DevelopmentConfig,
     pub emergency: EmergencyConfig,
@@ -1453,7 +1453,7 @@ version = "0.1.0"
 
         // Test with tool that has custom settings
         let mut config_with_tools = config.clone();
-        let tool_policy = ToolPolicy {
+        let tool_policy = ToolSecurityPolicy {
             fs_enabled: Some(false),
             ..Default::default()
         };

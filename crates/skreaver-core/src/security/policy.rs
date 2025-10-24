@@ -635,8 +635,11 @@ impl NetworkPolicy {
 }
 
 /// Tool-specific security policies
+///
+/// Defines security constraints and capabilities for individual tools.
+/// Note: This is separate from RBAC `ToolPolicy` which handles role-based access control.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ToolPolicy {
+pub struct ToolSecurityPolicy {
     pub fs_enabled: Option<bool>,
     pub http_enabled: Option<bool>,
     pub network_enabled: Option<bool>,
