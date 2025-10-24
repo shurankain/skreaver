@@ -345,7 +345,10 @@ fn test_env_config_comprehensive() {
     assert_eq!(config.backpressure.global_max_concurrent, 250);
     assert_eq!(config.backpressure.queue_timeout.as_secs(), 15);
     assert_eq!(config.backpressure.processing_timeout.as_secs(), 30);
-    assert_eq!(config.backpressure.mode, skreaver_http::runtime::backpressure::BackpressureMode::Static);
+    assert_eq!(
+        config.backpressure.mode,
+        skreaver_http::runtime::backpressure::BackpressureMode::Static
+    );
     assert_eq!(config.backpressure.target_processing_time_ms, 500);
     assert_eq!(config.backpressure.load_threshold, 0.7);
     assert!(config.observability.metrics_enabled);

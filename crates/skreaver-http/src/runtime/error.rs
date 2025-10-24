@@ -192,7 +192,10 @@ impl InternalError {
     }
 
     /// Create a database error with source error context
-    pub fn database_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+    pub fn database_with_source<S: Into<String>, E: std::error::Error>(
+        message: S,
+        source: &E,
+    ) -> Self {
         Self::DatabaseError {
             message: message.into(),
             context: Some(format!("Caused by: {}", source)),
@@ -208,7 +211,10 @@ impl InternalError {
     }
 
     /// Create a serialization error with source error context
-    pub fn serialization_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+    pub fn serialization_with_source<S: Into<String>, E: std::error::Error>(
+        message: S,
+        source: &E,
+    ) -> Self {
         Self::SerializationError {
             message: message.into(),
             context: Some(format!("Caused by: {}", source)),
@@ -232,7 +238,10 @@ impl InternalError {
     }
 
     /// Create an unexpected error with source error context
-    pub fn unexpected_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+    pub fn unexpected_with_source<S: Into<String>, E: std::error::Error>(
+        message: S,
+        source: &E,
+    ) -> Self {
         Self::Unexpected {
             message: message.into(),
             context: Some(format!("Caused by: {}", source)),
@@ -263,7 +272,10 @@ pub enum ValidationError {
 
 impl ValidationError {
     /// Create an invalid JSON error with source context
-    pub fn invalid_json_with_source<S: Into<String>, E: std::error::Error>(message: S, source: &E) -> Self {
+    pub fn invalid_json_with_source<S: Into<String>, E: std::error::Error>(
+        message: S,
+        source: &E,
+    ) -> Self {
         Self::InvalidJson {
             message: message.into(),
             context: Some(format!("Caused by: {}", source)),
@@ -663,8 +675,7 @@ mod tests {
     #[test]
     fn test_serialization_error_with_context() {
         // Simulate a JSON parsing error
-        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}")
-            .unwrap_err();
+        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
         let error = InternalError::serialization_with_source("Failed to parse response", &json_err);
 
         let message = format!("{}", error);
@@ -674,9 +685,9 @@ mod tests {
 
     #[test]
     fn test_validation_error_with_json_context() {
-        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}")
-            .unwrap_err();
-        let error = ValidationError::invalid_json_with_source("Request body is malformed", &json_err);
+        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
+        let error =
+            ValidationError::invalid_json_with_source("Request body is malformed", &json_err);
 
         let message = format!("{}", error);
         assert!(message.contains("Invalid JSON: Request body is malformed"));
@@ -716,7 +727,8 @@ mod tests {
     #[test]
     fn test_error_context_in_runtime_error() {
         let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
-        let internal_err = InternalError::database_with_source("Database connection failed", &io_error);
+        let internal_err =
+            InternalError::database_with_source("Database connection failed", &io_error);
         let runtime_err = RuntimeError::Internal(internal_err);
 
         let message = format!("{}", runtime_err);
