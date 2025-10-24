@@ -80,26 +80,32 @@ impl WebSocketManager {
     }
 
     /// Add a new connection
+    ///
+    /// Uses write lock from the start to prevent TOCTOU race conditions
+    /// when checking and updating connection limits.
     pub async fn add_connection(
         &self,
         id: Uuid,
         info: ConnectionInfo,
     ) -> WsResult<mpsc::Sender<WsMessage>> {
-        let connections = self.connections.read().await;
+        // Acquire write locks immediately to prevent race conditions
+        let mut connections = self.connections.write().await;
+        let mut ip_connections = self.connections_per_ip.write().await;
+
+        // Check global connection limit
         if connections.len() >= self.config.max_connections {
             return Err(WsError::ConnectionLimitExceeded);
         }
-        drop(connections);
 
         // Check IP-based rate limiting
         let ip_addr = info.addr.ip();
-        let mut ip_connections = self.connections_per_ip.write().await;
         let ip_count = ip_connections.get(&ip_addr).copied().unwrap_or(0);
         if ip_count >= self.config.max_connections_per_ip {
             return Err(WsError::RateLimitExceeded);
         }
+
+        // Atomically increment IP counter and add connection
         *ip_connections.entry(ip_addr).or_insert(0) += 1;
-        drop(ip_connections);
 
         let (sender, _receiver) = mpsc::channel(self.config.buffer_size);
 
@@ -111,8 +117,10 @@ impl WebSocketManager {
             user_id: None,
         };
 
-        let mut connections = self.connections.write().await;
         connections.insert(id, state);
+
+        // Release locks
+        drop(ip_connections);
         drop(connections);
 
         info!("Added WebSocket connection: {}", id);
@@ -120,22 +128,28 @@ impl WebSocketManager {
     }
 
     /// Remove a connection
+    ///
+    /// Acquires all necessary locks in a consistent order to prevent deadlocks:
+    /// 1. connections
+    /// 2. ip_connections
+    /// 3. subscriptions
     pub async fn remove_connection(&self, id: Uuid) {
+        // Acquire all locks upfront in consistent order to prevent deadlocks
         let mut connections = self.connections.write().await;
+        let mut ip_connections = self.connections_per_ip.write().await;
+        let mut subscriptions = self.subscriptions.write().await;
+
         if let Some(state) = connections.remove(&id) {
             // Decrement IP connection count
             let ip_addr = state.info.addr.ip();
-            let mut ip_connections = self.connections_per_ip.write().await;
             if let Some(count) = ip_connections.get_mut(&ip_addr) {
                 *count = count.saturating_sub(1);
                 if *count == 0 {
                     ip_connections.remove(&ip_addr);
                 }
             }
-            drop(ip_connections);
 
             // Unsubscribe from all channels
-            let mut subscriptions = self.subscriptions.write().await;
             for channel in &state.channels {
                 if let Some(subscribers) = subscriptions.get_mut(channel) {
                     subscribers.retain(|&conn_id| conn_id != id);
@@ -144,10 +158,13 @@ impl WebSocketManager {
                     }
                 }
             }
-            drop(subscriptions);
 
             info!("Removed WebSocket connection: {}", id);
         }
+
+        // Explicit drops for clarity (locks released in reverse order)
+        drop(subscriptions);
+        drop(ip_connections);
         drop(connections);
     }
 
@@ -280,6 +297,16 @@ impl WebSocketManager {
             return Err(WsError::AuthenticationFailed(
                 "Authentication required".to_string(),
             ));
+        }
+
+        // Re-check subscription limit per connection (state may have changed)
+        let new_subscription_count = state.channels.len() +
+            channels.iter().filter(|ch| !state.channels.contains(ch)).count();
+        if new_subscription_count > self.config.max_subscriptions_per_connection {
+            return Err(WsError::SubscriptionLimitExceeded {
+                current: new_subscription_count,
+                max: self.config.max_subscriptions_per_connection,
+            });
         }
 
         // Add subscriptions
@@ -701,5 +728,145 @@ mod tests {
         let info2 = ConnectionInfo::new(addr);
         let result = manager.add_connection(info2.id, info2).await;
         assert!(matches!(result, Err(WsError::ConnectionLimitExceeded)));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_connection_additions() {
+        use std::sync::Arc;
+
+        // Test that concurrent add_connection calls don't race
+        let config = WebSocketConfig {
+            max_connections: 5,
+            max_connections_per_ip: 5,
+            ..Default::default()
+        };
+        let manager = Arc::new(WebSocketManager::new(config));
+
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+
+        // Spawn 10 concurrent connection attempts
+        let mut handles = vec![];
+        for _ in 0..10 {
+            let manager_clone = Arc::clone(&manager);
+            let handle = tokio::spawn(async move {
+                let info = ConnectionInfo::new(addr);
+                manager_clone.add_connection(info.id, info).await
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all attempts
+        let mut success_count = 0;
+        let mut failure_count = 0;
+        for handle in handles {
+            match handle.await.unwrap() {
+                Ok(_) => success_count += 1,
+                Err(_) => failure_count += 1,
+            }
+        }
+
+        // Exactly 5 should succeed (max_connections), 5 should fail
+        assert_eq!(success_count, 5, "Expected exactly 5 successful connections");
+        assert_eq!(failure_count, 5, "Expected exactly 5 failed connections");
+
+        // Verify final state
+        let stats = manager.get_stats().await;
+        assert_eq!(stats.total_connections, 5);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_remove_and_add() {
+        use std::sync::Arc;
+
+        let config = WebSocketConfig {
+            max_connections: 10,
+            max_connections_per_ip: 10,
+            ..Default::default()
+        };
+        let manager = Arc::new(WebSocketManager::new(config));
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+
+        // Add initial connections
+        let mut connection_ids = vec![];
+        for _ in 0..5 {
+            let info = ConnectionInfo::new(addr);
+            let id = info.id;
+            manager.add_connection(id, info).await.unwrap();
+            connection_ids.push(id);
+        }
+
+        // Concurrent remove and add operations
+        let mut remove_handles = vec![];
+        let mut add_handles = vec![];
+
+        // Remove connections
+        for id in connection_ids {
+            let manager_clone = Arc::clone(&manager);
+            let handle = tokio::spawn(async move {
+                manager_clone.remove_connection(id).await;
+            });
+            remove_handles.push(handle);
+        }
+
+        // Add new connections concurrently
+        for _ in 0..5 {
+            let manager_clone = Arc::clone(&manager);
+            let handle = tokio::spawn(async move {
+                let info = ConnectionInfo::new(addr);
+                manager_clone.add_connection(info.id, info).await
+            });
+            add_handles.push(handle);
+        }
+
+        // Wait for all operations
+        for handle in remove_handles {
+            handle.await.unwrap();
+        }
+        for handle in add_handles {
+            handle.await.unwrap().ok();
+        }
+
+        // State should be consistent
+        let stats = manager.get_stats().await;
+        assert_eq!(stats.total_connections, 5, "Expected 5 connections after concurrent add/remove");
+    }
+
+    #[tokio::test]
+    async fn test_subscription_race_condition() {
+        use std::sync::Arc;
+
+        let config = WebSocketConfig {
+            max_subscriptions_per_connection: 10,
+            ..Default::default()
+        };
+        let manager = Arc::new(WebSocketManager::new(config));
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+
+        // Add a connection
+        let info = ConnectionInfo::new(addr);
+        let conn_id = info.id;
+        manager.add_connection(conn_id, info).await.unwrap();
+
+        // Concurrent subscription attempts to the same connection
+        let mut handles = vec![];
+        for i in 0..20 {
+            let manager_clone = Arc::clone(&manager);
+            let handle = tokio::spawn(async move {
+                let channels = vec![format!("channel_{}", i % 5)]; // 5 unique channels, repeated
+                manager_clone.handle_subscribe(conn_id, channels).await
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all subscription attempts
+        for handle in handles {
+            handle.await.unwrap().ok();
+        }
+
+        // Verify subscription count doesn't exceed limits
+        let stats = manager.get_stats().await;
+        // Since we have 20 attempts on 5 unique channels, we should end up with 5 subscriptions
+        assert!(stats.total_channels <= 10, "Channel subscriptions should not exceed per-connection limit");
+        assert_eq!(stats.total_channels, 5, "Should have exactly 5 unique channel subscriptions");
     }
 }
