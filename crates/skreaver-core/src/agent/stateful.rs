@@ -1,5 +1,5 @@
 use crate::memory::MemoryReader;
-use crate::tool::{ExecutionResult, ToolCall};
+use crate::tool::ToolCall;
 
 /// Stateful agent trait using the typestate pattern for compile-time state safety.
 ///
@@ -104,47 +104,81 @@ pub trait ToolExecutionState {}
 /// transition via the `act()` method.
 pub trait CompleteState {}
 
-/// Extended trait for stateful agents that support state transitions.
+/// Deprecated: Use direct implementation pattern instead.
 ///
-/// This trait provides the core state transition methods. Implementors
-/// define specific transitions using concrete state types.
-pub trait StatefulAgentTransitions<State>: StatefulAgent<State> {
-    /// The type returned after observing (typically ProcessingState)
-    type ObserveResult: StatefulAgent<Self::ProcessingState, Observation = Self::Observation, Action = Self::Action>;
+/// This trait was removed because its complex associated types made it
+/// very difficult for users to implement. See module documentation for
+/// the recommended pattern.
+#[deprecated(
+    since = "0.5.0",
+    note = "Implement state transition methods directly on your agent type instead. See module docs for examples."
+)]
+pub trait StatefulAgentTransitions<State>: StatefulAgent<State> {}
 
-    /// The type returned after handling tool results  
-    type HandleResult: StatefulAgent<Self::NextState, Observation = Self::Observation, Action = Self::Action>;
-
-    /// The processing state type for this agent
-    type ProcessingState;
-
-    /// The next state type after handling results
-    type NextState;
-
-    /// Process an observation and transition to processing state.
-    ///
-    /// This method is only available on agents in initial states.
-    /// It consumes the current agent and returns a new agent in
-    /// the processing state.
-    fn observe(self, observation: Self::Observation) -> Self::ObserveResult
-    where
-        State: InitialState;
-
-    /// Handle the result of tool execution and transition state.
-    ///
-    /// This method is only available on agents in processing states.
-    /// Based on the tool results, the agent transitions to the next state.
-    fn handle_result(self, result: ExecutionResult) -> Self::HandleResult
-    where
-        State: ProcessingState;
-
-    /// Generate final action from complete state.
-    ///
-    /// This method is only available on agents in complete states.
-    fn act(self) -> Self::Action
-    where
-        State: CompleteState;
-}
+// Note: StatefulAgentTransitions trait was removed in v0.5.0
+//
+// The previous trait had overly complex associated types that made it very
+// difficult for users to implement correctly. Instead of a trait, we now
+// recommend implementing state transitions directly on your agent type.
+//
+// # Recommended Pattern
+//
+// Implement concrete methods on your agent for each state transition:
+//
+// ```rust,ignore
+// struct MyAgent<S> {
+//     state: S,
+//     memory: Box<dyn MemoryReader>,
+// }
+//
+// // Implement StatefulAgent<S> for your agent
+// impl<S> StatefulAgent<S> for MyAgent<S> {
+//     type Observation = String;
+//     type Action = String;
+//
+//     fn memory_reader(&self) -> &dyn MemoryReader {
+//         self.memory.as_ref()
+//     }
+//
+//     fn get_tool_calls(&self) -> Vec<ToolCall> {
+//         vec![] // Return actual tool calls
+//     }
+//
+//     fn is_complete(&self) -> bool {
+//         false // Check if in complete state
+//     }
+// }
+//
+// // Transition from Initial to Processing
+// impl MyAgent<InitialState> {
+//     pub fn observe(self, input: String) -> MyAgent<ProcessingState> {
+//         MyAgent {
+//             state: ProcessingState { data: input },
+//             memory: self.memory,
+//         }
+//     }
+// }
+//
+// // Transition from Processing to Complete
+// impl MyAgent<ProcessingState> {
+//     pub fn handle_result(self, result: ExecutionResult) -> MyAgent<CompleteState> {
+//         MyAgent {
+//             state: CompleteState { result: self.state.data },
+//             memory: self.memory,
+//         }
+//     }
+// }
+//
+// // Extract final result
+// impl MyAgent<CompleteState> {
+//     pub fn act(self) -> String {
+//         self.state.result
+//     }
+// }
+// ```
+//
+// This pattern is much simpler and gives you full control over state transitions
+// without fighting with complex trait bounds.
 
 /// Adapter to bridge stateful agents with the legacy Agent trait.
 ///
