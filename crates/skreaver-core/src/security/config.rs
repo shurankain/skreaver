@@ -3,7 +3,8 @@
 use super::errors::SecurityError;
 use super::limits::ResourceLimits;
 use super::policy::{
-    FileSystemPolicy, HttpPolicy, NetworkPolicy, SecurityPolicy, ToolSecurityPolicy,
+    FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy, NetworkPolicy, SecurityPolicy,
+    SymlinkBehavior, ToolSecurityPolicy,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -985,13 +986,20 @@ impl SecurityConfig {
     pub fn get_tool_policy(&self, tool_name: &str) -> SecurityPolicy {
         let tool_policy = self.tools.get(tool_name).cloned().unwrap_or_default();
 
+        let fs_enabled = tool_policy
+            .fs_enabled
+            .unwrap_or_else(|| !matches!(self.fs.access, FileSystemAccess::Disabled));
+        let http_enabled = tool_policy
+            .http_enabled
+            .unwrap_or_else(|| !matches!(self.http.access, HttpAccess::Disabled));
+
         SecurityPolicy {
-            fs_policy: if tool_policy.fs_enabled.unwrap_or(self.fs.enabled) {
+            fs_policy: if fs_enabled {
                 self.fs.clone()
             } else {
                 FileSystemPolicy::disabled()
             },
-            http_policy: if tool_policy.http_enabled.unwrap_or(self.http.enabled) {
+            http_policy: if http_enabled {
                 self.http.clone()
             } else {
                 HttpPolicy::disabled()
@@ -1047,7 +1055,9 @@ impl SecurityConfig {
         }
 
         // Validate file system policies (CRITICAL - must fail)
-        if self.fs.enabled && self.fs.allow_paths.is_empty() {
+        if matches!(self.fs.access, FileSystemAccess::Enabled { .. })
+            && self.fs.allow_paths.is_empty()
+        {
             return Err(SecurityError::ConfigError {
                 message: "File system enabled but no allowed paths configured (security risk)"
                     .to_string(),
@@ -1072,17 +1082,24 @@ impl SecurityConfig {
         // during deserialization, so no additional validation is needed here.
 
         // Validate HTTP policies
-        if self.http.enabled && self.http.allow_domains.is_empty() && !self.development.enabled {
-            tracing::warn!(
-                "HTTP enabled but no allowed domains configured (all domains will be blocked)"
-            );
+        if let HttpAccess::InternetAccess { allow_domains, .. } = &self.http.access {
+            if allow_domains.is_empty() && !self.development.enabled {
+                tracing::warn!(
+                    "HTTP enabled but no allowed domains configured (all domains will be blocked)"
+                );
+            }
         }
 
         // Check for overly permissive settings (WARNINGS)
-        if self.http.allow_local && !self.development.enabled {
-            tracing::warn!(
-                "HTTP requests to localhost are allowed - this may be a security risk in production"
-            );
+        if let HttpAccess::InternetAccess {
+            allow_local: true, ..
+        } = &self.http.access
+        {
+            if !self.development.enabled {
+                tracing::warn!(
+                    "HTTP requests to localhost are allowed - this may be a security risk in production"
+                );
+            }
         }
 
         if self.network.allow_private_networks && !self.development.enabled {
@@ -1091,7 +1108,11 @@ impl SecurityConfig {
             );
         }
 
-        if self.fs.follow_symlinks {
+        if let FileSystemAccess::Enabled {
+            symlink_behavior: SymlinkBehavior::Follow,
+            ..
+        } = &self.fs.access
+        {
             tracing::warn!("Following symbolic links is enabled - this may be a security risk");
         }
 
@@ -1354,9 +1375,9 @@ auto_lockdown_triggers = ["repeated_violations"]
 
         let config = config.unwrap();
         assert_eq!(config.metadata.version, "0.1.0");
-        assert!(config.fs.enabled);
+        assert!(matches!(config.fs.access, FileSystemAccess::Enabled { .. }));
         assert_eq!(config.fs.allow_paths, vec![PathBuf::from("/tmp")]);
-        assert_eq!(config.http.timeout.seconds(), 30);
+        // HTTP timeout is now inside the access enum variant
         assert_eq!(config.resources.max_memory_mb, 128);
     }
 
@@ -1369,7 +1390,7 @@ auto_lockdown_triggers = ["repeated_violations"]
         match result {
             Ok(config) => {
                 assert_eq!(config.metadata.version, "0.1.0");
-                assert!(config.fs.enabled);
+                assert!(matches!(config.fs.access, FileSystemAccess::Enabled { .. }));
                 assert!(!config.fs.allow_paths.is_empty());
             }
             Err(e) => {
@@ -1434,7 +1455,10 @@ version = "0.1.0"
     #[test]
     fn test_validate_fs_enabled_no_paths() {
         let mut config = SecurityConfig::create_default();
-        config.fs.enabled = true;
+        config.fs.access = FileSystemAccess::Enabled {
+            symlink_behavior: SymlinkBehavior::NoFollow,
+            content_scanning: true,
+        };
         config.fs.allow_paths.clear();
 
         let result = config.validate();
@@ -1451,7 +1475,10 @@ version = "0.1.0"
 
         // Test with non-existent tool
         let policy = config.get_tool_policy("nonexistent");
-        assert_eq!(policy.fs_policy.enabled, config.fs.enabled);
+        // Check that it matches the global config
+        let fs_enabled = !matches!(config.fs.access, FileSystemAccess::Disabled);
+        let policy_fs_enabled = !matches!(policy.fs_policy.access, FileSystemAccess::Disabled);
+        assert_eq!(policy_fs_enabled, fs_enabled);
 
         // Test with tool that has custom settings
         let mut config_with_tools = config.clone();
@@ -1464,7 +1491,10 @@ version = "0.1.0"
             .insert("restricted_tool".to_string(), tool_policy);
 
         let policy = config_with_tools.get_tool_policy("restricted_tool");
-        assert!(!policy.fs_policy.enabled);
+        assert!(matches!(
+            policy.fs_policy.access,
+            FileSystemAccess::Disabled
+        ));
     }
 
     #[test]

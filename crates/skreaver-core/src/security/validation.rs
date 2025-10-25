@@ -184,7 +184,11 @@ impl PathValidator {
             })?;
 
         // Check if symlinks are allowed
-        if !self.policy.follow_symlinks {
+        if let super::FileSystemAccess::Enabled {
+            symlink_behavior: super::SymlinkBehavior::NoFollow,
+            ..
+        } = &self.policy.access
+        {
             let metadata =
                 std::fs::symlink_metadata(&path_buf).map_err(|_| SecurityError::InvalidPath {
                     path: path.to_string(),
@@ -291,7 +295,13 @@ impl DomainValidator {
         }
 
         // Check for local/private IPs if not allowed
-        if !self.policy.allow_local {
+        let allow_local = match &self.policy.access {
+            super::HttpAccess::Disabled => false,
+            super::HttpAccess::LocalOnly { .. } => true,
+            super::HttpAccess::InternetAccess { allow_local, .. } => *allow_local,
+        };
+
+        if !allow_local {
             self.check_for_private_ip(host)?;
         }
 
@@ -432,6 +442,7 @@ pub struct ScanResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::security::{HttpAccess, RedirectLimit, ResponseSizeLimit, TimeoutSeconds};
 
     #[test]
     fn test_input_validator_secrets() {
@@ -455,8 +466,15 @@ mod tests {
     #[test]
     fn test_domain_validator() {
         let policy = HttpPolicy {
-            allow_domains: vec!["*.example.com".to_string()],
-            allow_local: false,
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["*.example.com".to_string()],
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
             ..Default::default()
         };
 

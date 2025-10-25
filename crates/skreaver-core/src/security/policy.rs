@@ -357,23 +357,57 @@ pub struct SecurityPolicy {
     pub network_policy: NetworkPolicy,
 }
 
+/// Symlink behavior for file system operations
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SymlinkBehavior {
+    /// Follow symbolic links
+    Follow,
+    /// Do not follow symbolic links
+    NoFollow,
+}
+
+impl Default for SymlinkBehavior {
+    fn default() -> Self {
+        Self::NoFollow
+    }
+}
+
+/// File system access mode
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FileSystemAccess {
+    /// File system access is disabled
+    Disabled,
+    /// File system access is enabled with specific constraints
+    Enabled {
+        symlink_behavior: SymlinkBehavior,
+        content_scanning: bool,
+    },
+}
+
+impl Default for FileSystemAccess {
+    fn default() -> Self {
+        Self::Enabled {
+            symlink_behavior: SymlinkBehavior::default(),
+            content_scanning: true,
+        }
+    }
+}
+
 /// File system access policy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileSystemPolicy {
-    pub enabled: bool,
+    pub access: FileSystemAccess,
     pub allow_paths: Vec<PathBuf>,
     pub deny_patterns: Vec<String>,
     #[serde(alias = "max_file_size_bytes")]
     pub max_file_size: FileSizeLimit,
     pub max_files_per_operation: FileCountLimit,
-    pub follow_symlinks: bool,
-    pub scan_content: bool,
 }
 
 impl Default for FileSystemPolicy {
     fn default() -> Self {
         Self {
-            enabled: true,
+            access: FileSystemAccess::default(),
             allow_paths: vec![PathBuf::from("./data"), PathBuf::from("./runtime/tmp")],
             deny_patterns: vec![
                 "..".to_string(),
@@ -386,8 +420,6 @@ impl Default for FileSystemPolicy {
             ],
             max_file_size: FileSizeLimit::default(), // 16MB
             max_files_per_operation: FileCountLimit::default(), // 100
-            follow_symlinks: false,
-            scan_content: true,
         }
     }
 }
@@ -395,13 +427,13 @@ impl Default for FileSystemPolicy {
 impl FileSystemPolicy {
     pub fn disabled() -> Self {
         Self {
-            enabled: false,
+            access: FileSystemAccess::Disabled,
             ..Default::default()
         }
     }
 
     pub fn is_path_allowed(&self, path: &std::path::Path) -> Result<bool, SecurityError> {
-        if !self.enabled {
+        if matches!(self.access, FileSystemAccess::Disabled) {
             return Err(SecurityError::ToolDisabled {
                 tool_name: "file_system".to_string(),
             });
@@ -449,27 +481,31 @@ impl FileSystemPolicy {
     }
 }
 
-/// HTTP client access policy
+/// HTTP access mode
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HttpPolicy {
-    pub enabled: bool,
-    pub allow_domains: Vec<String>,
-    pub deny_domains: Vec<String>,
-    pub allow_methods: Vec<String>,
-    #[serde(alias = "timeout_seconds")]
-    pub timeout: TimeoutSeconds,
-    #[serde(alias = "max_response_bytes")]
-    pub max_response_size: ResponseSizeLimit,
-    pub max_redirects: RedirectLimit,
-    pub user_agent: String,
-    pub allow_local: bool,
-    pub default_headers: Vec<(String, String)>,
+pub enum HttpAccess {
+    /// HTTP access is disabled
+    Disabled,
+    /// Only local/loopback access allowed
+    LocalOnly {
+        timeout: TimeoutSeconds,
+        max_response_size: ResponseSizeLimit,
+    },
+    /// Internet access with domain controls
+    InternetAccess {
+        allow_domains: Vec<String>,
+        deny_domains: Vec<String>,
+        allow_local: bool,
+        timeout: TimeoutSeconds,
+        max_response_size: ResponseSizeLimit,
+        max_redirects: RedirectLimit,
+        user_agent: String,
+    },
 }
 
-impl Default for HttpPolicy {
+impl Default for HttpAccess {
     fn default() -> Self {
-        Self {
-            enabled: true,
+        Self::InternetAccess {
             allow_domains: vec![],
             deny_domains: vec![
                 "localhost".to_string(),
@@ -481,6 +517,27 @@ impl Default for HttpPolicy {
                 "172.16.*".to_string(),
                 "192.168.*".to_string(),
             ],
+            allow_local: false,
+            timeout: TimeoutSeconds::default(),
+            max_response_size: ResponseSizeLimit::default(),
+            max_redirects: RedirectLimit::default(),
+            user_agent: "skreaver-agent/0.1.0".to_string(),
+        }
+    }
+}
+
+/// HTTP client access policy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpPolicy {
+    pub access: HttpAccess,
+    pub allow_methods: Vec<String>,
+    pub default_headers: Vec<(String, String)>,
+}
+
+impl Default for HttpPolicy {
+    fn default() -> Self {
+        Self {
+            access: HttpAccess::default(),
             allow_methods: vec![
                 "GET".to_string(),
                 "POST".to_string(),
@@ -488,11 +545,6 @@ impl Default for HttpPolicy {
                 "PATCH".to_string(),
                 "DELETE".to_string(),
             ],
-            timeout: TimeoutSeconds::default(), // 30 seconds
-            max_response_size: ResponseSizeLimit::default(), // 32MB
-            max_redirects: RedirectLimit::default(), // 3 redirects
-            user_agent: "skreaver-agent/0.1.0".to_string(),
-            allow_local: false,
             default_headers: vec![
                 ("X-Skreaver-Agent".to_string(), "true".to_string()),
                 ("X-Requested-With".to_string(), "Skreaver".to_string()),
@@ -504,46 +556,58 @@ impl Default for HttpPolicy {
 impl HttpPolicy {
     pub fn disabled() -> Self {
         Self {
-            enabled: false,
+            access: HttpAccess::Disabled,
             ..Default::default()
         }
     }
 
     pub fn is_domain_allowed(&self, domain: &str) -> Result<bool, SecurityError> {
-        if !self.enabled {
-            return Err(SecurityError::ToolDisabled {
-                tool_name: "http".to_string(),
-            });
-        }
-
-        // Check deny list first (takes precedence)
-        for denied_domain in &self.deny_domains {
-            if Self::matches_pattern(domain, denied_domain) {
+        match &self.access {
+            HttpAccess::Disabled => {
+                return Err(SecurityError::ToolDisabled {
+                    tool_name: "http".to_string(),
+                });
+            }
+            HttpAccess::LocalOnly { .. } => {
+                // Only allow localhost/127.0.0.1
+                if domain == "localhost" || domain.starts_with("127.") {
+                    return Ok(true);
+                }
                 return Ok(false);
             }
-        }
+            HttpAccess::InternetAccess {
+                allow_domains,
+                deny_domains,
+                allow_local,
+                ..
+            } => {
+                // Check deny list first (takes precedence)
+                for denied in deny_domains {
+                    if Self::matches_pattern(domain, denied) {
+                        return Ok(false);
+                    }
+                }
 
-        // If no allow list, allow all (except denied)
-        if self.allow_domains.is_empty() {
-            return Ok(true);
-        }
+                // If allow_local is false, block localhost
+                if !allow_local && (domain == "localhost" || domain.starts_with("127.")) {
+                    return Ok(false);
+                }
 
-        // Check allow list
-        for allowed_domain in &self.allow_domains {
-            if Self::matches_pattern(domain, allowed_domain) {
-                return Ok(true);
+                // If allow list is empty, allow all (except denied)
+                if allow_domains.is_empty() {
+                    return Ok(true);
+                }
+
+                // Check allow list
+                for allowed in allow_domains {
+                    if Self::matches_pattern(domain, allowed) {
+                        return Ok(true);
+                    }
+                }
+
+                Ok(false)
             }
         }
-
-        Ok(false)
-    }
-
-    pub fn is_method_allowed(&self, method: &str) -> bool {
-        self.allow_methods.contains(&method.to_uppercase())
-    }
-
-    pub fn get_timeout(&self) -> Duration {
-        self.timeout.as_duration()
     }
 
     fn matches_pattern(domain: &str, pattern: &str) -> bool {
@@ -553,6 +617,19 @@ impl HttpPolicy {
             domain.starts_with(prefix)
         } else {
             domain == pattern
+        }
+    }
+
+    pub fn is_method_allowed(&self, method: &str) -> bool {
+        self.allow_methods.contains(&method.to_uppercase())
+    }
+
+    pub fn get_timeout(&self) -> Duration {
+        match &self.access {
+            HttpAccess::Disabled => Duration::from_secs(0),
+            HttpAccess::LocalOnly { timeout, .. } | HttpAccess::InternetAccess { timeout, .. } => {
+                timeout.as_duration()
+            }
         }
     }
 }
@@ -665,8 +742,15 @@ mod tests {
     #[test]
     fn test_http_policy_domain_matching() {
         let policy = HttpPolicy {
-            allow_domains: vec!["*.example.com".to_string(), "api.test.org".to_string()],
-            deny_domains: vec!["evil.example.com".to_string()],
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["*.example.com".to_string(), "api.test.org".to_string()],
+                deny_domains: vec!["evil.example.com".to_string()],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
             ..Default::default()
         };
 
