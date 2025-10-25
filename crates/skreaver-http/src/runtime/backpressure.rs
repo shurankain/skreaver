@@ -292,7 +292,10 @@ impl Request<Failed> {
 // Backward compatibility: Type-erased request for storage
 // ============================================================================
 
-/// Legacy QueuedRequest for backward compatibility
+/// Type-erased request for queue storage
+///
+/// This is a simplified version of `Request<Queued>` that stores the essential
+/// fields needed for queue management without the typestate marker.
 #[derive(Debug, Clone)]
 pub struct QueuedRequest {
     pub id: Uuid,
@@ -300,30 +303,25 @@ pub struct QueuedRequest {
     pub priority: RequestPriority,
     pub queued_at: Instant,
     pub timeout: Duration,
-    pub metadata: HashMap<String, String>,
+    /// Optional input data for the request
+    pub input: Option<String>,
 }
 
 impl From<Request<Queued>> for QueuedRequest {
     fn from(request: Request<Queued>) -> Self {
-        let mut metadata = HashMap::new();
-        if let Some(input) = request.state.input {
-            metadata.insert("input".to_string(), input);
-        }
-
         QueuedRequest {
             id: request.id,
             agent_id: request.agent_id,
             priority: request.priority,
             queued_at: request.state.queued_at,
             timeout: request.state.timeout,
-            metadata,
+            input: request.state.input,
         }
     }
 }
 
 impl From<QueuedRequest> for Request<Queued> {
     fn from(request: QueuedRequest) -> Self {
-        let input = request.metadata.get("input").cloned();
         Request {
             id: request.id,
             agent_id: request.agent_id,
@@ -331,7 +329,7 @@ impl From<QueuedRequest> for Request<Queued> {
             state: Queued {
                 queued_at: request.queued_at,
                 timeout: request.timeout,
-                input,
+                input: request.input,
             },
         }
     }
@@ -615,7 +613,7 @@ impl BackpressureManager {
             }
 
             let (request, tx) = queue.queue.pop_front()?;
-            let input = request.metadata.get("input").cloned().unwrap_or_default();
+            let input = request.input.clone().unwrap_or_default();
             (request, tx, Arc::clone(&queue.semaphore), input)
         };
 
