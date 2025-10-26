@@ -2,11 +2,14 @@
 
 use skreaver::{
     ExecutionResult, InMemoryToolRegistry, MemoryKey, Tool, ToolCall, ToolRegistry,
-    error::{SkreverError, SkreverResult},
 };
-use skreaver_core::error::{MemoryError, ToolError, ValidatedInput};
+use skreaver_core::error::{MemoryError, ToolError, ValidatedInput, MemoryBackend, MemoryErrorKind};
 use skreaver_core::tool::{ToolDispatch, ToolName};
 use std::sync::Arc;
+
+// Define result type for this example
+type SkreverResult<T> = Result<T, Box<dyn std::error::Error>>;
+type SkreverError = Box<dyn std::error::Error>;
 
 /// Example tool that can fail with different error types
 struct ExampleTool {
@@ -81,14 +84,14 @@ fn main() -> SkreverResult<()> {
     println!("\n❌ Example 4: Memory error example");
     let memory_error = MemoryError::StoreFailed {
         key: MemoryKey::new("test_key").unwrap(),
-        backend: skreaver::error::MemoryBackend::File,
-        kind: skreaver::error::MemoryErrorKind::ResourceExhausted {
+        backend: MemoryBackend::File,
+        kind: MemoryErrorKind::ResourceExhausted {
             resource: "disk space".to_string(),
             limit: "100GB".to_string(),
         },
     };
 
-    let skrever_error: SkreverError = memory_error.into();
+    let skrever_error: SkreverError = Box::new(memory_error);
     println!("Memory error: {}", skrever_error);
 
     // Example 5: Tool error handling with structured information
