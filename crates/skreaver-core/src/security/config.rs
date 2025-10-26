@@ -1083,7 +1083,8 @@ impl SecurityConfig {
 
         // Validate HTTP policies
         if let HttpAccess::InternetAccess { allow_domains, .. } = &self.http.access
-            && allow_domains.is_empty() && !self.development.enabled
+            && allow_domains.is_empty()
+            && !self.development.enabled
         {
             tracing::warn!(
                 "HTTP enabled but no allowed domains configured (all domains will be blocked)"
@@ -1291,25 +1292,27 @@ version = "0.1.0"
 created = "2025-09-08"
 description = "Test configuration"
 
+[fs.access.Enabled]
+symlink_behavior = "NoFollow"
+content_scanning = true
+
 [fs]
-enabled = true
 allow_paths = ["/tmp"]
 deny_patterns = [".."]
 max_file_size_bytes = 16777216
 max_files_per_operation = 100
-follow_symlinks = false
-scan_content = true
 
-[http]
-enabled = true
+[http.access.InternetAccess]
 allow_domains = ["example.com"]
 deny_domains = ["localhost"]
-allow_methods = ["GET", "POST"]
-timeout_seconds = 30
-max_response_bytes = 33554432
+allow_local = false
+timeout = 30
+max_response_size = 33554432
 max_redirects = 3
 user_agent = "test-agent"
-allow_local = false
+
+[http]
+allow_methods = ["GET", "POST"]
 default_headers = []
 
 [network]

@@ -23,6 +23,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 pub mod handlers;
+pub mod lock_ordering;
 pub mod manager;
 pub mod protocol;
 

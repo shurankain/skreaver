@@ -1,8 +1,9 @@
 //! WebSocket connection manager
 
+use super::lock_ordering::ManagerLocks;
 use super::{ConnectionInfo, WebSocketConfig, WsError, WsMessage, WsResult};
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{RwLock, broadcast, mpsc};
+use std::sync::Arc;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -10,21 +11,17 @@ use uuid::Uuid;
 pub struct WebSocketManager {
     /// Manager configuration
     pub config: WebSocketConfig,
-    /// Active connections
-    connections: Arc<RwLock<HashMap<Uuid, ConnectionState>>>,
-    /// Channel subscriptions
-    subscriptions: Arc<RwLock<HashMap<String, Vec<Uuid>>>>,
+    /// Type-safe locks with enforced ordering
+    locks: ManagerLocks,
     /// Event broadcaster
     event_sender: broadcast::Sender<ChannelEvent>,
     /// Authentication handler
     auth_handler: Option<Arc<dyn AuthHandler + Send + Sync>>,
-    /// Connections per IP address
-    connections_per_ip: Arc<RwLock<HashMap<std::net::IpAddr, usize>>>,
 }
 
 /// Connection state
 #[derive(Debug)]
-struct ConnectionState {
+pub(super) struct ConnectionState {
     /// Connection information
     info: ConnectionInfo,
     /// Message sender
@@ -65,11 +62,9 @@ impl WebSocketManager {
 
         Self {
             config,
-            connections: Arc::new(RwLock::new(HashMap::new())),
-            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            locks: ManagerLocks::new(),
             event_sender,
             auth_handler: None,
-            connections_per_ip: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -88,24 +83,23 @@ impl WebSocketManager {
         id: Uuid,
         info: ConnectionInfo,
     ) -> WsResult<mpsc::Sender<WsMessage>> {
-        // Acquire write locks immediately to prevent race conditions
-        let mut connections = self.connections.write().await;
-        let mut ip_connections = self.connections_per_ip.write().await;
+        // Acquire write locks with enforced ordering (connections + ip_connections)
+        let mut guards = self.locks.level2_write().await;
 
         // Check global connection limit
-        if connections.len() >= self.config.max_connections {
+        if guards.connections.len() >= self.config.max_connections {
             return Err(WsError::ConnectionLimitExceeded);
         }
 
         // Check IP-based rate limiting
         let ip_addr = info.addr.ip();
-        let ip_count = ip_connections.get(&ip_addr).copied().unwrap_or(0);
+        let ip_count = guards.ip_connections.get(&ip_addr).copied().unwrap_or(0);
         if ip_count >= self.config.max_connections_per_ip {
             return Err(WsError::RateLimitExceeded);
         }
 
         // Atomically increment IP counter and add connection
-        *ip_connections.entry(ip_addr).or_insert(0) += 1;
+        *guards.ip_connections.entry(ip_addr).or_insert(0) += 1;
 
         let (sender, _receiver) = mpsc::channel(self.config.buffer_size);
 
@@ -117,12 +111,9 @@ impl WebSocketManager {
             user_id: None,
         };
 
-        connections.insert(id, state);
+        guards.connections.insert(id, state);
 
-        // Release locks
-        drop(ip_connections);
-        drop(connections);
-
+        // Locks released automatically when guards drop
         info!("Added WebSocket connection: {}", id);
         Ok(sender)
     }
@@ -137,17 +128,15 @@ impl WebSocketManager {
     /// Performs validation to ensure complete cleanup and detect inconsistencies.
     pub async fn remove_connection(&self, id: Uuid) {
         // Acquire all locks upfront in consistent order to prevent deadlocks
-        let mut connections = self.connections.write().await;
-        let mut ip_connections = self.connections_per_ip.write().await;
-        let mut subscriptions = self.subscriptions.write().await;
+        let mut guards = self.locks.level3_write().await;
 
-        if let Some(state) = connections.remove(&id) {
+        if let Some(state) = guards.connections.remove(&id) {
             // Decrement IP connection count with validation
             let ip_addr = state.info.addr.ip();
-            if let Some(count) = ip_connections.get_mut(&ip_addr) {
+            if let Some(count) = guards.ip_connections.get_mut(&ip_addr) {
                 *count = count.saturating_sub(1);
                 if *count == 0 {
-                    ip_connections.remove(&ip_addr);
+                    guards.ip_connections.remove(&ip_addr);
                 } else if *count > 1000 {
                     // Sanity check: if count is unreasonably high, log warning
                     warn!(
@@ -166,7 +155,7 @@ impl WebSocketManager {
             // Unsubscribe from all channels with validation
             let mut cleaned_channels = 0;
             for channel in &state.channels {
-                if let Some(subscribers) = subscriptions.get_mut(channel) {
+                if let Some(subscribers) = guards.subscriptions.get_mut(channel) {
                     let before_len = subscribers.len();
                     subscribers.retain(|&conn_id| conn_id != id);
                     let after_len = subscribers.len();
@@ -182,7 +171,7 @@ impl WebSocketManager {
                     }
 
                     if subscribers.is_empty() {
-                        subscriptions.remove(channel);
+                        guards.subscriptions.remove(channel);
                     }
                 } else {
                     // Channel not found in subscriptions map - inconsistency
@@ -203,16 +192,13 @@ impl WebSocketManager {
             debug!("Attempted to remove non-existent connection: {}", id);
         }
 
-        // Explicit drops for clarity (locks released in reverse order)
-        drop(subscriptions);
-        drop(ip_connections);
-        drop(connections);
+        // Guards automatically drop in reverse order (subscriptions, ip_connections, connections)
     }
 
     /// Update connection activity
     pub async fn update_activity(&self, id: Uuid) {
-        let mut connections = self.connections.write().await;
-        if let Some(state) = connections.get_mut(&id) {
+        let mut guard = self.locks.level1_write().await;
+        if let Some(state) = guard.connections.get_mut(&id) {
             state.info.update_activity();
         }
     }
@@ -253,11 +239,11 @@ impl WebSocketManager {
         if let Some(auth_handler) = &self.auth_handler {
             match auth_handler.authenticate(token).await {
                 Ok(user_id) => {
-                    let mut connections = self.connections.write().await;
-                    if let Some(state) = connections.get_mut(&conn_id) {
+                    let mut guard = self.locks.level1_write().await;
+                    if let Some(state) = guard.connections.get_mut(&conn_id) {
                         state.authenticated = true;
                         state.user_id = Some(user_id);
-                        drop(connections);
+                        drop(guard);
 
                         self.send_to_connection(
                             conn_id,
@@ -273,10 +259,10 @@ impl WebSocketManager {
             }
         } else {
             // No auth handler, consider all connections authenticated
-            let mut connections = self.connections.write().await;
-            if let Some(state) = connections.get_mut(&conn_id) {
+            let mut guard = self.locks.level1_write().await;
+            if let Some(state) = guard.connections.get_mut(&conn_id) {
                 state.authenticated = true;
-                drop(connections);
+                drop(guard);
 
                 self.send_to_connection(conn_id, WsMessage::success("Authentication successful"))
                     .await?;
@@ -290,10 +276,10 @@ impl WebSocketManager {
     #[doc(hidden)] // Public for testing only
     pub async fn handle_subscribe(&self, conn_id: Uuid, channels: Vec<String>) -> WsResult<()> {
         // Use write lock from the start to prevent TOCTOU race condition
-        let mut connections = self.connections.write().await;
-        let subscriptions = self.subscriptions.write().await;
+        let mut guards = self.locks.level3_write().await;
 
-        let state = connections
+        let state = guards
+            .connections
             .get_mut(&conn_id)
             .ok_or(WsError::ConnectionClosed)?;
 
@@ -315,8 +301,7 @@ impl WebSocketManager {
 
         // Check permissions (release write locks temporarily for async operation)
         let user_id_opt = state.user_id.clone();
-        drop(connections);
-        drop(subscriptions);
+        drop(guards);
 
         if let (Some(auth_handler), Some(user_id)) = (&self.auth_handler, &user_id_opt) {
             for channel in &channels {
@@ -327,11 +312,11 @@ impl WebSocketManager {
         }
 
         // Re-acquire locks and perform subscription
-        let mut connections = self.connections.write().await;
-        let mut subscriptions = self.subscriptions.write().await;
+        let mut guards = self.locks.level3_write().await;
 
         // Re-check authentication after re-acquiring locks
-        let state = connections
+        let state = guards
+            .connections
             .get_mut(&conn_id)
             .ok_or(WsError::ConnectionClosed)?;
         if self.auth_handler.is_some() && !state.authenticated {
@@ -357,7 +342,8 @@ impl WebSocketManager {
         for channel in channels {
             if !state.channels.contains(&channel) {
                 // Check channel subscriber limit
-                let current_subscribers = subscriptions
+                let current_subscribers = guards
+                    .subscriptions
                     .get(&channel)
                     .map(|subs| subs.len())
                     .unwrap_or(0);
@@ -370,7 +356,8 @@ impl WebSocketManager {
                 }
 
                 state.channels.push(channel.clone());
-                subscriptions
+                guards
+                    .subscriptions
                     .entry(channel.clone())
                     .or_insert_with(Vec::new)
                     .push(conn_id);
@@ -379,8 +366,7 @@ impl WebSocketManager {
             }
         }
 
-        drop(subscriptions);
-        drop(connections);
+        drop(guards);
 
         self.send_to_connection(conn_id, WsMessage::success("Subscription successful"))
             .await?;
@@ -389,18 +375,19 @@ impl WebSocketManager {
 
     /// Handle channel unsubscription
     async fn handle_unsubscribe(&self, conn_id: Uuid, channels: Vec<String>) -> WsResult<()> {
-        let mut subscriptions = self.subscriptions.write().await;
-        let mut connections = self.connections.write().await;
+        // Fixed: Was acquiring subscriptions before connections (wrong order!)
+        // Now uses level3_write() to acquire in correct order
+        let mut guards = self.locks.level3_write().await;
 
-        if let Some(state) = connections.get_mut(&conn_id) {
+        if let Some(state) = guards.connections.get_mut(&conn_id) {
             for channel in channels {
                 if let Some(index) = state.channels.iter().position(|c| c == &channel) {
                     state.channels.remove(index);
 
-                    if let Some(subscribers) = subscriptions.get_mut(&channel) {
+                    if let Some(subscribers) = guards.subscriptions.get_mut(&channel) {
                         subscribers.retain(|&id| id != conn_id);
                         if subscribers.is_empty() {
-                            subscriptions.remove(&channel);
+                            guards.subscriptions.remove(&channel);
                         }
                     }
 
@@ -412,8 +399,7 @@ impl WebSocketManager {
             }
         }
 
-        drop(subscriptions);
-        drop(connections);
+        drop(guards);
 
         self.send_to_connection(conn_id, WsMessage::success("Unsubscription successful"))
             .await?;
@@ -422,8 +408,8 @@ impl WebSocketManager {
 
     /// Send message to specific connection
     pub async fn send_to_connection(&self, conn_id: Uuid, message: WsMessage) -> WsResult<()> {
-        let connections = self.connections.read().await;
-        if let Some(state) = connections.get(&conn_id) {
+        let guard = self.locks.level1_read().await;
+        if let Some(state) = guard.connections.get(&conn_id) {
             // Ignore send errors - receiver may be closed (e.g. in tests)
             let _ = state.sender.send(message).await;
         }
@@ -458,13 +444,12 @@ impl WebSocketManager {
 
     /// Get connection statistics
     pub async fn get_stats(&self) -> ConnectionStats {
-        let connections = self.connections.read().await;
-        let subscriptions = self.subscriptions.read().await;
+        let guard = self.locks.level3_read().await;
 
         let mut authenticated_count = 0;
         let mut expired_count = 0;
 
-        for state in connections.values() {
+        for state in guard.connections.values() {
             if state.authenticated {
                 authenticated_count += 1;
             }
@@ -474,10 +459,10 @@ impl WebSocketManager {
         }
 
         ConnectionStats {
-            total_connections: connections.len(),
+            total_connections: guard.connections.len(),
             authenticated_connections: authenticated_count,
             expired_connections: expired_count,
-            total_channels: subscriptions.len(),
+            total_channels: guard.subscriptions.len(),
         }
     }
 
@@ -486,8 +471,8 @@ impl WebSocketManager {
         let mut to_remove = Vec::new();
 
         {
-            let connections = self.connections.read().await;
-            for (&id, state) in connections.iter() {
+            let guard = self.locks.level1_read().await;
+            for (&id, state) in guard.connections.iter() {
                 if state.info.is_expired(self.config.connection_timeout) {
                     to_remove.push(id);
                 }
@@ -515,17 +500,16 @@ impl WebSocketManager {
     ///
     /// Returns a tuple: (orphaned_subscriptions, orphaned_ips)
     pub async fn cleanup_orphaned_state(&self) -> (usize, usize) {
-        let connections = self.connections.write().await;
-        let mut ip_connections = self.connections_per_ip.write().await;
-        let mut subscriptions = self.subscriptions.write().await;
+        let mut guards = self.locks.level3_write().await;
 
         let mut orphaned_subscription_count = 0;
         let mut orphaned_ip_count = 0;
 
         // Clean up orphaned subscriptions
-        let connection_ids: std::collections::HashSet<_> = connections.keys().copied().collect();
+        let connection_ids: std::collections::HashSet<_> =
+            guards.connections.keys().copied().collect();
 
-        for (channel, subscribers) in subscriptions.iter_mut() {
+        for (channel, subscribers) in guards.subscriptions.iter_mut() {
             let before_len = subscribers.len();
             subscribers.retain(|conn_id| connection_ids.contains(conn_id));
             let removed = before_len - subscribers.len();
@@ -540,18 +524,20 @@ impl WebSocketManager {
         }
 
         // Remove empty channels
-        subscriptions.retain(|_, subscribers| !subscribers.is_empty());
+        guards
+            .subscriptions
+            .retain(|_, subscribers| !subscribers.is_empty());
 
         // Validate and clean up IP tracking
         let mut actual_ip_counts: std::collections::HashMap<std::net::IpAddr, usize> =
             std::collections::HashMap::new();
 
-        for state in connections.values() {
+        for state in guards.connections.values() {
             *actual_ip_counts.entry(state.info.addr.ip()).or_insert(0) += 1;
         }
 
         // Check for discrepancies and orphaned entries
-        for (ip, tracked_count) in ip_connections.iter() {
+        for (ip, tracked_count) in guards.ip_connections.iter() {
             let actual_count = actual_ip_counts.get(ip).copied().unwrap_or(0);
 
             if actual_count == 0 {
@@ -571,16 +557,16 @@ impl WebSocketManager {
         }
 
         // Remove orphaned IP entries
-        ip_connections.retain(|ip, _| actual_ip_counts.contains_key(ip));
+        guards
+            .ip_connections
+            .retain(|ip, _| actual_ip_counts.contains_key(ip));
 
         // Correct any count mismatches
         for (ip, actual_count) in actual_ip_counts {
-            ip_connections.insert(ip, actual_count);
+            guards.ip_connections.insert(ip, actual_count);
         }
 
-        drop(subscriptions);
-        drop(ip_connections);
-        drop(connections);
+        drop(guards);
 
         if orphaned_subscription_count > 0 || orphaned_ip_count > 0 {
             info!(
@@ -630,14 +616,13 @@ impl WebSocketManager {
     async fn handle_channel_event(&self, event: ChannelEvent) {
         // Clone necessary data before async operations to prevent deadlock
         let subscribers_with_senders = {
-            let subscriptions = self.subscriptions.read().await;
-            let connections = self.connections.read().await;
+            let guard = self.locks.level3_read().await;
 
-            if let Some(subscribers) = subscriptions.get(&event.channel) {
+            if let Some(subscribers) = guard.subscriptions.get(&event.channel) {
                 subscribers
                     .iter()
                     .filter_map(|&conn_id| {
-                        connections.get(&conn_id).map(|state| {
+                        guard.connections.get(&conn_id).map(|state| {
                             // Filter by user ID if event is user-specific
                             if let Some(target_user) = &event.user_id
                                 && state.user_id.as_ref() != Some(target_user)
@@ -680,11 +665,9 @@ impl Clone for WebSocketManager {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
-            connections: Arc::clone(&self.connections),
-            subscriptions: Arc::clone(&self.subscriptions),
+            locks: self.locks.clone(),
             event_sender: self.event_sender.clone(),
             auth_handler: self.auth_handler.clone(),
-            connections_per_ip: Arc::clone(&self.connections_per_ip),
         }
     }
 }
@@ -707,8 +690,8 @@ impl WebSocketManager {
     /// Test helper: Set connection as authenticated
     #[doc(hidden)]
     pub async fn test_set_authenticated(&self, conn_id: uuid::Uuid, user_id: &str) {
-        let mut connections = self.connections.write().await;
-        if let Some(state) = connections.get_mut(&conn_id) {
+        let mut guard = self.locks.level1_write().await;
+        if let Some(state) = guard.connections.get_mut(&conn_id) {
             state.authenticated = true;
             state.user_id = Some(user_id.to_string());
         }
@@ -717,14 +700,14 @@ impl WebSocketManager {
     /// Test helper: Subscribe connection to channel
     #[doc(hidden)]
     pub async fn test_subscribe_channel(&self, conn_id: uuid::Uuid, channel: &str) {
-        let mut connections = self.connections.write().await;
-        let mut subscriptions = self.subscriptions.write().await;
+        let mut guards = self.locks.level3_write().await;
 
-        if let Some(state) = connections.get_mut(&conn_id)
+        if let Some(state) = guards.connections.get_mut(&conn_id)
             && !state.channels.contains(&channel.to_string())
         {
             state.channels.push(channel.to_string());
-            subscriptions
+            guards
+                .subscriptions
                 .entry(channel.to_string())
                 .or_insert_with(Vec::new)
                 .push(conn_id);
@@ -734,7 +717,8 @@ impl WebSocketManager {
     /// Test helper: Get IP connection count
     #[doc(hidden)]
     pub async fn test_get_ip_connection_count(&self) -> usize {
-        self.connections_per_ip.read().await.len()
+        let guard = self.locks.level2_read().await;
+        guard.ip_connections.len()
     }
 }
 
@@ -825,25 +809,31 @@ mod tests {
 
         // Test subscription logic - first authenticate the connection manually
         {
-            let mut connections = manager.connections.write().await;
-            if let Some(state) = connections.get_mut(&conn_id) {
+            let mut guard = manager.locks.level1_write().await;
+            if let Some(state) = guard.connections.get_mut(&conn_id) {
                 state.authenticated = true;
             }
         }
 
         // Test channel subscriptions - this shouldn't try to send messages
-        let mut subscriptions = manager.subscriptions.write().await;
-        subscriptions.insert("channel1".to_string(), vec![conn_id]);
-        subscriptions.insert("channel2".to_string(), vec![conn_id]);
-        drop(subscriptions);
+        {
+            let mut guard = manager.locks.level3_write().await;
+            guard
+                .subscriptions
+                .insert("channel1".to_string(), vec![conn_id]);
+            guard
+                .subscriptions
+                .insert("channel2".to_string(), vec![conn_id]);
+        }
 
         let stats = manager.get_stats().await;
         assert_eq!(stats.total_channels, 2);
 
         // Test unsubscription by directly modifying subscriptions
-        let mut subscriptions = manager.subscriptions.write().await;
-        subscriptions.remove("channel1");
-        drop(subscriptions);
+        {
+            let mut guard = manager.locks.level3_write().await;
+            guard.subscriptions.remove("channel1");
+        }
 
         let stats = manager.get_stats().await;
         assert_eq!(stats.total_channels, 1);
