@@ -61,6 +61,7 @@ impl EchoAgent {
 impl Agent for EchoAgent {
     type Observation = String;
     type Action = String;
+    type Error = std::convert::Infallible;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
@@ -143,6 +144,7 @@ impl AdvancedAgent {
 impl Agent for AdvancedAgent {
     type Observation = String;
     type Action = String;
+    type Error = std::convert::Infallible;
 
     fn observe(&mut self, input: Self::Observation) {
         self.context = input.clone();
@@ -248,6 +250,7 @@ impl AnalyticsAgent {
 impl Agent for AnalyticsAgent {
     type Observation = String;
     type Action = String;
+    type Error = std::convert::Infallible;
 
     fn observe(&mut self, input: Self::Observation) {
         self.data.push(input.clone());
@@ -351,7 +354,13 @@ pub struct EchoCoordinator {
 
 impl EchoCoordinator {
     pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
-        let agent = EchoAgent::new(config)?;
+        let mut agent = EchoAgent::new(config)?;
+
+        // Initialize the agent before use
+        agent
+            .initialize()
+            .map_err(|e| format!("Agent initialization failed: {}", e))?;
+
         let registry = InMemoryToolRegistry::new();
         Ok(Self {
             coordinator: Coordinator::new(agent, registry),
@@ -369,13 +378,28 @@ impl CoordinatorTrait for EchoCoordinator {
     }
 }
 
+impl Drop for EchoCoordinator {
+    fn drop(&mut self) {
+        // Call cleanup on the agent
+        if let Err(e) = self.coordinator.agent.cleanup() {
+            tracing::warn!("Agent cleanup failed for EchoAgent: {}", e);
+        }
+    }
+}
+
 pub struct AdvancedCoordinator {
     coordinator: Coordinator<AdvancedAgent, InMemoryToolRegistry>,
 }
 
 impl AdvancedCoordinator {
     pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
-        let agent = AdvancedAgent::new(config)?;
+        let mut agent = AdvancedAgent::new(config)?;
+
+        // Initialize the agent before use
+        agent
+            .initialize()
+            .map_err(|e| format!("Agent initialization failed: {}", e))?;
+
         let registry = InMemoryToolRegistry::new();
 
         // Add some mock tools for demonstration
@@ -400,13 +424,28 @@ impl CoordinatorTrait for AdvancedCoordinator {
     }
 }
 
+impl Drop for AdvancedCoordinator {
+    fn drop(&mut self) {
+        // Call cleanup on the agent
+        if let Err(e) = self.coordinator.agent.cleanup() {
+            tracing::warn!("Agent cleanup failed for AdvancedAgent: {}", e);
+        }
+    }
+}
+
 pub struct AnalyticsCoordinator {
     coordinator: Coordinator<AnalyticsAgent, InMemoryToolRegistry>,
 }
 
 impl AnalyticsCoordinator {
     pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
-        let agent = AnalyticsAgent::new(config)?;
+        let mut agent = AnalyticsAgent::new(config)?;
+
+        // Initialize the agent before use
+        agent
+            .initialize()
+            .map_err(|e| format!("Agent initialization failed: {}", e))?;
+
         let registry = InMemoryToolRegistry::new();
 
         // Add analytics-specific tools
@@ -434,6 +473,15 @@ impl CoordinatorTrait for AnalyticsCoordinator {
 
     fn get_agent_type(&self) -> &'static str {
         "AnalyticsAgent"
+    }
+}
+
+impl Drop for AnalyticsCoordinator {
+    fn drop(&mut self) {
+        // Call cleanup on the agent
+        if let Err(e) = self.coordinator.agent.cleanup() {
+            tracing::warn!("Agent cleanup failed for AnalyticsAgent: {}", e);
+        }
     }
 }
 

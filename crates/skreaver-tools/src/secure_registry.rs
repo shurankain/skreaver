@@ -110,8 +110,13 @@ impl<T: ToolRegistry> SecureToolRegistry<T> {
         // Step 1: Check security configuration (capability-based)
         let policy = self.security_config.get_tool_policy(tool_name);
 
-        let has_any_capability =
-            policy.fs_policy.enabled || policy.http_policy.enabled || policy.network_policy.enabled;
+        use skreaver_core::security::{FileSystemAccess, HttpAccess};
+
+        let fs_enabled = !matches!(policy.fs_policy.access, FileSystemAccess::Disabled);
+        let http_enabled = !matches!(policy.http_policy.access, HttpAccess::Disabled);
+        let network_enabled = policy.network_policy.enabled;
+
+        let has_any_capability = fs_enabled || http_enabled || network_enabled;
 
         if !has_any_capability {
             return Err(format!(

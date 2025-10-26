@@ -42,6 +42,7 @@ impl BenchmarkAgent {
 impl Agent for BenchmarkAgent {
     type Observation = String;
     type Action = String;
+    type Error = std::convert::Infallible;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());

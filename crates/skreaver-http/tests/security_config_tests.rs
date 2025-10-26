@@ -6,6 +6,7 @@
 //! - Default configuration works when no file is specified
 //! - Invalid configurations fall back to defaults
 
+use skreaver_core::security::{FileSystemAccess, HttpAccess};
 use skreaver_http::runtime::{HttpAgentRuntime, HttpRuntimeConfig};
 use skreaver_tools::InMemoryToolRegistry;
 use std::path::PathBuf;
@@ -25,8 +26,11 @@ async fn test_default_security_config() {
     );
 
     // Verify default policies exist (at least FS and HTTP are enabled by default)
-    assert!(security_config.fs.enabled);
-    assert!(security_config.http.enabled);
+    assert!(!matches!(
+        security_config.fs.access,
+        FileSystemAccess::Disabled
+    ));
+    assert!(!matches!(security_config.http.access, HttpAccess::Disabled));
     // Network policy may or may not be enabled in defaults
 }
 
@@ -53,7 +57,10 @@ async fn test_load_security_config_from_file() {
     );
 
     // Verify policies are loaded and accessible
-    assert!(security_config.fs.enabled);
+    assert!(!matches!(
+        security_config.fs.access,
+        FileSystemAccess::Disabled
+    ));
     assert!(
         !security_config.fs.allow_paths.is_empty(),
         "File system policy should have allowed paths"
@@ -64,11 +71,15 @@ async fn test_load_security_config_from_file() {
     );
 
     // Verify HTTP policy exists
-    assert!(security_config.http.enabled);
-    assert!(
-        !security_config.http.allow_domains.is_empty(),
-        "HTTP policy should have allowed domains"
-    );
+    assert!(!matches!(security_config.http.access, HttpAccess::Disabled));
+
+    // Check if HTTP policy has allowed domains (if it's InternetAccess)
+    if let HttpAccess::InternetAccess { allow_domains, .. } = &security_config.http.access {
+        assert!(
+            !allow_domains.is_empty(),
+            "HTTP policy should have allowed domains"
+        );
+    }
 
     // Verify network policy exists
     // Note: network policy may be disabled in the example config
@@ -158,15 +169,24 @@ async fn test_per_tool_policy_access() {
 
     // Test file_read tool policy
     let file_read_policy = security_config.get_tool_policy("file_read");
-    assert!(file_read_policy.fs_policy.enabled);
+    assert!(!matches!(
+        file_read_policy.fs_policy.access,
+        FileSystemAccess::Disabled
+    ));
 
     // Test http_get tool policy
     let http_get_policy = security_config.get_tool_policy("http_get");
-    assert!(http_get_policy.http_policy.enabled);
+    assert!(!matches!(
+        http_get_policy.http_policy.access,
+        HttpAccess::Disabled
+    ));
 
     // Test non-existent tool (should get default policy)
     let unknown_policy = security_config.get_tool_policy("unknown_tool");
-    assert!(unknown_policy.fs_policy.enabled);
+    assert!(!matches!(
+        unknown_policy.fs_policy.access,
+        FileSystemAccess::Disabled
+    ));
 }
 
 #[tokio::test]

@@ -383,6 +383,7 @@ pub mod test_utils {
     impl Agent for TestAgent {
         type Observation = String;
         type Action = String;
+        type Error = std::convert::Infallible;
 
         fn observe(&mut self, input: String) {
             self.last_input = Some(input);

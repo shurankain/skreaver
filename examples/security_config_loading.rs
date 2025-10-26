@@ -27,9 +27,28 @@ fn display_metadata(config: &SecurityConfig) {
 }
 
 fn display_fs_policy(config: &SecurityConfig) {
+    use skreaver_core::security::{FileSystemAccess, SymlinkBehavior};
+
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("📁 Step 3: File System Policy\n");
-    println!("   Enabled: {}", config.fs.enabled);
+
+    match &config.fs.access {
+        FileSystemAccess::Disabled => {
+            println!("   Status: ❌ DISABLED");
+        }
+        FileSystemAccess::Enabled {
+            symlink_behavior,
+            content_scanning,
+        } => {
+            println!("   Status: ✅ ENABLED");
+            println!(
+                "   Follow Symlinks: {}",
+                matches!(symlink_behavior, SymlinkBehavior::Follow)
+            );
+            println!("   Scan Content: {}", content_scanning);
+        }
+    }
+
     println!("   Allowed Paths ({}):", config.fs.allow_paths.len());
     for path in &config.fs.allow_paths {
         println!("      ✅ {}", path.display());
@@ -40,30 +59,55 @@ fn display_fs_policy(config: &SecurityConfig) {
     }
     println!("\n   Max File Size: {:?}", config.fs.max_file_size);
     println!(
-        "   Max Files Per Operation: {:?}",
+        "   Max Files Per Operation: {:?}\n",
         config.fs.max_files_per_operation
     );
-    println!("   Follow Symlinks: {}", config.fs.follow_symlinks);
-    println!("   Scan Content: {}\n", config.fs.scan_content);
 }
 
 fn display_http_policy(config: &SecurityConfig) {
+    use skreaver_core::security::HttpAccess;
+
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("🌐 Step 4: HTTP Policy\n");
-    println!("   Enabled: {}", config.http.enabled);
-    println!("   Allowed Domains ({}):", config.http.allow_domains.len());
-    for domain in &config.http.allow_domains {
-        println!("      ✅ {}", domain);
+
+    match &config.http.access {
+        HttpAccess::Disabled => {
+            println!("   Status: ❌ DISABLED");
+        }
+        HttpAccess::LocalOnly {
+            timeout,
+            max_response_size,
+        } => {
+            println!("   Status: ✅ ENABLED (Local Only)");
+            println!("   Timeout: {:?}", timeout);
+            println!("   Max Response Size: {:?}", max_response_size);
+        }
+        HttpAccess::InternetAccess {
+            allow_domains,
+            deny_domains,
+            allow_local,
+            timeout,
+            max_response_size,
+            max_redirects,
+            user_agent,
+        } => {
+            println!("   Status: ✅ ENABLED (Internet Access)");
+            println!("   Allowed Domains ({}):", allow_domains.len());
+            for domain in allow_domains {
+                println!("      ✅ {}", domain);
+            }
+            println!("\n   Denied Domains ({}):", deny_domains.len());
+            for domain in deny_domains {
+                println!("      🚫 {}", domain);
+            }
+            println!("\n   Timeout: {:?}", timeout);
+            println!("   Max Response Size: {:?}", max_response_size);
+            println!("   Max Redirects: {:?}", max_redirects);
+            println!("   User Agent: {}", user_agent);
+            println!("   Allow Local: {}", allow_local);
+        }
     }
-    println!("\n   Denied Domains ({}):", config.http.deny_domains.len());
-    for domain in &config.http.deny_domains {
-        println!("      🚫 {}", domain);
-    }
-    println!("\n   Timeout: {:?}", config.http.timeout);
-    println!("   Max Response Size: {:?}", config.http.max_response_size);
-    println!("   Max Redirects: {:?}", config.http.max_redirects);
-    println!("   User Agent: {}", config.http.user_agent);
-    println!("   Allow Local: {}\n", config.http.allow_local);
+    println!();
 }
 
 fn display_network_policy(config: &SecurityConfig) {

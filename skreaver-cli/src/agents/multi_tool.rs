@@ -35,6 +35,7 @@ struct MultiToolAgent {
 impl Agent for MultiToolAgent {
     type Observation = String;
     type Action = String;
+    type Error = std::convert::Infallible;
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());

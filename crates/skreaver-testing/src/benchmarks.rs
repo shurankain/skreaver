@@ -352,6 +352,7 @@ impl PerformanceTest {
         impl Agent for BenchAgent {
             type Observation = String;
             type Action = String;
+            type Error = std::convert::Infallible;
 
             fn observe(&mut self, _input: String) {}
             fn act(&mut self) -> String {

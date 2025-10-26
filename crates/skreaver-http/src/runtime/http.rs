@@ -259,6 +259,37 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         self.agent_factory.list_agent_ids().await
     }
 
+    /// Shutdown all agents gracefully
+    ///
+    /// This method should be called during graceful shutdown to ensure
+    /// all agents cleanup properly. It will call the cleanup() lifecycle hook
+    /// on all agents.
+    ///
+    /// # Returns
+    ///
+    /// The number of agents that were cleaned up
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use skreaver_http::runtime::{HttpAgentRuntime, shutdown_signal};
+    /// use skreaver_tools::InMemoryToolRegistry;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let runtime = HttpAgentRuntime::new(InMemoryToolRegistry::new());
+    ///
+    ///     // ... create agents and run server ...
+    ///
+    ///     // On shutdown signal
+    ///     shutdown_signal().await;
+    ///     runtime.shutdown_all_agents().await;
+    /// }
+    /// ```
+    pub async fn shutdown_all_agents(&self) -> usize {
+        self.agent_factory.shutdown_all_agents().await
+    }
+
     /// Get agent count
     pub async fn agent_count(&self) -> usize {
         self.agent_factory.agent_count().await
@@ -324,6 +355,7 @@ mod tests {
     impl Agent for TestAgent {
         type Observation = String;
         type Action = String;
+        type Error = std::convert::Infallible;
 
         fn observe(&mut self, input: Self::Observation) {
             self.last_input = Some(input.clone());

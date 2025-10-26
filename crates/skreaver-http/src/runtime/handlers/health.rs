@@ -160,8 +160,15 @@ async fn check_security_health<T: ToolRegistry + Clone + Send + Sync>(
     }
 
     // Check HTTP policy
-    if security_config.http.allow_domains.is_empty() {
-        issues.push("No HTTP domains allowed".to_string());
+    use skreaver_core::security::HttpAccess;
+    match &security_config.http.access {
+        HttpAccess::Disabled => {
+            issues.push("HTTP access is disabled".to_string());
+        }
+        HttpAccess::InternetAccess { allow_domains, .. } if allow_domains.is_empty() => {
+            issues.push("No HTTP domains allowed".to_string());
+        }
+        _ => {} // LocalOnly or InternetAccess with domains is fine
     }
 
     // Check resource limits
@@ -180,6 +187,13 @@ async fn check_security_health<T: ToolRegistry + Clone + Send + Sync>(
     };
 
     health.response_time_ms = response_time;
+
+    let http_domains_count = match &security_config.http.access {
+        HttpAccess::InternetAccess { allow_domains, .. } => allow_domains.len(),
+        HttpAccess::LocalOnly { .. } => 0,
+        HttpAccess::Disabled => 0,
+    };
+
     health = health
         .with_metadata(
             "fs_paths_configured".to_string(),
@@ -187,7 +201,7 @@ async fn check_security_health<T: ToolRegistry + Clone + Send + Sync>(
         )
         .with_metadata(
             "http_domains_allowed".to_string(),
-            security_config.http.allow_domains.len().to_string(),
+            http_domains_count.to_string(),
         )
         .with_metadata(
             "max_memory_mb".to_string(),

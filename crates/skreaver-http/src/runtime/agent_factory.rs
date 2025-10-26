@@ -225,6 +225,27 @@ impl AgentFactory {
         agents.len()
     }
 
+    /// Shutdown all agents gracefully, calling cleanup hooks
+    ///
+    /// This method should be called during graceful shutdown to ensure
+    /// all agents have a chance to cleanup resources, close connections, etc.
+    ///
+    /// # Returns
+    ///
+    /// The number of agents that were cleaned up
+    pub async fn shutdown_all_agents(&self) -> usize {
+        let mut agents = self.agents.write().await;
+        let count = agents.len();
+
+        // Clear the agents map - this will drop all AgentInstance values,
+        // which will in turn drop their coordinators, triggering the Drop
+        // implementations that call cleanup()
+        agents.clear();
+
+        tracing::info!("Cleaned up {} agents during shutdown", count);
+        count
+    }
+
     /// Get agents map reference for external access
     pub fn agents(&self) -> Arc<RwLock<HashMap<String, AgentInstance>>> {
         Arc::clone(&self.agents)

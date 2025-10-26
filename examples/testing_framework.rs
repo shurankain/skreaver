@@ -33,6 +33,7 @@ impl TestDemoAgent {
 impl Agent for TestDemoAgent {
     type Observation = String;
     type Action = String;
+    type Error = std::convert::Infallible;
 
     fn observe(&mut self, input: Self::Observation) {
         println!("🔍 Agent observed: {}", input);

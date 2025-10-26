@@ -29,6 +29,7 @@ use std::fmt::Display;
 /// impl Agent for SimpleAgent {
 ///     type Observation = String;
 ///     type Action = String;
+///     type Error = std::convert::Infallible;
 ///
 ///     fn memory_reader(&self) -> &dyn MemoryReader { &self.memory }
 ///     fn memory_writer(&mut self) -> &mut dyn MemoryWriter { &mut self.memory }
