@@ -40,39 +40,42 @@ impl Default for ManagerLocks {
 }
 
 /// Level 1 lock guard: connections only
+#[allow(dead_code)]
 pub struct Level1ReadGuard<'a> {
-    pub connections: RwLockReadGuard<'a, HashMap<Uuid, ConnectionState>>,
+    pub(super) connections: RwLockReadGuard<'a, HashMap<Uuid, ConnectionState>>,
 }
 
 /// Level 1 write lock guard: connections only
 pub struct Level1WriteGuard<'a> {
-    pub connections: RwLockWriteGuard<'a, HashMap<Uuid, ConnectionState>>,
+    pub(super) connections: RwLockWriteGuard<'a, HashMap<Uuid, ConnectionState>>,
 }
 
 /// Level 2 read lock guard: connections + ip_connections (read mode)
+#[allow(dead_code)]
 pub struct Level2ReadGuard<'a> {
-    pub connections: RwLockReadGuard<'a, HashMap<Uuid, ConnectionState>>,
-    pub ip_connections: RwLockReadGuard<'a, HashMap<IpAddr, usize>>,
+    pub(super) connections: RwLockReadGuard<'a, HashMap<Uuid, ConnectionState>>,
+    pub(super) ip_connections: RwLockReadGuard<'a, HashMap<IpAddr, usize>>,
 }
 
 /// Level 2 lock guard: connections + ip_connections
 pub struct Level2WriteGuard<'a> {
-    pub connections: RwLockWriteGuard<'a, HashMap<Uuid, ConnectionState>>,
-    pub ip_connections: RwLockWriteGuard<'a, HashMap<IpAddr, usize>>,
+    pub(super) connections: RwLockWriteGuard<'a, HashMap<Uuid, ConnectionState>>,
+    pub(super) ip_connections: RwLockWriteGuard<'a, HashMap<IpAddr, usize>>,
 }
 
 /// Level 3 lock guard: connections + ip_connections + subscriptions
 pub struct Level3WriteGuard<'a> {
-    pub connections: RwLockWriteGuard<'a, HashMap<Uuid, ConnectionState>>,
-    pub ip_connections: RwLockWriteGuard<'a, HashMap<IpAddr, usize>>,
-    pub subscriptions: RwLockWriteGuard<'a, HashMap<String, Vec<Uuid>>>,
+    pub(super) connections: RwLockWriteGuard<'a, HashMap<Uuid, ConnectionState>>,
+    pub(super) ip_connections: RwLockWriteGuard<'a, HashMap<IpAddr, usize>>,
+    pub(super) subscriptions: RwLockWriteGuard<'a, HashMap<String, Vec<Uuid>>>,
 }
 
 /// Level 3 read guard: all locks in read mode
+#[allow(dead_code)]
 pub struct Level3ReadGuard<'a> {
-    pub connections: RwLockReadGuard<'a, HashMap<Uuid, ConnectionState>>,
-    pub ip_connections: RwLockReadGuard<'a, HashMap<IpAddr, usize>>,
-    pub subscriptions: RwLockReadGuard<'a, HashMap<String, Vec<Uuid>>>,
+    pub(super) connections: RwLockReadGuard<'a, HashMap<Uuid, ConnectionState>>,
+    pub(super) ip_connections: RwLockReadGuard<'a, HashMap<IpAddr, usize>>,
+    pub(super) subscriptions: RwLockReadGuard<'a, HashMap<String, Vec<Uuid>>>,
 }
 
 /// Specialized guard for subscriptions + connections (used in specific cases)

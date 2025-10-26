@@ -26,6 +26,7 @@
 //! impl Agent for MyAgent {
 //!     type Observation = String;
 //!     type Action = String;
+//!     type Error = std::convert::Infallible;
 //!
 //!     fn memory_reader(&self) -> &dyn MemoryReader {
 //!         &self.memory

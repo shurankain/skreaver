@@ -1292,26 +1292,15 @@ version = "0.1.0"
 created = "2025-09-08"
 description = "Test configuration"
 
-[fs.access.Enabled]
-symlink_behavior = "NoFollow"
-content_scanning = true
-
 [fs]
+access = { Enabled = { symlink_behavior = "NoFollow", content_scanning = true } }
 allow_paths = ["/tmp"]
 deny_patterns = [".."]
 max_file_size_bytes = 16777216
 max_files_per_operation = 100
 
-[http.access.InternetAccess]
-allow_domains = ["example.com"]
-deny_domains = ["localhost"]
-allow_local = false
-timeout = 30
-max_response_size = 33554432
-max_redirects = 3
-user_agent = "test-agent"
-
 [http]
+access = { InternetAccess = { allow_domains = ["example.com"], deny_domains = ["localhost"], allow_local = false, timeout = 30, max_response_size = 33554432, max_redirects = 3, user_agent = "test-agent" } }
 allow_methods = ["GET", "POST"]
 default_headers = []
 
