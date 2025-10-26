@@ -253,23 +253,13 @@ pub type MessageMetadata = HashMap<String, String>;
 ///
 /// ## Backward Compatibility
 /// Legacy `from`/`to` fields are maintained for backward compatibility but deprecated.
-/// Use the `route` field for new code.
+/// Use the `route` field for routing information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     /// Unique message identifier
     pub id: MessageId,
     /// Type-safe routing information
     pub route: Route,
-    /// DEPRECATED: Use route.sender() instead
-    /// Sender agent ID (None for system messages)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[deprecated(since = "0.4.0", note = "Use route.sender() instead")]
-    pub from: Option<AgentId>,
-    /// DEPRECATED: Use route.recipient() instead
-    /// Recipient agent ID (None for broadcasts)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[deprecated(since = "0.4.0", note = "Use route.recipient() instead")]
-    pub to: Option<AgentId>,
     /// Message payload
     pub payload: MessagePayload,
     /// Message metadata (arbitrary key-value pairs)
@@ -287,10 +277,6 @@ impl Message {
         Self {
             id: MessageId::new(),
             route: Route::Anonymous,
-            #[allow(deprecated)]
-            from: None,
-            #[allow(deprecated)]
-            to: None,
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: Utc::now(),
@@ -309,13 +295,9 @@ impl Message {
         Self {
             id: MessageId::new(),
             route: Route::Unicast {
-                from: from_id.clone(),
-                to: to_id.clone(),
+                from: from_id,
+                to: to_id,
             },
-            #[allow(deprecated)]
-            from: Some(from_id),
-            #[allow(deprecated)]
-            to: Some(to_id),
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: Utc::now(),
@@ -328,13 +310,7 @@ impl Message {
         let from_id = from.into();
         Self {
             id: MessageId::new(),
-            route: Route::Broadcast {
-                from: from_id.clone(),
-            },
-            #[allow(deprecated)]
-            from: Some(from_id),
-            #[allow(deprecated)]
-            to: None,
+            route: Route::Broadcast { from: from_id },
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: Utc::now(),
@@ -347,53 +323,12 @@ impl Message {
         let to_id = to.into();
         Self {
             id: MessageId::new(),
-            route: Route::System { to: to_id.clone() },
-            #[allow(deprecated)]
-            from: None,
-            #[allow(deprecated)]
-            to: Some(to_id),
+            route: Route::System { to: to_id },
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: Utc::now(),
             correlation_id: None,
         }
-    }
-
-    /// DEPRECATED: Use Message::unicast, Message::broadcast, or Message::system instead
-    #[deprecated(since = "0.4.0", note = "Use Message::unicast() instead")]
-    pub fn from(mut self, agent_id: impl Into<AgentId>) -> Self {
-        let agent_id = agent_id.into();
-        #[allow(deprecated)]
-        {
-            self.from = Some(agent_id.clone());
-        }
-        // Update route based on current state
-        self.route = match self.route {
-            Route::Anonymous => Route::Broadcast { from: agent_id },
-            Route::System { to } => Route::Unicast { from: agent_id, to },
-            _ => self.route, // Keep existing route
-        };
-        self
-    }
-
-    /// DEPRECATED: Use Message::unicast, Message::broadcast, or Message::system instead
-    #[deprecated(
-        since = "0.4.0",
-        note = "Use Message::unicast() or Message::system() instead"
-    )]
-    pub fn to(mut self, agent_id: impl Into<AgentId>) -> Self {
-        let agent_id = agent_id.into();
-        #[allow(deprecated)]
-        {
-            self.to = Some(agent_id.clone());
-        }
-        // Update route based on current state
-        self.route = match self.route {
-            Route::Anonymous => Route::System { to: agent_id },
-            Route::Broadcast { from } => Route::Unicast { from, to: agent_id },
-            _ => self.route, // Keep existing route
-        };
-        self
     }
 
     /// Add metadata to the message
@@ -497,32 +432,6 @@ impl MessageBuilder {
         Self {
             message: Message::system(to, payload),
         }
-    }
-
-    /// DEPRECATED: Use MessageBuilder::unicast or MessageBuilder::broadcast instead
-    #[deprecated(
-        since = "0.4.0",
-        note = "Use MessageBuilder::unicast() or broadcast() instead"
-    )]
-    pub fn from(mut self, agent_id: impl Into<AgentId>) -> Self {
-        #[allow(deprecated)]
-        {
-            self.message = self.message.from(agent_id);
-        }
-        self
-    }
-
-    /// DEPRECATED: Use MessageBuilder::unicast or MessageBuilder::system instead
-    #[deprecated(
-        since = "0.4.0",
-        note = "Use MessageBuilder::unicast() or system() instead"
-    )]
-    pub fn to(mut self, agent_id: impl Into<AgentId>) -> Self {
-        #[allow(deprecated)]
-        {
-            self.message = self.message.to(agent_id);
-        }
-        self
     }
 
     /// Add metadata
@@ -725,15 +634,9 @@ impl TypedMessage<SystemRoute> {
 // Conversions from TypedMessage to Message for backward compatibility
 impl<R> From<TypedMessage<R>> for Message {
     fn from(typed: TypedMessage<R>) -> Self {
-        let from = typed.route.sender().cloned();
-        let to = typed.route.recipient().cloned();
-
-        #[allow(deprecated)]
         Self {
             id: typed.id,
             route: typed.route,
-            from,
-            to,
             payload: typed.payload,
             metadata: typed.metadata,
             timestamp: typed.timestamp,
@@ -839,11 +742,8 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
-    fn test_message_builder_backward_compat() {
-        let msg = MessageBuilder::new("test")
-            .from("agent-1")
-            .to("agent-2")
+    fn test_message_builder_unicast() {
+        let msg = MessageBuilder::unicast("agent-1", "agent-2", "test")
             .with_metadata("priority", "high")
             .with_correlation_id("req-123")
             .build();
@@ -918,22 +818,21 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
-    fn test_message_routing_patterns_backward_compat() {
-        // Unicast: from agent to agent (using deprecated API)
-        let unicast = Message::new("test").from("agent-1").to("agent-2");
+    fn test_message_routing_patterns_direct_constructors() {
+        // Unicast: from agent to agent
+        let unicast = Message::unicast("agent-1", "agent-2", "test");
         assert!(unicast.is_unicast());
         assert_eq!(unicast.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(unicast.recipient().map(|a| a.as_str()), Some("agent-2"));
 
         // Broadcast: from agent to all
-        let broadcast = Message::new("announcement").from("agent-1");
+        let broadcast = Message::broadcast("agent-1", "announcement");
         assert!(broadcast.is_broadcast());
         assert_eq!(broadcast.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(broadcast.recipient(), None);
 
         // System: to agent, no sender
-        let system = Message::new("config update").to("agent-1");
+        let system = Message::system("agent-1", "config update");
         assert!(system.is_system());
         assert_eq!(system.sender(), None);
         assert_eq!(system.recipient().map(|a| a.as_str()), Some("agent-1"));

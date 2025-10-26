@@ -195,37 +195,6 @@ impl AgentInstance {
         self.tool_call_count.load(Ordering::Relaxed)
     }
 
-    /// Set metadata value
-    ///
-    /// # Deprecated
-    /// Use `add_tag()` for simple key-value pairs or `add_custom_metadata()` for complex data.
-    ///
-    /// Migration:
-    /// - `agent.set_metadata("key".to_string(), "value".to_string())` → `agent.add_tag("key".to_string(), "value".to_string())`
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use add_tag() for tags or add_custom_metadata() for complex metadata"
-    )]
-    pub async fn set_metadata(&self, key: String, value: String) {
-        self.add_tag(key, value).await;
-    }
-
-    /// Get metadata value
-    ///
-    /// # Deprecated
-    /// Use `get_instance_metadata().tags.get(key)` or `get_instance_metadata().custom.get(key)`.
-    ///
-    /// Migration:
-    /// - `agent.get_metadata("key")` → `agent.get_instance_metadata().await.tags.get("key").cloned()`
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use get_instance_metadata().tags or get_instance_metadata().custom"
-    )]
-    pub async fn get_metadata(&self, key: &str) -> Option<String> {
-        let metadata = self.instance_metadata.read().await;
-        metadata.tags.get(key).cloned()
-    }
-
     /// Get instance metadata
     pub async fn get_instance_metadata(&self) -> AgentInstanceMetadata {
         self.instance_metadata.read().await.clone()

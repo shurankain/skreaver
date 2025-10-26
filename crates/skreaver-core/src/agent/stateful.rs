@@ -104,17 +104,6 @@ pub trait ToolExecutionState {}
 /// transition via the `act()` method.
 pub trait CompleteState {}
 
-/// Deprecated: Use direct implementation pattern instead.
-///
-/// This trait was removed because its complex associated types made it
-/// very difficult for users to implement. See module documentation for
-/// the recommended pattern.
-#[deprecated(
-    since = "0.5.0",
-    note = "Implement state transition methods directly on your agent type instead. See module docs for examples."
-)]
-pub trait StatefulAgentTransitions<State>: StatefulAgent<State> {}
-
 // Note: StatefulAgentTransitions trait was removed in v0.5.0
 //
 // The previous trait had overly complex associated types that made it very

@@ -43,9 +43,8 @@ pub use auth::{
 };
 
 // Re-export agent extensions
-#[allow(deprecated)]
 pub use agent::{
     CompleteState, InitialState, ProcessingState, SimpleComplete, SimpleInitial, SimpleProcessing,
     SimpleStatefulAgent, SimpleToolExecution, StatefulAgent, StatefulAgentAdapter,
-    StatefulAgentTransitions, ToolExecutionState,
+    ToolExecutionState,
 };

@@ -25,8 +25,7 @@ pub use core::Agent;
 /// Stateful agent trait using typestate pattern for compile-time safety.
 pub mod stateful;
 pub use stateful::{CompleteState, InitialState, ProcessingState, ToolExecutionState};
-#[allow(deprecated)]
-pub use stateful::{StatefulAgent, StatefulAgentAdapter, StatefulAgentTransitions};
+pub use stateful::{StatefulAgent, StatefulAgentAdapter};
 
 /// Simple concrete implementation of stateful agent pattern.
 pub mod simple_stateful;
