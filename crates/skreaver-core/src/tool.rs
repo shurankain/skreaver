@@ -62,24 +62,21 @@ impl ToolName {
     /// assert_eq!(name.as_str(), "calculator");
     /// ```
     pub fn new(name: &str) -> Result<Self, InvalidToolName> {
-        let trimmed = name.trim();
+        use crate::validation::IdentifierRules;
 
-        if trimmed.is_empty() {
-            return Err(InvalidToolName::Empty);
-        }
+        let validated = IdentifierRules::TOOL_NAME
+            .validate(name)
+            .map_err(|e| match e {
+                crate::validation::ValidationError::Empty => InvalidToolName::Empty,
+                crate::validation::ValidationError::TooLong { length, .. } => {
+                    InvalidToolName::TooLong(length)
+                }
+                crate::validation::ValidationError::InvalidChar { input, .. } => {
+                    InvalidToolName::InvalidChars(input)
+                }
+            })?;
 
-        if trimmed.len() > Self::MAX_LENGTH {
-            return Err(InvalidToolName::TooLong(trimmed.len()));
-        }
-
-        if !trimmed
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(InvalidToolName::InvalidChars(trimmed.to_string()));
-        }
-
-        Ok(ToolName(trimmed.to_string()))
+        Ok(ToolName(validated))
     }
 
     /// Get the tool name as a string slice.

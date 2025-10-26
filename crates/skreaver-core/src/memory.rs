@@ -62,24 +62,21 @@ impl MemoryKey {
     /// assert_eq!(key.as_str(), "user_context");
     /// ```
     pub fn new(key: &str) -> Result<Self, InvalidMemoryKey> {
-        let trimmed = key.trim();
+        use crate::validation::IdentifierRules;
 
-        if trimmed.is_empty() {
-            return Err(InvalidMemoryKey::Empty);
-        }
+        let validated = IdentifierRules::MEMORY_KEY
+            .validate(key)
+            .map_err(|e| match e {
+                crate::validation::ValidationError::Empty => InvalidMemoryKey::Empty,
+                crate::validation::ValidationError::TooLong { length, .. } => {
+                    InvalidMemoryKey::TooLong(length)
+                }
+                crate::validation::ValidationError::InvalidChar { input, .. } => {
+                    InvalidMemoryKey::InvalidChars(input)
+                }
+            })?;
 
-        if trimmed.len() > Self::MAX_LENGTH {
-            return Err(InvalidMemoryKey::TooLong(trimmed.len()));
-        }
-
-        if !trimmed
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.' || c == ':')
-        {
-            return Err(InvalidMemoryKey::InvalidChars(trimmed.to_string()));
-        }
-
-        Ok(MemoryKey(trimmed.to_string()))
+        Ok(MemoryKey(validated))
     }
 
     /// Get the memory key as a string slice.

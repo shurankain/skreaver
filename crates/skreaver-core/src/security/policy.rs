@@ -564,16 +564,13 @@ impl HttpPolicy {
     pub fn is_domain_allowed(&self, domain: &str) -> Result<bool, SecurityError> {
         match &self.access {
             HttpAccess::Disabled => {
-                return Err(SecurityError::ToolDisabled {
+                Err(SecurityError::ToolDisabled {
                     tool_name: "http".to_string(),
-                });
+                })
             }
             HttpAccess::LocalOnly { .. } => {
                 // Only allow localhost/127.0.0.1
-                if domain == "localhost" || domain.starts_with("127.") {
-                    return Ok(true);
-                }
-                return Ok(false);
+                Ok(domain == "localhost" || domain.starts_with("127."))
             }
             HttpAccess::InternetAccess {
                 allow_domains,

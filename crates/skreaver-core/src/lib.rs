@@ -12,6 +12,7 @@ pub mod memory;
 pub mod metadata;
 pub mod security;
 pub mod tool;
+pub mod validation;
 
 pub use agent::Agent;
 pub use error::{SkreverError, SkreverResult};
@@ -42,6 +43,7 @@ pub use auth::{
 };
 
 // Re-export agent extensions
+#[allow(deprecated)]
 pub use agent::{
     CompleteState, InitialState, ProcessingState, SimpleComplete, SimpleInitial, SimpleProcessing,
     SimpleStatefulAgent, SimpleToolExecution, StatefulAgent, StatefulAgentAdapter,

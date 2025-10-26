@@ -1,9 +1,9 @@
 //! Example demonstrating the new structured error handling in Skreaver.
 
-use skreaver::{
-    ExecutionResult, InMemoryToolRegistry, MemoryKey, Tool, ToolCall, ToolRegistry,
+use skreaver::{ExecutionResult, InMemoryToolRegistry, MemoryKey, Tool, ToolCall, ToolRegistry};
+use skreaver_core::error::{
+    MemoryBackend, MemoryError, MemoryErrorKind, ToolError, ValidatedInput,
 };
-use skreaver_core::error::{MemoryError, ToolError, ValidatedInput, MemoryBackend, MemoryErrorKind};
 use skreaver_core::tool::{ToolDispatch, ToolName};
 use std::sync::Arc;
 

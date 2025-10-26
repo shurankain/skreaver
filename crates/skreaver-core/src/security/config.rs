@@ -988,10 +988,10 @@ impl SecurityConfig {
 
         let fs_enabled = tool_policy
             .fs_enabled
-            .unwrap_or_else(|| !matches!(self.fs.access, FileSystemAccess::Disabled));
+            .unwrap_or(!matches!(self.fs.access, FileSystemAccess::Disabled));
         let http_enabled = tool_policy
             .http_enabled
-            .unwrap_or_else(|| !matches!(self.http.access, HttpAccess::Disabled));
+            .unwrap_or(!matches!(self.http.access, HttpAccess::Disabled));
 
         SecurityPolicy {
             fs_policy: if fs_enabled {
@@ -1082,24 +1082,23 @@ impl SecurityConfig {
         // during deserialization, so no additional validation is needed here.
 
         // Validate HTTP policies
-        if let HttpAccess::InternetAccess { allow_domains, .. } = &self.http.access {
-            if allow_domains.is_empty() && !self.development.enabled {
-                tracing::warn!(
-                    "HTTP enabled but no allowed domains configured (all domains will be blocked)"
-                );
-            }
+        if let HttpAccess::InternetAccess { allow_domains, .. } = &self.http.access
+            && allow_domains.is_empty() && !self.development.enabled
+        {
+            tracing::warn!(
+                "HTTP enabled but no allowed domains configured (all domains will be blocked)"
+            );
         }
 
         // Check for overly permissive settings (WARNINGS)
         if let HttpAccess::InternetAccess {
             allow_local: true, ..
         } = &self.http.access
+            && !self.development.enabled
         {
-            if !self.development.enabled {
-                tracing::warn!(
-                    "HTTP requests to localhost are allowed - this may be a security risk in production"
-                );
-            }
+            tracing::warn!(
+                "HTTP requests to localhost are allowed - this may be a security risk in production"
+            );
         }
 
         if self.network.allow_private_networks && !self.development.enabled {
