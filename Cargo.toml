@@ -125,6 +125,7 @@ tower-http = { workspace = true, features = ["cors"] }
 chrono = { workspace = true }
 tracing-subscriber = { workspace = true }
 futures = { workspace = true }
+async-trait = { workspace = true }
 # Core crates
 skreaver-core = { path = "crates/skreaver-core" }
 skreaver-memory = { path = "crates/skreaver-memory" }
