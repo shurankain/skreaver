@@ -333,9 +333,10 @@ emergency_contacts = ["oncall@example.com"]
 
 ### Environment Variables
 
-The Skreaver runtime uses environment variables for configuration. Your application can also add its own variables.
+Skreaver supports comprehensive runtime configuration via environment variables, allowing you to adjust settings without rebuilding your application. This is essential for production Kubernetes deployments.
 
-**Required for Production**:
+#### Required Variables
+
 ```bash
 # JWT secret (REQUIRED in release builds, panics if not set)
 # Generate with: openssl rand -base64 32
@@ -345,48 +346,119 @@ SKREAVER_JWT_SECRET=your-secret-key-here
 RUST_LOG=info,my_skreaver_app=debug
 ```
 
-**Recommended**:
-```bash
-# Security configuration file path
-# If not set, uses default security configuration
-# Set via HttpRuntimeConfig.security_config_path in your code,
-# or pass path to SecurityConfig::load_from_file()
+#### HTTP Runtime Configuration
 
-# Database connection (if using PostgreSQL/SQLite memory backends)
+```bash
+# Request handling
+SKREAVER_REQUEST_TIMEOUT_SECS=30               # Request timeout (default: 30, max: 300)
+SKREAVER_MAX_BODY_SIZE=16777216                # Max request body (default: 16MB, max: 100MB)
+SKREAVER_ENABLE_CORS=true                      # Enable CORS (default: true)
+SKREAVER_ENABLE_OPENAPI=false                  # Enable OpenAPI docs (default: true, disable in prod)
+
+# Security configuration file path
+SKREAVER_SECURITY_CONFIG_PATH=/app/config/security.toml  # Path to security.toml
+```
+
+#### Rate Limiting Configuration
+
+```bash
+SKREAVER_RATE_LIMIT_GLOBAL_RPM=1000            # Global requests/minute (default: 1000)
+SKREAVER_RATE_LIMIT_PER_IP_RPM=60              # Per-IP requests/minute (default: 60)
+SKREAVER_RATE_LIMIT_PER_USER_RPM=120           # Per-user requests/minute (default: 120)
+```
+
+#### Backpressure Configuration
+
+```bash
+SKREAVER_BACKPRESSURE_MAX_QUEUE_SIZE=100       # Max queue size per agent (default: 100)
+SKREAVER_BACKPRESSURE_MAX_CONCURRENT=10        # Max concurrent requests/agent (default: 10)
+SKREAVER_BACKPRESSURE_GLOBAL_MAX_CONCURRENT=500 # Global max concurrent (default: 500)
+SKREAVER_BACKPRESSURE_QUEUE_TIMEOUT_SECS=30    # Queue timeout (default: 30)
+SKREAVER_BACKPRESSURE_PROCESSING_TIMEOUT_SECS=60 # Processing timeout (default: 60)
+SKREAVER_BACKPRESSURE_ENABLE_ADAPTIVE=true     # Enable adaptive backpressure (default: true)
+SKREAVER_BACKPRESSURE_TARGET_PROCESSING_MS=1000 # Target processing time (default: 1000)
+SKREAVER_BACKPRESSURE_LOAD_THRESHOLD=0.8       # Load threshold 0.0-1.0 (default: 0.8)
+```
+
+#### Observability Configuration
+
+```bash
+SKREAVER_OBSERVABILITY_ENABLE_METRICS=true     # Enable Prometheus metrics (default: true)
+SKREAVER_OBSERVABILITY_ENABLE_TRACING=false    # Enable OpenTelemetry tracing (default: false)
+SKREAVER_OBSERVABILITY_ENABLE_HEALTH=true      # Enable health checks (default: true)
+SKREAVER_OBSERVABILITY_OTEL_ENDPOINT=http://otel-collector:4317  # OTLP endpoint
+SKREAVER_OBSERVABILITY_NAMESPACE=skreaver      # Metrics namespace (default: "skreaver")
+```
+
+#### Database Configuration (Optional)
+
+```bash
+# PostgreSQL or SQLite (if using memory backends)
 DATABASE_URL=postgresql://user:pass@postgres:5432/skreaver
 # or for SQLite:
 DATABASE_URL=sqlite:///data/skreaver.db
 ```
 
-**Optional (Debug/Testing)**:
-```bash
-# Enable test API key 'sk-test-key-123' in release builds (NOT RECOMMENDED)
-SKREAVER_ENABLE_TEST_KEY=1
+#### Loading Configuration in Code
 
-# Observability (if enabled via features)
-OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-OTEL_SERVICE_NAME=my-skreaver-app
-```
-
-**Note**: Configuration like HTTP port, rate limiting, and WebSocket settings are set via `HttpRuntimeConfig` in your application code, not environment variables. Example:
+**Option 1: Environment Variables Only (Recommended for Production)**
 
 ```rust
-use skreaver::runtime::{HttpRuntimeConfig, RateLimitConfig, BackpressureConfig};
+use skreaver::runtime::{HttpAgentRuntime, HttpRuntimeConfigBuilder, shutdown_signal};
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load all configuration from environment variables
+    let config = HttpRuntimeConfigBuilder::from_env()
+        .expect("Failed to load config from environment")
+        .build()
+        .expect("Failed to validate config");
+
+    // Create runtime with environment-based configuration
+    let runtime = HttpAgentRuntime::with_config(registry, config);
+
+    let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    axum::serve(listener, runtime.router())
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    Ok(())
+}
+```
+
+**Option 2: Mix Environment Variables with Code-based Configuration**
+
+```rust
+use skreaver::runtime::{HttpAgentRuntime, HttpRuntimeConfigBuilder};
 use std::path::PathBuf;
 
-let config = HttpRuntimeConfig {
-    rate_limit: RateLimitConfig {
-        max_requests: 100,
-        window_secs: 60,
-    },
-    backpressure: BackpressureConfig::default(),
-    request_timeout_secs: 30,
-    max_body_size: 16 * 1024 * 1024, // 16MB
-    enable_cors: true,
-    enable_openapi: false, // Disable in production
-    security_config_path: Some(PathBuf::from("/app/config/security.toml")),
-    ..Default::default()
-};
+// Start with env vars, then override specific settings
+let config = HttpRuntimeConfigBuilder::from_env()?
+    .security_config_path(PathBuf::from("/custom/security.toml"))
+    .enable_openapi(false)  // Force disable OpenAPI in production
+    .build()?;
+
+let runtime = HttpAgentRuntime::with_config(registry, config);
+```
+
+**Option 3: Fully Code-based Configuration (Not Recommended for Production)**
+
+```rust
+use skreaver::runtime::{HttpRuntimeConfig, HttpRuntimeConfigBuilder, RateLimitConfig, BackpressureConfig};
+use std::path::PathBuf;
+
+let mut rate_limit = RateLimitConfig::default();
+rate_limit.global_rpm = 500;
+
+let config = HttpRuntimeConfigBuilder::new()
+    .rate_limit(rate_limit)
+    .request_timeout_secs(45)
+    .max_body_size(10 * 1024 * 1024)  // 10MB
+    .enable_cors(false)
+    .enable_openapi(false)
+    .security_config_path(PathBuf::from("/app/config/security.toml"))
+    .build()?;
 
 let runtime = HttpAgentRuntime::with_config(registry, config);
 ```
