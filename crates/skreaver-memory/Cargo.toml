@@ -1,6 +1,6 @@
 [package]
 name = "skreaver-memory"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
 license = "MIT"
@@ -18,7 +18,7 @@ redis = ["dep:redis", "dep:deadpool-redis", "dep:tokio"]
 
 [dependencies]
 # Core dependency
-skreaver-core = { path = "../skreaver-core", version = "0.3.0" }
+skreaver-core = { path = "../skreaver-core", version = "0.4.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
