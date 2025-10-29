@@ -74,10 +74,8 @@ impl MeshMetricsCollector {
         let mut metrics = self.metrics.write().await;
         metrics.messages_sent_total += 1;
 
-        if let Some(topic) = topic {
-            if metrics.queue_depths.len() < self.max_topics {
-                *metrics.queue_depths.entry(topic.to_string()).or_insert(0) += 1;
-            }
+        if let Some(topic) = topic && metrics.queue_depths.len() < self.max_topics {
+            *metrics.queue_depths.entry(topic.to_string()).or_insert(0) += 1;
         }
     }
 
