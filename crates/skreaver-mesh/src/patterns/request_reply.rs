@@ -12,7 +12,7 @@ use crate::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{RwLock, oneshot};
 use tracing::{debug, warn};
 
 /// Configuration for Request/Reply pattern

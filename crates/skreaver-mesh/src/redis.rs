@@ -471,10 +471,12 @@ mod tests {
         let to = AgentId::from("wrong-recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Route specifies recipient"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Route specifies recipient")
+        );
     }
 
     #[test]
@@ -483,10 +485,12 @@ mod tests {
         let to = AgentId::from("recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Cannot send broadcast message"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot send broadcast message")
+        );
     }
 
     #[test]
@@ -495,10 +499,12 @@ mod tests {
         let to = AgentId::from("recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Cannot send anonymous message"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot send anonymous message")
+        );
     }
 
     #[test]
@@ -533,10 +539,12 @@ mod tests {
         let route = Route::unicast("sender", "recipient");
         let result = validate_broadcast_route(&route);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Cannot broadcast unicast message"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot broadcast unicast message")
+        );
     }
 
     #[test]
@@ -544,9 +552,11 @@ mod tests {
         let route = Route::system("recipient");
         let result = validate_broadcast_route(&route);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Cannot broadcast system message"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot broadcast system message")
+        );
     }
 }

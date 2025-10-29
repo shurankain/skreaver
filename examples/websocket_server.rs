@@ -41,7 +41,7 @@ use skreaver_http::websocket::{
     AuthHandler, ConnectionInfo, WebSocketConfig, WebSocketManager, WsMessage,
 };
 use std::{net::SocketAddr, sync::Arc};
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{info, warn};
 
 /// Simple authentication handler for the example
@@ -60,7 +60,10 @@ impl AuthHandler for ExampleAuthHandler {
 
     async fn check_permission(&self, user_id: &str, channel: &str) -> bool {
         // In production, check permissions against a database or RBAC system
-        info!("Checking permission for user {} on channel {}", user_id, channel);
+        info!(
+            "Checking permission for user {} on channel {}",
+            user_id, channel
+        );
 
         // For this example, allow all channels except those starting with "private_"
         if channel.starts_with("private_") {
@@ -107,7 +110,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("✅ WebSocket manager initialized");
     info!("   Max connections: {}", manager.config.max_connections);
     info!("   Ping interval: {:?}", manager.config.ping_interval);
-    info!("   Message size limit: {} KB", manager.config.max_message_size / 1024);
+    info!(
+        "   Message size limit: {} KB",
+        manager.config.max_message_size / 1024
+    );
 
     // Simulate adding a connection (in a real application, this comes from Axum handlers)
     tokio::spawn({
@@ -163,12 +169,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "counter": counter,
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                         "message": format!("Periodic update #{}", counter)
-                    })
+                    }),
                 );
 
                 // Broadcast to all subscribers of "agent-updates" channel
                 // Note: broadcast method sends to channels, implemented via handle_broadcast internally
-                info!("📢 Broadcasting update #{} to agent-updates channel", counter);
+                info!(
+                    "📢 Broadcasting update #{} to agent-updates channel",
+                    counter
+                );
             }
         }
     });
@@ -188,7 +197,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stats = manager.get_stats().await;
     info!("📊 Final stats:");
     info!("   Total connections: {}", stats.total_connections);
-    info!("   Authenticated connections: {}", stats.authenticated_connections);
+    info!(
+        "   Authenticated connections: {}",
+        stats.authenticated_connections
+    );
     info!("   Total channels: {}", stats.total_channels);
 
     info!("✅ Shutdown complete");
