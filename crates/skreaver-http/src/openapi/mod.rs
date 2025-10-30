@@ -51,7 +51,7 @@ impl Default for OpenApiConfig {
         Self {
             title: "Skreaver API".to_string(),
             description: "AI Agent Infrastructure API".to_string(),
-            version: "0.3.0".to_string(),
+            version: "0.4.0".to_string(),
             terms_of_service: None,
             contact: Some(ApiContact {
                 name: Some("Skreaver Team".to_string()),
@@ -333,7 +333,7 @@ mod tests {
     fn test_openapi_config_default() {
         let config = OpenApiConfig::default();
         assert_eq!(config.title, "Skreaver API");
-        assert_eq!(config.version, "0.3.0");
+        assert_eq!(config.version, "0.4.0");
         assert!(config.enable_ui);
         assert_eq!(config.ui_path, "/docs");
         assert_eq!(config.spec_path, "/openapi.json");
