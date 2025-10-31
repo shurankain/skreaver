@@ -741,10 +741,10 @@ async fn test_full_websocket_flow() {
 # Old (v0.4.0)
 skreaver-http = { version = "0.4", features = ["unstable-websocket"] }
 
-# New (v0.5.0)
-skreaver-http = { version = "0.5", features = ["websocket"] }
-# Or just use default features (websocket included)
+# New (v0.5.0) - websocket is now stable and included in defaults
 skreaver-http = "0.5"
+# Or explicitly:
+skreaver-http = { version = "0.5", features = ["websocket"] }
 ```
 
 **No API Changes** - All WebSocket APIs are stable and backward-compatible.

@@ -217,9 +217,9 @@ None - all changes are additive or internal improvements.
 
 ### For Users Upgrading from v0.4.0
 
-The WebSocket feature flag is being renamed:
-- **Before**: `unstable-websocket`
-- **After**: `websocket` (still unstable in v0.5.0)
+The WebSocket feature flag has been renamed and is now stable:
+- **Before**: `unstable-websocket` (v0.4.0)
+- **After**: `websocket` (stable in v0.5.0, included in default features)
 
 No code changes required, but new config fields are available for security tuning:
 
@@ -253,4 +253,4 @@ let config = WebSocketConfig {
 
 ---
 
-**Conclusion**: All critical and high-priority security issues have been resolved. The WebSocket implementation is now ready for beta testing in v0.5.0 with the `websocket` feature flag. Full stabilization and removal of the flag will occur in v0.6.0 after production validation and external security audit.
+**Conclusion**: All critical and high-priority security issues have been resolved. The WebSocket implementation is now **production-ready and stable** in v0.5.0 with the `websocket` feature flag (included in default features). External security audit is planned for post-v0.5.0 but is not blocking production use.
