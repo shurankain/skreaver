@@ -603,6 +603,6 @@ mod tests {
         let spec = generator.generate().unwrap();
         assert_eq!(spec["openapi"], "3.0.3");
         assert_eq!(spec["info"]["title"], "Skreaver API");
-        assert_eq!(spec["info"]["version"], "0.4.0");
+        assert_eq!(spec["info"]["version"], "0.5.0");
     }
 }
