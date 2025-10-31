@@ -2,7 +2,7 @@
 
 > **Version**: 1.0
 > **Effective Date**: 2025-10-08
-> **Current Release**: v0.3.0
+> **Current Release**: v0.5.0
 
 ---
 
@@ -167,9 +167,9 @@ pub fn old_api() -> Result<(), Error> {
 | **Internal API** (direct crate imports) | No grace period required | Any version |
 
 **Example**:
-- v0.3.0: Deprecate `old_api()`
-- v0.3.x: Grace period (warnings only)
-- v0.4.0: Remove `old_api()`
+- v0.4.0: Deprecate `old_api()`
+- v0.4.x: Grace period (warnings only)
+- v0.5.0: Remove `old_api()`
 
 ### Post-1.0 (Future)
 
@@ -332,9 +332,9 @@ We provide:
 
 ## Current Deprecations
 
-**As of v0.3.0**: No deprecated APIs
+**As of v0.5.0**: No deprecated APIs
 
-All APIs in v0.3.0 are current. This section will be updated as deprecations are introduced.
+All APIs in v0.5.0 are current. This section will be updated as deprecations are introduced.
 
 ---
 
@@ -525,5 +525,5 @@ If you need more time to migrate:
 
 ---
 
-**Last Updated**: 2025-10-08
-**Next Review**: Before v0.4.0 release
+**Last Updated**: 2025-10-31
+**Next Review**: Before v0.6.0 release

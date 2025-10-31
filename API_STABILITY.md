@@ -2,7 +2,7 @@
 
 > **Version**: 1.0
 > **Effective Date**: 2025-10-08
-> **Current Release**: v0.3.0
+> **Current Release**: v0.5.0
 > **Status**: Pre-1.0 Development
 
 ---
@@ -553,5 +553,5 @@ See the [API documentation](https://docs.rs/skreaver) for complete API reference
 
 ---
 
-**Last Updated**: 2025-10-08
-**Next Review**: Before v0.4.0 release
+**Last Updated**: 2025-10-31
+**Next Review**: Before v0.6.0 release

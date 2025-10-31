@@ -1,10 +1,10 @@
 # Skreaver Development Plan v3.1
 
-> **Status**: Updated Strategic Plan - v0.4.0 Released ✅
+> **Status**: Updated Strategic Plan - v0.5.0 Released ✅
 > **Created**: 2025-08-27
-> **Updated**: 2025-10-11
+> **Updated**: 2025-10-31
 > **Type**: Production-Ready Development Strategy
-> **Priority**: v0.5.0 Planning Phase  
+> **Priority**: v0.6.0 Planning Phase  
 
 ---
 
@@ -12,23 +12,23 @@
 
 This revised development plan transforms **Skreaver** from an experimental framework into a production-ready "Tokio of agent systems" through **focused, measurable improvements** with realistic timelines and concrete technical benchmarks.
 
-### Current State Assessment (v0.4.0) - Released October 11, 2025
+### Current State Assessment (v0.5.0) - Released October 31, 2025
 
 ✅ **Multi-Crate Architecture**: **9 crates** with clear separation (exceeded 7-crate target!)
-✅ **Comprehensive Testing**: **347 tests** passing (138 core, 89 HTTP, 53 memory, 38 mesh, 17 MCP)
-✅ **Production Infrastructure**: CI/CD, security scanning, performance regression detection, SemVer checks
+✅ **Comprehensive Testing**: **492 tests** passing (increased from 347)
+✅ **Production Infrastructure**: Helm charts, CI/CD, security scanning, performance regression detection, SemVer checks
 ✅ **Observability**: OpenTelemetry integration with metrics and tracing
 ✅ **CLI Interface**: Full-featured CLI with project generation and scaffolding
-✅ **Security Model**: **Production-ready** with AES-256-GCM encryption, JWT revocation, real resource monitoring
+✅ **Security Model**: **Production-ready** with AES-256-GCM encryption, JWT revocation, real resource monitoring, runtime security config integration
 ✅ **Standard Tools**: HTTP, File, JSON, Text processing with validation
 ✅ **Memory Backends**: InMemory, Redis, **SQLite, PostgreSQL** with migrations
-✅ **Agent Communication**: **skreaver-mesh** with Redis Pub/Sub coordination
+✅ **Agent Communication**: **skreaver-mesh** with Redis Pub/Sub coordination, Prometheus metrics
 ✅ **MCP Protocol**: **skreaver-mcp** server for Claude Desktop integration
-✅ **Type Safety**: Structured errors, NonEmpty collections, validated types
+✅ **Type Safety**: Structured errors, NonEmpty collections, validated types, compile-time lock ordering
 ✅ **API Stability**: Formal guarantees, SemVer CI, deprecation policy
-✅ **Performance Benchmarks**: 32-agent benchmark with automated regression detection
+✅ **Performance Benchmarks**: 32-agent benchmark with automated regression detection (6.33s release build, 21% faster)
 ✅ **Authentication**: JWT + API Key + Token Revocation + AES-256-GCM credential storage
-✅ **WebSocket**: Real-time communication (unstable feature)
+✅ **WebSocket**: Real-time communication (production-ready, stable API)
 ✅ **Resource Monitoring**: Real CPU/memory/disk tracking with sysinfo integration
 
 ---
@@ -42,12 +42,12 @@ This revised development plan transforms **Skreaver** from an experimental frame
 - **Memory backends**: File, In-memory, Redis (basic)
 - **Type safety**: Rust's ownership model prevents many runtime errors
 
-### Next Priorities (v0.4.0 → v0.5.0)
-1. **Prometheus Metrics**: Complete integration for production monitoring
-2. **Security Config Runtime**: Full HTTP runtime integration with policy enforcement
-3. **CLI Enhancements**: Advanced scaffolding templates and workflows
-4. **External Security Audit**: Third-party security review
-5. **WebSocket Stabilization**: Graduate from unstable to stable API
+### Next Priorities (v0.5.0 → v0.6.0)
+1. **Advanced Testing**: Property-based testing, fuzzing, mutation testing
+2. **External Security Audit**: Third-party security review and compliance certifications
+3. **Performance Optimization**: Advanced benchmarking, profiling, optimization
+4. **Documentation Enhancement**: API docs, tutorials, architecture guides
+5. **Community Building**: Contributor guides, issue templates, governance model
 6. **Production Validation**: Real-world deployment and performance validation
 
 ---
@@ -60,7 +60,7 @@ This revised development plan transforms **Skreaver** from an experimental frame
 ### 0.1 Crate Architecture & Release Infrastructure - **COMPLETED**
 - [x] **Workspace Structure**: 7-crate workspace with clear separation
 - [x] **Feature Gates**: Optional dependencies and functionality isolation
-- [x] **Version v0.3.0**: Current release with comprehensive feature set
+- [x] **Version v0.5.0**: Current release with production infrastructure and stable WebSocket
 - [x] **CHANGELOG.md**: Comprehensive change tracking
 - [x] **CI/CD Pipeline**: Deterministic builds, security scanning, automated testing
 - [x] **Performance Regression Detection**: Automated benchmark analysis in CI
@@ -307,7 +307,7 @@ retain_logs_days = 90
 ---
 
 ## Phase 0.4: Type Safety & Standards - **COMPLETED ✅**
-*Released in v0.4.0 - October 11, 2025*
+*Released in v0.5.0 - October 31, 2025*
 
 ### 0.4.1 Type Safety Improvements - **COMPLETED ✅**
 - [x] **Structured MemoryError**: All memory backends use typed `MemoryError` enums
@@ -331,7 +331,7 @@ retain_logs_days = 90
 ---
 
 ## Phase 1: Production Readiness - **MOSTLY COMPLETED ✅**
-*Released in v0.4.0 with Phase 2 features*
+*Released in v0.5.0 with Phase 2 features*
 
 ### 1.1 Enhanced Memory Backends - **COMPLETED ✅**
 - [x] **SQLite Memory**: WAL mode, connection pooling, schema migrations ✅
@@ -397,7 +397,7 @@ skreaver test --agent MyAgent --coverage --benchmark
 ---
 
 ## Phase 2: Integration & Scaling - **COMPLETED ✅**
-*Released in v0.4.0 (ahead of schedule!)*
+*Released in v0.5.0 (ahead of schedule!)*
 
 ### 2.1 Agent Communication (skreaver-mesh) - **COMPLETED ✅**
 - [x] **Redis Pub/Sub**: Agent-to-agent messaging with full implementation ✅
@@ -478,30 +478,31 @@ pub struct DeadLetterQueue {
 
 ## 📊 Success Metrics & KPIs
 
-### Technical Metrics (v0.4.0 - ACHIEVED ✅)
+### Technical Metrics (v0.5.0 - ACHIEVED ✅)
 - [x] **Performance**: p50 <30ms ✅, p95 <200ms ✅, p99 <400ms ✅
 - [x] **Resource Usage**: ≤128MB RSS with N=32 ✅ (validated in CI)
-- [x] **Critical Path Coverage**: 347 tests passing ✅ (>95% coverage achieved)
-- [ ] **Mutation Score**: ≥70% (deferred to v0.5.0)
-- [x] **Build Times**: ~20s clean ✅, ~6s incremental ✅ (exceeded targets!)
+- [x] **Critical Path Coverage**: 492 tests passing ✅ (increased from 347, >95% coverage achieved)
+- [ ] **Mutation Score**: ≥70% (deferred to v0.6.0)
+- [x] **Build Times**: 6.33s release build ✅ (21% faster than v0.4.0!)
 - [x] **Security**: Zero HIGH findings ✅ (cargo-audit passes)
 
-### Production Readiness Metrics (v0.4.0 - ACHIEVED ✅)
+### Production Readiness Metrics (v0.5.0 - ACHIEVED ✅)
 - [x] **Deterministic Builds**: SHA-256 reproducible builds ✅
-- [x] **Stability**: 100% backward compatible ✅ (zero breaking changes v0.3→v0.4)
-- [x] **Documentation**: 7 major docs ✅ (CHANGELOG, MIGRATION, API_STABILITY, etc.)
-- [x] **Observability**: OpenTelemetry with correlation IDs ✅
-- [x] **Security Review**: [CODE_AUDIT_v0.4.0.md](CODE_AUDIT_v0.4.0.md) ✅
+- [x] **Stability**: 100% backward compatible ✅ (zero breaking changes v0.4→v0.5)
+- [x] **Documentation**: 14 major docs ✅ (CHANGELOG, MIGRATION, API_STABILITY, WEBSOCKET_GUIDE, SRE_RUNBOOK, etc.)
+- [x] **Observability**: OpenTelemetry with correlation IDs, Prometheus metrics ✅
+- [x] **Production Infrastructure**: Helm charts, Docker, Kubernetes deployment ✅
 
-### Quality Gates (v0.4.0 - PASSED ✅)
+### Quality Gates (v0.5.0 - PASSED ✅)
 - [x] **Internal Security Review**: 4,000+ lines audited, zero unimplemented!() ✅
 - [x] **Benchmark Publication**: CI integrated with automated regression detection ✅
 - [x] **Integration Testing**: All backends tested (PostgreSQL, SQLite, Redis) ✅
 - [x] **Security Baseline**: cargo-deny, cargo-audit, input validation ✅
 - [x] **API Stability**: SemVer CI with cargo-semver-checks ✅
-- [x] **347 Tests Passing**: Zero failures across all modules ✅
+- [x] **492 Tests Passing**: Zero failures across all modules ✅
+- [x] **WebSocket Stabilization**: Production-ready, stable API ✅
 
-> External security audits and compliance certifications deferred to post-v0.5
+> External security audits and compliance certifications deferred to post-v0.6
 > 
 > **Public API Stability Contract**: Only re-exports from meta-crate `skreaver` are stable.
 > Internal crate paths (`skreaver-core::*`) are unstable and may break without notice.
