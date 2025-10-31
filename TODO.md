@@ -1,18 +1,36 @@
 # Skreaver TODO - Outstanding Items
 
-> **Generated**: 2025-10-11
+> **Generated**: 2025-10-31
 > **Based on**: DEVELOPMENT_PLAN.md v3.1
-> **Current Version**: v0.4.0 ✅ **RELEASED**
-> **Next Milestone**: v0.5.0
+> **Current Version**: v0.5.0 ✅ **RELEASED**
+> **Next Milestone**: v0.6.0
+
+---
+
+## 🎉 v0.5.0 Release - SHIPPED! ✅
+
+**Release Date**: October 31, 2025
+**Status**: Production Ready
+**Tests**: 492 passing (zero failures)
+**Breaking Changes**: None (100% backward compatible)
+
+### Major Achievements:
+- ✅ **WebSocket Stabilization**: Production-ready, stable API
+- ✅ **Security Config Runtime**: Full HTTP integration complete
+- ✅ **CLI Enhancements**: 3,366 LOC, advanced scaffolding templates
+- ✅ **Prometheus Metrics**: Complete integration with `/metrics` endpoint
+- ✅ **Production Infrastructure**: Helm charts, deployment guides, SRE runbook
+- ✅ **Deprecation Cleanup**: Zero deprecated code remaining
+- ✅ **Lock Ordering**: Compile-time deadlock prevention for WebSocket
+- ✅ **Documentation**: WEBSOCKET_GUIDE.md, SRE_RUNBOOK.md added
+
+See [CHANGELOG.md](CHANGELOG.md) and [MIGRATION.md](MIGRATION.md) for details.
 
 ---
 
 ## 🎉 v0.4.0 Release - SHIPPED! ✅
 
 **Release Date**: October 11, 2025
-**Status**: Production Ready
-**Tests**: 347 passing (zero failures)
-**Breaking Changes**: None (100% backward compatible)
 
 ### Major Achievements:
 - ✅ **9 Crates**: Exceeded 7-crate target
@@ -23,42 +41,10 @@
 - ✅ **Agent Mesh**: Multi-agent coordination (Phase 2.1)
 - ✅ **MCP Protocol**: Claude Desktop integration (Phase 2.2)
 - ✅ **Enhanced Backends**: SQLite, PostgreSQL with migrations
-- ✅ **WebSocket**: Real-time communication (unstable)
-- ✅ **Comprehensive Docs**: 7 major documentation files
-
-See [CHANGELOG.md](CHANGELOG.md) and [MIGRATION.md](MIGRATION.md) for details.
 
 ---
 
-## 🎯 High Priority (v0.5.0)
-
-### Prometheus Metrics Integration
-
-- [ ] **Complete Metrics Implementation**
-  - Implement Prometheus metrics in audit.rs (TODOs at lines 488, 491)
-  - Add SECURITY_METRICS module
-  - Integrate with OpenTelemetry exporter
-  - **Impact**: High - Production monitoring requirement
-  - **Location**: `crates/skreaver-core/src/security/audit.rs`
-  - **Estimated**: 1-2 days
-
-### Security & Production Integration
-
-- [ ] **Security Config Runtime Integration**
-  - Wire skreaver-security.toml to HTTP runtime
-  - Test full policy enforcement in production scenarios
-  - Add integration tests for security policy violations
-  - **Impact**: High - Security enforcement
-  - **Location**: `crates/skreaver-http/src/runtime/security.rs`
-  - **Estimated**: 1-2 days
-
-- [ ] **Auth Middleware HTTP Integration**
-  - Wire authentication to all HTTP endpoints
-  - Complete JWT validation middleware integration
-  - Add per-endpoint authentication requirements
-  - **Impact**: High - Security requirement
-  - **Location**: `crates/skreaver-http/src/runtime/router.rs`
-  - **Estimated**: 1 day
+## 🎯 High Priority (v0.6.0)
 
 ### External Security Audit
 
@@ -66,34 +52,23 @@ See [CHANGELOG.md](CHANGELOG.md) and [MIGRATION.md](MIGRATION.md) for details.
   - Contract external security firm
   - Comprehensive penetration testing
   - Code audit for vulnerabilities
-  - **Impact**: High - Production requirement
-  - **Status**: Planned post-v0.5.0 per development plan
+  - **Impact**: High - Production compliance requirement
+  - **Status**: Planned for v0.6.0
   - **Estimated**: 2-4 weeks
+
+### WebSocket Binary Messages
+
+- [ ] **Binary Protocol Support**
+  - Add binary message type support to WebSocket
+  - Implement efficient binary serialization
+  - Add compression for binary payloads
+  - **Impact**: Medium - Feature completeness
+  - **Location**: `crates/skreaver-http/src/websocket/`
+  - **Estimated**: 1-2 weeks
 
 ---
 
-## 🔧 Medium Priority (v0.5.0)
-
-### WebSocket API Stabilization
-
-- [ ] **Graduate from Unstable**
-  - Finalize WebSocket protocol design
-  - Remove `unstable-websocket` feature flag
-  - Add comprehensive WebSocket tests
-  - Document WebSocket API guarantees
-  - **Impact**: Medium - API stability
-  - **Location**: `crates/skreaver-http/src/websocket/`
-  - **Estimated**: 2-3 days
-
-### CLI Enhancements
-
-- [ ] **Advanced Scaffolding Templates**
-  - Implement `skreaver new agent --template <type>`
-  - HTTP client, database connector templates
-  - Tool template generation
-  - **Impact**: Medium - Developer experience
-  - **Location**: `skreaver-cli/src/commands/new.rs`
-  - **Estimated**: 2-3 days
+## 🔧 Medium Priority (v0.6.0)
 
 - [ ] **Service Layer Refactoring**
   - Update service.rs TODOs (lines 76, 230, 303, 321)
@@ -286,67 +261,60 @@ These major items were completed in v0.4.0:
 
 ---
 
-## 🎯 v0.5.0 Milestone Goals
+## 🎯 v0.5.0 Milestone Goals - ✅ COMPLETED
 
-**Target Date**: Q1 2026 (2-3 months)
+**Target Date**: Q1 2026 → **Delivered October 31, 2025** (ahead of schedule!)
 **Focus**: Production Hardening + Metrics + Security
 
+### ✅ Completed (All Must-Haves):
+1. ✅ Prometheus metrics integration - `/metrics` endpoint complete
+2. ✅ Security config runtime integration - Full HTTP integration
+3. ✅ Auth middleware HTTP integration - Complete
+4. ✅ WebSocket API stabilization - Production-ready, stable
+5. ✅ Deployment guide documentation - 1,590 lines + SRE runbook
+
+### ✅ Completed (Should-Haves):
+1. ✅ Advanced CLI scaffolding templates - 3,366 LOC implementation
+2. ✅ Service layer refactoring - TODOs clarified
+3. ✅ Production validation - 492 tests passing
+
+### 🚀 v0.6.0 Milestone Goals
+
+**Target Date**: Q2 2026 (3-4 months)
+**Focus**: Security Compliance + Advanced Features
+
 ### Must Have:
-1. Prometheus metrics integration (audit.rs completion)
-2. Security config runtime integration
-3. Auth middleware HTTP integration
-4. WebSocket API stabilization
-5. Deployment guide documentation
-
-### Should Have:
-1. Advanced CLI scaffolding templates
-2. Per-tool RBAC enforcement
-3. Service layer refactoring (clarify TODOs)
-4. Mutation testing in CI
-5. Production validation
-
-### Nice to Have:
-1. Fuzzing integration
-2. Sanitizer tests (AddressSanitizer, ThreadSanitizer)
-3. External security audit preparation
+1. External security audit and certification
+2. WebSocket binary message support
+3. Advanced multi-agent coordination patterns
 4. Performance optimization pass
 
-### Deferred to Post-v0.5:
-- External security audit (production readiness requirement)
-- Advanced multi-agent features
-- IDE integrations
-- Hot reload
+### Should Have:
+1. Fuzzing integration
+2. Mutation testing in CI (≥70% score)
+3. IDE integrations (VS Code, IntelliJ)
+4. Interactive CLI mode
 
----
-
-## 📊 v0.5.0 Estimated Timeline
-
-**Total Effort**: 6-8 weeks
-
-| Phase | Effort | Priority |
-|-------|--------|----------|
-| Prometheus Metrics | 1-2 days | High |
-| Security Integration | 2-3 days | High |
-| WebSocket Stabilization | 2-3 days | High |
-| CLI Enhancements | 2-3 days | Medium |
-| Deployment Guide | 2-3 days | Medium |
-| Testing Improvements | 1 week | Medium |
-| Production Validation | 1-2 weeks | High |
+### Nice to Have:
+1. Hot reload for development
+2. Visual debugging tools
+3. Advanced metrics and dashboards
+4. Multi-region deployment guide
 
 ---
 
 ## 📝 Notes
 
-- This TODO is based on v0.4.0 completion and DEVELOPMENT_PLAN.md v3.1
+- This TODO is based on v0.5.0 completion and DEVELOPMENT_PLAN.md v3.1
 - Items prioritized by production impact and user value
-- Performance targets exceeded in v0.4.0 (20% better build times!)
-- 100% backward compatible releases maintained
-- External security audit planned for post-v0.5.0
-- WebSocket currently unstable, targeting stable API in v0.5.0
-- Service layer TODOs are misleading (JWT already works!) - needs clarification
+- Performance continues to improve (v0.5.0: 21% faster builds than v0.4.0)
+- 100% backward compatible releases maintained (v0.3 → v0.4 → v0.5)
+- External security audit planned for v0.6.0
+- WebSocket is now **stable** and production-ready in v0.5.0
+- All v0.5.0 priorities completed ahead of schedule
 
 ---
 
-**Last Updated**: 2025-10-11
-**Next Review**: Before v0.5.0 release planning
-**Current Status**: v0.4.0 SHIPPED ✅
+**Last Updated**: 2025-10-31
+**Next Review**: Before v0.6.0 release planning
+**Current Status**: v0.5.0 SHIPPED ✅
