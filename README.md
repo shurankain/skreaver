@@ -16,7 +16,7 @@ Skreaver aims to be the *Tokio* of agent systems: lightweight, pluggable, and re
 - **🕸️ Multi-agent communication** with Redis Pub/Sub messaging
 - **🤖 Coordination patterns**: Supervisor/Worker, Request/Reply, Broadcast/Gather, Pipeline
 - **🔌 MCP protocol support** for Claude Desktop integration
-- **⚡ WebSocket support** for real-time communication (experimental)
+- **⚡ WebSocket support** for real-time communication (production-ready)
 - **🛠️ Standard tool library**: HTTP, File I/O, JSON/XML, Text processing
 - **📊 Production observability**: Prometheus metrics, OpenTelemetry tracing, health checks
 - **🔒 Enterprise security**: Threat modeling, input validation, SSRF/path traversal protection
@@ -63,9 +63,9 @@ Skreaver gives you the scaffolding. You build the logic.
 
 ---
 
-📦 **Status**: Skreaver v0.3.0 is production-ready for core use cases.
+📦 **Status**: Skreaver v0.5.0 is production-ready for core use cases.
 
-### ✅ Implemented (v0.3.0)
+### ✅ Implemented (v0.5.0)
 
 **Core Framework**:
 * `Agent`, `Memory`, and `Tool` trait system
@@ -84,7 +84,7 @@ Skreaver gives you the scaffolding. You build the logic.
 * RESTful API endpoints with Axum
 * OpenAPI 3.0 documentation generation
 * JWT and API key authentication
-* WebSocket support (experimental)
+* WebSocket support (production-ready, stable API)
 * Compression and streaming
 
 **Multi-Agent Communication** (`skreaver-mesh`):
@@ -128,13 +128,13 @@ Skreaver gives you the scaffolding. You build the logic.
 * Kubernetes Helm charts
 * Health checks and HPA support
 
-### 🚧 Roadmap (v0.4.0 - v0.5.0)
+### 🚧 Roadmap (v0.6.0 and beyond)
 
-* CLI scaffolding tools (`skreaver new agent`, `skreaver generate tool`)
-* Auth middleware integration with HTTP endpoints
-* Migration framework for schema evolution
-* Enhanced developer documentation
-* Live examples and playground
+* External security audit and compliance certification
+* WebSocket binary message support
+* Advanced CLI workflows and interactive mode
+* Enhanced developer playground and tutorials
+* Distributed tracing improvements
 
 See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) and [TODO.md](TODO.md) for detailed roadmap.
 
@@ -142,7 +142,7 @@ See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) and [TODO.md](TODO.md) for detail
 
 ## 🔒 API Stability Guarantee
 
-Skreaver provides **clear API stability guarantees** starting from v0.3.0:
+Skreaver provides **clear API stability guarantees** starting from v0.3.0 (enhanced in v0.5.0):
 
 ✅ **Stable APIs**: When you import from the `skreaver` meta-crate, you get backwards-compatible APIs
 ```rust
