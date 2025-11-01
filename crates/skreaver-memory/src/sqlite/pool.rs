@@ -1,16 +1,12 @@
-//! SQLite connection pool with thread-safe management and health monitoring
-//!
-//! This module provides a production-ready connection pool for SQLite with:
-//! - Thread-safe connection pooling for efficient resource usage
-//! - Connection validation and health monitoring
-//! - Security validations for paths and namespaces
-//! - Proper error sanitization
+//! Connection pool for SQLite with thread-safe resource management
 
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
+use skreaver_core::error::{MemoryError, MemoryErrorKind, MemoryBackend};
+
+use crate::admin::PoolHealth;
 
 /// Connection pool for SQLite with configurable size and thread safety
 pub struct SqlitePool {
@@ -23,26 +19,10 @@ pub struct SqlitePool {
 
 /// Configuration for SQLite connections
 #[derive(Debug, Clone)]
-struct ConnectionConfig {
-    wal_mode: bool,
-    cache_size_kb: i32,
-    busy_timeout_ms: u32,
-}
-
-/// A pooled connection that automatically returns to the pool when dropped
-pub struct PooledConnection {
-    connection: Option<Connection>,
-    pool: Arc<Mutex<Vec<Connection>>>,
-    max_pool_size: usize,
-    active_connections: Arc<Mutex<usize>>,
-}
-
-/// Health status of the connection pool
-#[derive(Debug, Clone)]
-pub struct PoolHealth {
-    pub healthy_connections: usize,
-    pub total_connections: usize,
-    pub last_check: std::time::Instant,
+pub(crate) struct ConnectionConfig {
+    pub(crate) wal_mode: bool,
+    pub(crate) cache_size_kb: i32,
+    pub(crate) busy_timeout_ms: u32,
 }
 
 impl SqlitePool {
@@ -72,7 +52,7 @@ impl SqlitePool {
         if path_str.contains("..") || path_str.contains("//") {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InvalidValue {
+                kind: MemoryErrorKind::InvalidKey {
                     validation_error: "Invalid database path: path traversal detected".to_string(),
                 },
             });
@@ -83,7 +63,7 @@ impl SqlitePool {
             if ext != "db" && ext != "sqlite" && ext != "sqlite3" {
                 return Err(MemoryError::ConnectionFailed {
                     backend: MemoryBackend::Sqlite,
-                    kind: MemoryErrorKind::InvalidValue {
+                    kind: MemoryErrorKind::InvalidKey {
                         validation_error:
                             "Invalid database path: only .db, .sqlite, and .sqlite3 files allowed"
                                 .to_string(),
@@ -93,7 +73,7 @@ impl SqlitePool {
         } else {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InvalidValue {
+                kind: MemoryErrorKind::InvalidKey {
                     validation_error: "Invalid database path: file extension required".to_string(),
                 },
             });
@@ -103,12 +83,12 @@ impl SqlitePool {
     }
 
     /// Validate namespace string for security
-    pub fn validate_namespace(namespace: &str) -> Result<(), MemoryError> {
+    pub(crate) fn validate_namespace(namespace: &str) -> Result<(), MemoryError> {
         // Check length limits
         if namespace.is_empty() {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InvalidValue {
+                kind: MemoryErrorKind::InvalidKey {
                     validation_error: "Namespace cannot be empty".to_string(),
                 },
             });
@@ -117,7 +97,7 @@ impl SqlitePool {
         if namespace.len() > 64 {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InvalidValue {
+                kind: MemoryErrorKind::InvalidKey {
                     validation_error: "Namespace too long (max 64 characters)".to_string(),
                 },
             });
@@ -130,7 +110,7 @@ impl SqlitePool {
         {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InvalidValue {
+                kind: MemoryErrorKind::InvalidKey {
                     validation_error:
                         "Namespace contains invalid characters (only alphanumeric, _, - allowed)"
                             .to_string(),
@@ -149,7 +129,7 @@ impl SqlitePool {
         {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InvalidValue {
+                kind: MemoryErrorKind::InvalidKey {
                     validation_error: "Namespace contains forbidden SQL keywords".to_string(),
                 },
             });
@@ -159,7 +139,7 @@ impl SqlitePool {
     }
 
     /// Sanitize error messages to prevent information disclosure
-    pub fn sanitize_error(error: &rusqlite::Error) -> String {
+    pub(crate) fn sanitize_error(error: &rusqlite::Error) -> String {
         match error {
             // Allow specific safe errors
             rusqlite::Error::QueryReturnedNoRows => "No rows returned".to_string(),
@@ -217,8 +197,8 @@ impl SqlitePool {
     ) -> Result<Connection, MemoryError> {
         let conn = Connection::open(path).map_err(|e| MemoryError::ConnectionFailed {
             backend: MemoryBackend::Sqlite,
-            kind: MemoryErrorKind::InternalError {
-                backend_error: Self::sanitize_error(&e),
+            kind: MemoryErrorKind::IoError {
+                details: Self::sanitize_error(&e),
             },
         })?;
 
@@ -255,8 +235,8 @@ impl SqlitePool {
         conn.execute("SELECT 1", [])
             .map_err(|e| MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::InternalError {
-                    backend_error: Self::sanitize_error(&e),
+                kind: MemoryErrorKind::IoError {
+                    details: Self::sanitize_error(&e),
                 },
             })?;
 
@@ -323,8 +303,11 @@ impl SqlitePool {
             return Err(MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
                 kind: MemoryErrorKind::ResourceExhausted {
-                    resource: "connection pool".to_string(),
-                    limit: format!("{} connections", self.pool_size),
+                    resource: "connection_pool".to_string(),
+                    limit: format!(
+                        "{} active connections (max: {})",
+                        *active_count, self.pool_size
+                    ),
                 },
             });
         }
@@ -343,6 +326,7 @@ impl SqlitePool {
     }
 
     /// Check pool health
+    #[allow(dead_code)]
     pub fn health_check(&self) -> Result<PoolHealth, MemoryError> {
         let available_count = {
             let available =
@@ -360,34 +344,42 @@ impl SqlitePool {
         Ok(PoolHealth {
             healthy_connections: available_count,
             total_connections: self.pool_size,
-            last_check: std::time::Instant::now(),
+            last_check: std::time::SystemTime::now(),
         })
     }
+}
+
+/// RAII wrapper for pooled connections that returns connection to pool on drop
+pub struct PooledConnection {
+    connection: Option<Connection>,
+    pool: Arc<Mutex<Vec<Connection>>>,
+    pool_size: usize,
+    active_connections: Arc<Mutex<usize>>,
 }
 
 impl PooledConnection {
     fn new(
         connection: Connection,
         pool: Arc<Mutex<Vec<Connection>>>,
-        max_pool_size: usize,
+        pool_size: usize,
         active_connections: Arc<Mutex<usize>>,
     ) -> Self {
         Self {
             connection: Some(connection),
             pool,
-            max_pool_size,
+            pool_size,
             active_connections,
         }
     }
 
-    /// Get a reference to the underlying connection
+    /// Get reference to the underlying connection
     pub fn as_ref(&self) -> &Connection {
         self.connection
             .as_ref()
             .expect("Connection should be available")
     }
 
-    /// Get a mutable reference to the underlying connection
+    /// Get mutable reference to the underlying connection
     pub fn as_mut(&mut self) -> &mut Connection {
         self.connection
             .as_mut()
@@ -398,15 +390,28 @@ impl PooledConnection {
 impl Drop for PooledConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.connection.take() {
-            // Return connection to pool if there's space, otherwise drop it
-            if let Ok(mut pool) = self.pool.lock()
-                && pool.len() < self.max_pool_size
+            // Always try to return connection to pool with proper size checking
+            if let (Ok(mut available), Ok(mut active_count)) =
+                (self.pool.lock(), self.active_connections.lock())
             {
-                pool.push(conn);
-                // Increment active connection count when returning to pool
-                if let Ok(mut active_count) = self.active_connections.lock() {
-                    *active_count += 1;
+                // Check against actual pool_size, not Vec capacity
+                if available.len() < self.pool_size {
+                    available.push(conn);
+                    *active_count += 1; // Increment when returning to pool
+                } else {
+                    // Pool is legitimately full - this shouldn't happen but log if it does
+                    eprintln!(
+                        "Warning: Pool is full when returning connection. Available: {}, Pool size: {}",
+                        available.len(),
+                        self.pool_size
+                    );
                 }
+            } else {
+                // Critical: If we can't return the connection, we have a resource leak
+                eprintln!(
+                    "Critical: Failed to lock pool for connection return - resource leak possible"
+                );
+                // In production, this should be logged with proper error handling
             }
         }
     }
