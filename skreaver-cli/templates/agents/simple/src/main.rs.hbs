@@ -1,0 +1,37 @@
+//! {{name}} - Simple Skreaver Agent
+
+use skreaver_core::{
+    agent::{Agent, AgentConfig},
+    memory::InMemory,
+    tool::ToolRegistry,
+};
+
+#[tokio::main]
+async fn main() {
+    // Initialize tracing
+    tracing_subscriber::fmt::init();
+
+    // Create agent configuration
+    let config = AgentConfig::default()
+        .with_name("{{name}}")
+        .with_system_prompt("You are a helpful AI assistant.");
+
+    // Create memory and tool registry
+    let memory = InMemory::new();
+    let tools = ToolRegistry::new();
+
+    // Create agent
+    let mut agent = Agent::new(config, memory, tools);
+
+    // Run the agent
+    let result = agent.execute("Hello! Please introduce yourself.").await;
+
+    match result {
+        Ok(response) => {
+            println!("Agent response: {}", response);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+        }
+    }
+}

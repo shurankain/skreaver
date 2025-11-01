@@ -1,0 +1,156 @@
+//! Advanced API Client Tool
+//!
+//! Features:
+//! - Bearer token authentication
+//! - Rate limiting
+//! - Custom headers
+//! - Supports GET, POST, PUT, DELETE
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+use std::time::{Duration, Instant};
+
+pub struct ApiClientTool {
+    client: reqwest::Client,
+    api_key: Option<String>,
+    rate_limiter: Arc<Semaphore>,
+    last_request: Arc<tokio::sync::Mutex<Instant>>,
+}
+
+impl ApiClientTool {
+    pub fn new() -> Self {
+        Self::with_config(None, 10) // Default: no API key, 10 concurrent requests
+    }
+
+    pub fn with_config(api_key: Option<String>, max_concurrent: usize) -> Self {
+        Self {
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap(),
+            api_key,
+            rate_limiter: Arc::new(Semaphore::new(max_concurrent)),
+            last_request: Arc::new(tokio::sync::Mutex::new(Instant::now())),
+        }
+    }
+
+    // TODO: Configure rate limiting parameters (requests per second, etc.)
+    // TODO: Add retry logic for failed requests
+    // TODO: Add response caching
+}
+
+#[async_trait]
+impl Tool for ApiClientTool {
+    fn name(&self) -> &str {
+        "api_client"
+    }
+
+    fn description(&self) -> &str {
+        "Make HTTP API requests with authentication and rate limiting. \
+         Supports GET, POST, PUT, DELETE methods with custom headers."
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "DELETE"],
+                    "description": "HTTP method"
+                },
+                "url": {
+                    "type": "string",
+                    "description": "API endpoint URL"
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "Optional custom headers as key-value pairs"
+                },
+                "body": {
+                    "type": "object",
+                    "description": "Optional JSON request body (for POST/PUT)"
+                }
+            },
+            "required": ["method", "url"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        // Rate limiting: acquire permit
+        let _permit = self.rate_limiter.acquire().await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Rate limiter error: {}", e)))?;
+
+        // Rate limiting: minimum delay between requests
+        {
+            let mut last = self.last_request.lock().await;
+            let elapsed = last.elapsed();
+            if elapsed < Duration::from_millis(100) {
+                tokio::time::sleep(Duration::from_millis(100) - elapsed).await;
+            }
+            *last = Instant::now();
+        }
+
+        let method = input
+            .get("method")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'method' parameter".to_string()))?;
+
+        let url = input
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'url' parameter".to_string()))?;
+
+        // Build request
+        let mut request = match method.to_uppercase().as_str() {
+            "GET" => self.client.get(url),
+            "POST" => self.client.post(url),
+            "PUT" => self.client.put(url),
+            "DELETE" => self.client.delete(url),
+            _ => return Err(ToolError::InvalidInput(format!("Unsupported HTTP method: {}", method))),
+        };
+
+        // Add authentication if configured
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        // Add custom headers
+        if let Some(headers) = input.get("headers").and_then(|v| v.as_object()) {
+            for (key, value) in headers {
+                if let Some(val_str) = value.as_str() {
+                    request = request.header(key, val_str);
+                }
+            }
+        }
+
+        // Add body for POST/PUT
+        if let Some(body) = input.get("body") {
+            request = request.json(body);
+        }
+
+        // Execute request
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Request failed: {}", e)))?;
+
+        let status = response.status().as_u16();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read response: {}", e)))?;
+
+        // Try to parse response as JSON
+        let body_value = serde_json::from_str::<Value>(&body_text)
+            .unwrap_or_else(|_| Value::String(body_text));
+
+        Ok(serde_json::json!({
+            "status": status,
+            "body": body_value
+        }))
+    }
+}

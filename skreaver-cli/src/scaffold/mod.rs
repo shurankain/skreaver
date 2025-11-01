@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub mod loader;
 pub mod templates;
 
 pub use templates::{AgentTemplate, ToolTemplate};
@@ -48,7 +49,7 @@ pub fn generate_agent(
     template: &str,
     output_dir: Option<&str>,
 ) -> Result<(), ScaffoldError> {
-    let template = AgentTemplate::from_str(template)?;
+    let template = template.parse::<AgentTemplate>()?;
     let output_path = output_dir
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
@@ -75,7 +76,7 @@ pub fn generate_agent(
 
 /// Generate a new tool from template
 pub fn generate_tool(_tool_type: &str, template: &str, output: &str) -> Result<(), ScaffoldError> {
-    let template = ToolTemplate::from_str(template)?;
+    let template = template.parse::<ToolTemplate>()?;
     let output_path = PathBuf::from(output);
 
     // Create output directory
@@ -91,6 +92,7 @@ pub fn generate_tool(_tool_type: &str, template: &str, output: &str) -> Result<(
         ToolTemplate::FileSystem => templates::filesystem_tool(),
         ToolTemplate::ApiClient => templates::api_client_tool(),
         ToolTemplate::Workflow => templates::workflow_tool(),
+        ToolTemplate::Calculator => templates::calculator_tool(),
     };
 
     fs::write(&output_path, content)?;

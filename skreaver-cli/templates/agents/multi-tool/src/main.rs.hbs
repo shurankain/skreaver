@@ -1,0 +1,52 @@
+//! {{name}} - Multi-Tool Agent
+
+use skreaver_core::{
+    agent::{Agent, AgentConfig},
+    memory::InMemory,
+    tool::ToolRegistry,
+};
+
+mod tools;
+
+use tools::{http_client::HttpClientTool, calculator::CalculatorTool};
+
+#[tokio::main]
+async fn main() {
+    // Initialize tracing
+    tracing_subscriber::fmt()
+        .with_env_filter("info")
+        .init();
+
+    // Create agent configuration
+    let config = AgentConfig::default()
+        .with_name("{{name}}")
+        .with_system_prompt(
+            "You are an AI assistant with access to HTTP client and calculator tools. \
+             Use them to help users accomplish their tasks."
+        );
+
+    // Create memory
+    let memory = InMemory::new();
+
+    // Create tool registry and register tools
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(HttpClientTool::new()));
+    tools.register(Box::new(CalculatorTool::new()));
+
+    // Create agent
+    let mut agent = Agent::new(config, memory, tools);
+
+    // Example multi-tool task
+    let task = "Fetch data from https://api.github.com/repos/rust-lang/rust and \
+                calculate how many days since it was created.";
+
+    match agent.execute(task).await {
+        Ok(response) => {
+            println!("Task: {}", task);
+            println!("\nAgent response:\n{}", response);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+        }
+    }
+}

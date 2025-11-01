@@ -1,0 +1,56 @@
+# {{name}}
+
+A Skreaver agent generated from the `{{template}}` template.
+
+## Quick Start
+
+```bash
+# Build the project
+cargo build
+
+# Run the agent
+cargo run
+```
+
+## Project Structure
+
+```
+{{name}}/
+├── Cargo.toml          # Project dependencies
+├── README.md           # This file
+└── src/
+    ├── main.rs         # Agent entry point
+    └── tools/          # Custom tools (if applicable)
+```
+
+## Customization
+
+### Adding Tools
+
+1. Create a new tool file in `src/tools/`
+2. Implement the `Tool` trait from `skreaver_core::tool`
+3. Register the tool in `main.rs`:
+
+```rust
+tools.register(Box::new(YourTool::new()));
+```
+
+### Modifying Agent Behavior
+
+Edit the system prompt in `main.rs` to change how the agent behaves:
+
+```rust
+let config = AgentConfig::default()
+    .with_name("{{name}}")
+    .with_system_prompt("Your custom prompt here");
+```
+
+## Documentation
+
+- [Skreaver Documentation](https://github.com/yourusername/skreaver)
+- [Tool Development Guide](https://github.com/yourusername/skreaver/blob/main/docs/tools.md)
+- [Agent Configuration](https://github.com/yourusername/skreaver/blob/main/docs/configuration.md)
+
+## License
+
+MIT

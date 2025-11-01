@@ -1,0 +1,47 @@
+//! {{name}} - Reasoning Agent with Tools
+
+use skreaver_core::{
+    agent::{Agent, AgentConfig},
+    memory::InMemory,
+    tool::ToolRegistry,
+};
+
+mod tools;
+
+#[tokio::main]
+async fn main() {
+    // Initialize tracing
+    tracing_subscriber::fmt::init();
+
+    // Create agent configuration with reasoning capabilities
+    let config = AgentConfig::default()
+        .with_name("{{name}}")
+        .with_system_prompt(
+            "You are an AI assistant with access to tools. \
+             Think step-by-step and use tools when appropriate."
+        );
+
+    // Create memory
+    let memory = InMemory::new();
+
+    // Create tool registry and register tools
+    let mut tools = ToolRegistry::new();
+    // Register your tools here
+    // tools.register(Box::new(YourTool::new()));
+
+    // Create agent
+    let mut agent = Agent::new(config, memory, tools);
+
+    // Example task requiring reasoning
+    let task = "What is 15 * 23? Please calculate and explain your reasoning.";
+
+    match agent.execute(task).await {
+        Ok(response) => {
+            println!("Task: {}", task);
+            println!("\nAgent response:\n{}", response);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+        }
+    }
+}

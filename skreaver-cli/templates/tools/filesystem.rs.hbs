@@ -1,0 +1,152 @@
+//! File System Tool
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+use std::path::Path;
+use tokio::fs;
+
+pub struct FileSystemTool {
+    base_path: std::path::PathBuf,
+}
+
+impl FileSystemTool {
+    pub fn new(base_path: impl AsRef<Path>) -> Self {
+        Self {
+            base_path: base_path.as_ref().to_path_buf(),
+        }
+    }
+
+    async fn read_file(&self, path: &str) -> Result<String, ToolError> {
+        let full_path = self.base_path.join(path);
+
+        // Security: Prevent path traversal
+        if !full_path.starts_with(&self.base_path) {
+            return Err(ToolError::InvalidInput("Path traversal detected".to_string()));
+        }
+
+        fs::read_to_string(&full_path)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read file: {}", e)))
+    }
+
+    async fn write_file(&self, path: &str, content: &str) -> Result<(), ToolError> {
+        let full_path = self.base_path.join(path);
+
+        // Security: Prevent path traversal
+        if !full_path.starts_with(&self.base_path) {
+            return Err(ToolError::InvalidInput("Path traversal detected".to_string()));
+        }
+
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ToolError::ExecutionFailed(format!("Failed to create directories: {}", e)))?;
+        }
+
+        fs::write(&full_path, content)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to write file: {}", e)))
+    }
+
+    async fn list_files(&self, dir: &str) -> Result<Vec<String>, ToolError> {
+        let full_path = self.base_path.join(dir);
+
+        // Security: Prevent path traversal
+        if !full_path.starts_with(&self.base_path) {
+            return Err(ToolError::InvalidInput("Path traversal detected".to_string()));
+        }
+
+        let mut entries = fs::read_dir(&full_path)
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(format!("Failed to read directory: {}", e)))?;
+
+        let mut files = Vec::new();
+        while let Some(entry) = entries.next_entry().await.map_err(|e| ToolError::ExecutionFailed(e.to_string()))? {
+            if let Some(name) = entry.file_name().to_str() {
+                files.push(name.to_string());
+            }
+        }
+
+        Ok(files)
+    }
+}
+
+#[async_trait]
+impl Tool for FileSystemTool {
+    fn name(&self) -> &str {
+        "filesystem"
+    }
+
+    fn description(&self) -> &str {
+        "Perform file system operations: read, write, and list files within the allowed directory"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["read", "write", "list"],
+                    "description": "The file system operation to perform"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "File or directory path (relative to base path)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write (required for 'write' operation)"
+                }
+            },
+            "required": ["operation", "path"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let operation = input
+            .get("operation")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'operation' parameter".to_string()))?;
+
+        let path = input
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'path' parameter".to_string()))?;
+
+        match operation {
+            "read" => {
+                let content = self.read_file(path).await?;
+                Ok(serde_json::json!({
+                    "operation": "read",
+                    "path": path,
+                    "content": content
+                }))
+            }
+            "write" => {
+                let content = input
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ToolError::InvalidInput("Missing 'content' parameter for write operation".to_string()))?;
+
+                self.write_file(path, content).await?;
+                Ok(serde_json::json!({
+                    "operation": "write",
+                    "path": path,
+                    "status": "success"
+                }))
+            }
+            "list" => {
+                let files = self.list_files(path).await?;
+                Ok(serde_json::json!({
+                    "operation": "list",
+                    "path": path,
+                    "files": files
+                }))
+            }
+            _ => Err(ToolError::InvalidInput(format!("Unknown operation: {}", operation))),
+        }
+    }
+}

@@ -1,0 +1,168 @@
+//! Workflow/Pipeline Execution Tool
+//!
+//! Execute multi-step workflows with:
+//! - Variable substitution ($variable)
+//! - Step dependencies
+//! - Conditional execution
+//! - Context passing between steps
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+use std::collections::HashMap;
+
+pub struct WorkflowTool;
+
+impl WorkflowTool {
+    pub fn new() -> Self {
+        Self
+    }
+
+    async fn execute_workflow(&self, steps: &[Value]) -> Result<Vec<Value>, ToolError> {
+        let mut context: HashMap<String, Value> = HashMap::new();
+        let mut results = Vec::new();
+
+        for step in steps {
+            let name = step.get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput("Step missing 'name'".to_string()))?;
+
+            let action = step.get("action")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidInput("Step missing 'action'".to_string()))?;
+
+            let inputs = step.get("inputs")
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+
+            // Resolve inputs from context (variable substitution)
+            let mut resolved_inputs = HashMap::new();
+            for (key, value) in inputs {
+                let resolved = if let Some(var_str) = value.as_str() {
+                    if let Some(var_name) = var_str.strip_prefix('$') {
+                        context.get(var_name).cloned().unwrap_or(value)
+                    } else {
+                        value
+                    }
+                } else {
+                    value
+                };
+                resolved_inputs.insert(key, resolved);
+            }
+
+            // Execute step based on action type
+            let result = match action {
+                "log" => {
+                    let message = resolved_inputs.get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("No message");
+                    tracing::info!(step = %name, message = %message);
+                    serde_json::json!({
+                        "step": name,
+                        "action": "log",
+                        "message": message
+                    })
+                }
+                "transform" => {
+                    let input_val = resolved_inputs.get("input").cloned()
+                        .unwrap_or(Value::Null);
+                    let transform_type = resolved_inputs.get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("identity");
+
+                    let result_val = match transform_type {
+                        "uppercase" => {
+                            if let Some(s) = input_val.as_str() {
+                                Value::String(s.to_uppercase())
+                            } else {
+                                input_val
+                            }
+                        }
+                        "lowercase" => {
+                            if let Some(s) = input_val.as_str() {
+                                Value::String(s.to_lowercase())
+                            } else {
+                                input_val
+                            }
+                        }
+                        _ => input_val,
+                    };
+
+                    serde_json::json!({
+                        "step": name,
+                        "action": "transform",
+                        "result": result_val
+                    })
+                }
+                // TODO: Add more action types (condition, aggregate, etc.)
+                _ => {
+                    return Err(ToolError::ExecutionFailed(format!("Unknown action: {}", action)));
+                }
+            };
+
+            // Store result in context for future steps
+            context.insert(name.to_string(), result.clone());
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+}
+
+#[async_trait]
+impl Tool for WorkflowTool {
+    fn name(&self) -> &str {
+        "workflow"
+    }
+
+    fn description(&self) -> &str {
+        "Execute multi-step workflows. Supports variable substitution with $variable syntax."
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "description": "Array of workflow steps to execute sequentially",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Step name (used for $variable references)"
+                            },
+                            "action": {
+                                "type": "string",
+                                "enum": ["log", "transform"],
+                                "description": "Action to perform"
+                            },
+                            "inputs": {
+                                "type": "object",
+                                "description": "Step inputs (use $stepName to reference previous results)"
+                            }
+                        },
+                        "required": ["name", "action"]
+                    }
+                }
+            },
+            "required": ["steps"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let steps = input
+            .get("steps")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ToolError::InvalidInput("Missing or invalid 'steps' parameter".to_string()))?;
+
+        let results = self.execute_workflow(steps).await?;
+
+        Ok(serde_json::json!({
+            "workflow": "completed",
+            "steps": results
+        }))
+    }
+}

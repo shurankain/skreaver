@@ -1,0 +1,65 @@
+//! HTTP Client Tool
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+
+pub struct HttpClientTool {
+    client: reqwest::Client,
+}
+
+impl HttpClientTool {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for HttpClientTool {
+    fn name(&self) -> &str {
+        "http_client"
+    }
+
+    fn description(&self) -> &str {
+        "Make HTTP GET requests to fetch data from URLs"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to fetch"
+                }
+            },
+            "required": ["url"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let url = input
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'url' parameter".to_string()))?;
+
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
+
+        Ok(serde_json::json!({
+            "content": body,
+            "url": url
+        }))
+    }
+}

@@ -1,0 +1,49 @@
+//! Custom Tool Template
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+
+pub struct CustomTool;
+
+impl CustomTool {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl Tool for CustomTool {
+    fn name(&self) -> &str {
+        "custom_tool"
+    }
+
+    fn description(&self) -> &str {
+        "A custom tool - describe what it does here"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "description": "Tool input description"
+                }
+            },
+            "required": ["input"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let _param = input
+            .get("input")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'input' parameter".to_string()))?;
+
+        // TODO: Implement your tool logic here
+        Ok(serde_json::json!({
+            "result": "Custom tool result"
+        }))
+    }
+}

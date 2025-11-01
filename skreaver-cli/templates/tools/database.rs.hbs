@@ -1,0 +1,51 @@
+//! Database Tool
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+
+pub struct DatabaseTool {
+    // Add your database connection here
+}
+
+impl DatabaseTool {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl Tool for DatabaseTool {
+    fn name(&self) -> &str {
+        "database_query"
+    }
+
+    fn description(&self) -> &str {
+        "Execute SQL queries against the database"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "SQL query to execute"
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let _query = input
+            .get("query")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'query' parameter".to_string()))?;
+
+        // TODO: Implement database query execution
+        Ok(serde_json::json!({
+            "message": "Database tool not yet implemented"
+        }))
+    }
+}

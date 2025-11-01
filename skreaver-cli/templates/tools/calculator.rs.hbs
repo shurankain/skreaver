@@ -1,0 +1,80 @@
+//! Calculator Tool
+
+use async_trait::async_trait;
+use serde_json::Value;
+use skreaver_core::tool::{Tool, ToolError, ToolInput, ToolResult};
+
+pub struct CalculatorTool;
+
+impl CalculatorTool {
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn evaluate(&self, expression: &str) -> Result<f64, String> {
+        // Simple expression parser - extend as needed
+        let parts: Vec<&str> = expression.split_whitespace().collect();
+
+        if parts.len() != 3 {
+            return Err("Expression must be in format: number operator number".to_string());
+        }
+
+        let a: f64 = parts[0].parse().map_err(|_| "Invalid first number")?;
+        let op = parts[1];
+        let b: f64 = parts[2].parse().map_err(|_| "Invalid second number")?;
+
+        match op {
+            "+" => Ok(a + b),
+            "-" => Ok(a - b),
+            "*" => Ok(a * b),
+            "/" => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(a / b)
+                }
+            }
+            _ => Err(format!("Unknown operator: {}", op)),
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for CalculatorTool {
+    fn name(&self) -> &str {
+        "calculator"
+    }
+
+    fn description(&self) -> &str {
+        "Perform basic arithmetic calculations (add, subtract, multiply, divide)"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string",
+                    "description": "Math expression in format: 'number operator number' (e.g., '5 + 3')"
+                }
+            },
+            "required": ["expression"]
+        })
+    }
+
+    async fn execute(&self, input: ToolInput) -> ToolResult {
+        let expression = input
+            .get("expression")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolError::InvalidInput("Missing 'expression' parameter".to_string()))?;
+
+        let result = self
+            .evaluate(expression)
+            .map_err(|e| ToolError::ExecutionFailed(e))?;
+
+        Ok(serde_json::json!({
+            "expression": expression,
+            "result": result
+        }))
+    }
+}

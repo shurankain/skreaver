@@ -1,0 +1,15 @@
+[package]
+name = "{{name}}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+skreaver = { path = "../../crates/skreaver", features = ["default"] }
+skreaver-core = { path = "../../crates/skreaver-core" }
+skreaver-tools = { path = "../../crates/skreaver-tools" }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
