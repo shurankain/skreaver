@@ -17,11 +17,11 @@ pub mod validation;
 #[cfg(feature = "security-audit")]
 pub use audit::{AuditLogger, SecurityAuditLog, SecurityEvent, SecurityResult};
 pub use config::{
-    Alerting, AlertingConfig, Audit, AuditConfig, AutoRotate, Development, DevelopmentConfig,
-    DevelopmentMode, Disabled, Emergency, EmergencyConfig, Enabled, EnvironmentOnly,
-    FlexibleSources, LockdownActive, LogAll, LogSelective, ManualRotate, NoRedaction,
-    NoStackTraces, NormalOps, Production, RedactSecrets, Secret, SecretConfig, SecurityConfig,
-    WithStackTraces,
+    AlertLevel, Alerting, AlertingConfig, Audit, AuditConfig, AutoRotate, Development,
+    DevelopmentConfig, DevelopmentMode, Disabled, Emergency, EmergencyConfig, Enabled,
+    EnvironmentOnly, FlexibleSources, LockdownActive, LockdownTrigger, LogAll, LogFormat,
+    LogLevel, LogSelective, ManualRotate, NoRedaction, NoStackTraces, NormalOps, Production,
+    RedactSecrets, Secret, SecretConfig, SecurityConfig, WithStackTraces,
 };
 pub use errors::{SecurityError, SecurityViolation};
 pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
