@@ -1,288 +1,18 @@
 //! JWT (JSON Web Token) authentication support with type-safe tokens
 
+mod claims;
+mod config;
+mod tokens;
+
+// Re-export all public types
+pub use claims::JwtClaims;
+pub use config::JwtConfig;
+pub use tokens::{AccessToken, JwtToken, RefreshToken, Token, TokenPair};
+
 use super::{AuthError, AuthMethod, AuthResult, Principal, TokenBlacklist};
-use crate::auth::rbac::Role;
-use chrono::{DateTime, Duration, Utc};
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::marker::PhantomData;
+use chrono::{DateTime, Utc};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use std::sync::Arc;
-
-/// JWT configuration
-#[derive(Debug, Clone)]
-pub struct JwtConfig {
-    /// Secret key for HMAC signing
-    pub secret: String,
-    /// Token issuer
-    pub issuer: String,
-    /// Token audience
-    pub audience: Vec<String>,
-    /// Token expiration in minutes
-    pub expiry_minutes: i64,
-    /// Refresh token expiration in days
-    pub refresh_expiry_days: i64,
-    /// Algorithm to use (HS256, HS384, HS512)
-    pub algorithm: Algorithm,
-    /// Allow token refresh
-    pub allow_refresh: bool,
-}
-
-impl Default for JwtConfig {
-    fn default() -> Self {
-        Self {
-            secret: "change-me-in-production".to_string(),
-            issuer: "skreaver".to_string(),
-            audience: vec!["skreaver-api".to_string()],
-            expiry_minutes: 60,
-            refresh_expiry_days: 30,
-            algorithm: Algorithm::HS256,
-            allow_refresh: true,
-        }
-    }
-}
-
-/// JWT Claims structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JwtClaims {
-    /// Subject (user/principal ID)
-    pub sub: String,
-    /// Principal name
-    pub name: String,
-    /// Issuer
-    pub iss: String,
-    /// Audience
-    pub aud: Vec<String>,
-    /// Expiration time (Unix timestamp)
-    pub exp: i64,
-    /// Issued at (Unix timestamp)
-    pub iat: i64,
-    /// Not before (Unix timestamp)
-    pub nbf: i64,
-    /// JWT ID
-    pub jti: String,
-    /// Token type (access/refresh)
-    pub typ: String,
-    /// User roles
-    pub roles: Vec<String>,
-    /// Additional custom claims
-    pub custom: HashMap<String, serde_json::Value>,
-}
-
-impl JwtClaims {
-    /// Create new claims for a principal
-    #[must_use]
-    pub fn new(principal: &Principal, config: &JwtConfig, token_type: &str) -> Self {
-        let now = Utc::now();
-        let expiry = if token_type == "refresh" {
-            now + Duration::days(config.refresh_expiry_days)
-        } else {
-            now + Duration::minutes(config.expiry_minutes)
-        };
-
-        Self {
-            sub: principal.id.clone(),
-            name: principal.name.clone(),
-            iss: config.issuer.clone(),
-            aud: config.audience.clone(),
-            exp: expiry.timestamp(),
-            iat: now.timestamp(),
-            nbf: now.timestamp(),
-            jti: uuid::Uuid::new_v4().to_string(),
-            typ: token_type.to_string(),
-            roles: principal.roles.iter().map(ToString::to_string).collect(),
-            custom: HashMap::new(),
-        }
-    }
-
-    /// Check if the token is expired
-    #[must_use]
-    pub fn is_expired(&self) -> bool {
-        let now = Utc::now().timestamp();
-        now > self.exp
-    }
-
-    /// Check if the token is valid
-    #[must_use]
-    pub fn is_valid(&self) -> bool {
-        let now = Utc::now().timestamp();
-        !self.is_expired() && now >= self.nbf
-    }
-
-    /// Convert role strings back to Role enums
-    #[must_use]
-    pub fn get_roles(&self) -> Vec<Role> {
-        self.roles
-            .iter()
-            .filter_map(|r| match r.as_str() {
-                "admin" => Some(Role::Admin),
-                "agent" => Some(Role::Agent),
-                "viewer" => Some(Role::Viewer),
-                _ => None,
-            })
-            .collect()
-    }
-}
-
-// ============================================================================
-// Type-safe tokens using phantom types
-// ============================================================================
-
-/// Marker type for Access tokens
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AccessToken;
-
-/// Marker type for Refresh tokens
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RefreshToken;
-
-/// Type-safe token wrapper using phantom types.
-/// The type parameter `T` represents the token type and provides
-/// compile-time guarantees about token usage.
-#[derive(Debug, Clone)]
-pub struct Token<T> {
-    value: String,
-    expires_at: DateTime<Utc>,
-    issued_at: DateTime<Utc>,
-    _phantom: PhantomData<T>,
-}
-
-impl<T> Token<T> {
-    /// Create a new token
-    fn new(value: String, expires_at: DateTime<Utc>, issued_at: DateTime<Utc>) -> Self {
-        Self {
-            value,
-            expires_at,
-            issued_at,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Get the token value as a string
-    pub fn as_str(&self) -> &str {
-        &self.value
-    }
-
-    /// Get the expiration time
-    pub fn expires_at(&self) -> DateTime<Utc> {
-        self.expires_at
-    }
-
-    /// Get when the token was issued
-    pub fn issued_at(&self) -> DateTime<Utc> {
-        self.issued_at
-    }
-
-    /// Check if the token is expired
-    pub fn is_expired(&self) -> bool {
-        Utc::now() > self.expires_at
-    }
-
-    /// Time until expiration
-    pub fn time_until_expiry(&self) -> Duration {
-        self.expires_at - Utc::now()
-    }
-}
-
-impl Token<AccessToken> {
-    /// Get expiration time in seconds (common for access tokens)
-    pub fn expiry_seconds(&self) -> i64 {
-        self.time_until_expiry().num_seconds().max(0)
-    }
-
-    /// Check if token will expire soon (within 5 minutes)
-    pub fn expires_soon(&self) -> bool {
-        self.expiry_seconds() < 300
-    }
-}
-
-impl Token<RefreshToken> {
-    /// Get expiration time in days (common for refresh tokens)
-    pub fn expiry_days(&self) -> i64 {
-        self.time_until_expiry().num_days().max(0)
-    }
-
-    /// Check if token will expire soon (within 7 days)
-    pub fn expires_soon(&self) -> bool {
-        self.expiry_days() < 7
-    }
-}
-
-impl<T> PartialEq for Token<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl<T> Eq for Token<T> {}
-
-/// Type-safe token pair containing access and optional refresh token
-#[derive(Debug, Clone)]
-pub struct TokenPair {
-    /// Access token for authentication
-    pub access: Token<AccessToken>,
-    /// Optional refresh token for obtaining new access tokens
-    pub refresh: Option<Token<RefreshToken>>,
-    /// Token type (always "Bearer" for JWT)
-    pub token_type: &'static str,
-}
-
-impl TokenPair {
-    /// Create a new token pair
-    pub fn new(access: Token<AccessToken>, refresh: Option<Token<RefreshToken>>) -> Self {
-        Self {
-            access,
-            refresh,
-            token_type: "Bearer",
-        }
-    }
-
-    /// Check if refresh token is available
-    pub fn has_refresh_token(&self) -> bool {
-        self.refresh.is_some()
-    }
-
-    /// Get time until access token expires (in seconds)
-    pub fn expires_in(&self) -> i64 {
-        self.access.expiry_seconds()
-    }
-}
-
-// ============================================================================
-// Backward compatibility: Legacy JWT token structure
-// ============================================================================
-
-/// JWT token wrapper (legacy structure for backward compatibility)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JwtToken {
-    /// Access token
-    pub access_token: String,
-    /// Refresh token (if enabled)
-    pub refresh_token: Option<String>,
-    /// Token type (Bearer)
-    pub token_type: String,
-    /// Expiration time in seconds
-    pub expires_in: i64,
-    /// Issued at timestamp
-    pub issued_at: DateTime<Utc>,
-}
-
-impl From<TokenPair> for JwtToken {
-    fn from(pair: TokenPair) -> Self {
-        let expires_in = pair.expires_in();
-        let issued_at = pair.access.issued_at;
-        let access_token = pair.access.value;
-        let refresh_token = pair.refresh.map(|t| t.value);
-
-        JwtToken {
-            access_token,
-            refresh_token,
-            token_type: pair.token_type.to_string(),
-            expires_in,
-            issued_at,
-        }
-    }
-}
 
 /// JWT Manager for token operations
 pub struct JwtManager {
@@ -637,6 +367,8 @@ impl JwtManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::rbac::Role;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_jwt_generation() {
@@ -698,7 +430,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_jwt_expiration() {
-        use jsonwebtoken::{Header, encode};
+        use chrono::Duration;
+        use jsonwebtoken::{encode, Header};
 
         let config = JwtConfig::default();
         let manager = JwtManager::new(config.clone());
@@ -902,7 +635,8 @@ mod tests {
     #[tokio::test]
     async fn test_jwt_revocation_already_expired() {
         use crate::auth::InMemoryBlacklist;
-        use jsonwebtoken::{Header, encode};
+        use chrono::Duration;
+        use jsonwebtoken::{encode, Header};
 
         let config = JwtConfig::default();
         let blacklist = Arc::new(InMemoryBlacklist::new());
@@ -1026,6 +760,8 @@ mod tests {
 
     #[test]
     fn test_token_expiry_soon() {
+        use chrono::Duration;
+
         let now = Utc::now();
 
         // Access token expires in 4 minutes (should be "soon")
@@ -1051,6 +787,8 @@ mod tests {
 
     #[test]
     fn test_backward_compatibility_conversion() {
+        use chrono::Duration;
+
         let now = Utc::now();
         let access_token: Token<AccessToken> =
             Token::new("access-123".to_string(), now + Duration::minutes(60), now);
