@@ -69,17 +69,10 @@ impl TypedMessage<Unrouted> {
     }
 
     /// Convert to unicast message
-    pub fn unicast(
-        self,
-        from: impl Into<AgentId>,
-        to: impl Into<AgentId>,
-    ) -> TypedMessage<UnicastRoute> {
+    pub fn unicast(self, from: AgentId, to: AgentId) -> TypedMessage<UnicastRoute> {
         TypedMessage {
             id: self.id,
-            route: Route::Unicast {
-                from: from.into(),
-                to: to.into(),
-            },
+            route: Route::Unicast { from, to },
             payload: self.payload,
             metadata: self.metadata,
             timestamp: self.timestamp,
@@ -89,10 +82,10 @@ impl TypedMessage<Unrouted> {
     }
 
     /// Convert to broadcast message
-    pub fn broadcast(self, from: impl Into<AgentId>) -> TypedMessage<BroadcastRoute> {
+    pub fn broadcast(self, from: AgentId) -> TypedMessage<BroadcastRoute> {
         TypedMessage {
             id: self.id,
-            route: Route::Broadcast { from: from.into() },
+            route: Route::Broadcast { from },
             payload: self.payload,
             metadata: self.metadata,
             timestamp: self.timestamp,
@@ -102,10 +95,10 @@ impl TypedMessage<Unrouted> {
     }
 
     /// Convert to system message
-    pub fn system(self, to: impl Into<AgentId>) -> TypedMessage<SystemRoute> {
+    pub fn system(self, to: AgentId) -> TypedMessage<SystemRoute> {
         TypedMessage {
             id: self.id,
-            route: Route::System { to: to.into() },
+            route: Route::System { to },
             payload: self.payload,
             metadata: self.metadata,
             timestamp: self.timestamp,

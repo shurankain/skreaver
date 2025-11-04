@@ -36,7 +36,7 @@ pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync + 'static>(
     let agent_statuses: Vec<AgentStatus> = agents
         .iter()
         .map(|(id, instance)| AgentStatus {
-            agent_id: id.clone(),
+            agent_id: id.to_string(),
             agent_type: instance.coordinator.get_agent_type().to_string(),
             status: "running".to_string(),
             created_at: chrono::Utc::now(), // TODO: Track actual creation time
@@ -135,9 +135,23 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync + 'static>(
     State(runtime): State<HttpAgentRuntime<T>>,
     Path(agent_id): Path<String>,
 ) -> Result<Json<AgentStatus>, (StatusCode, Json<ErrorResponse>)> {
+    let parsed_id = match skreaver_core::AgentId::parse(&agent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_agent_id".to_string(),
+                    message: format!("Invalid agent ID: {}", e),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
     let agents = runtime.agents.read().await;
 
-    match agents.get(&agent_id) {
+    match agents.get(&parsed_id) {
         Some(instance) => Ok(Json(AgentStatus {
             agent_id: agent_id.clone(),
             agent_type: instance.coordinator.get_agent_type().to_string(),

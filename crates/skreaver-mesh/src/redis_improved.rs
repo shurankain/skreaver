@@ -98,21 +98,21 @@ mod tests {
     #[test]
     fn test_validate_route_target_unicast_to_agent() {
         let route = Route::unicast("sender", "receiver");
-        let target = SendTarget::Agent(AgentId::from("receiver"));
+        let target = SendTarget::Agent(AgentId::new_unchecked("receiver"));
         assert!(validate_route_target(&route, &target).is_ok());
     }
 
     #[test]
     fn test_validate_route_target_unicast_wrong_recipient() {
         let route = Route::unicast("sender", "receiver1");
-        let target = SendTarget::Agent(AgentId::from("receiver2"));
+        let target = SendTarget::Agent(AgentId::new_unchecked("receiver2"));
         assert!(validate_route_target(&route, &target).is_err());
     }
 
     #[test]
     fn test_validate_route_target_broadcast_to_agent() {
         let route = Route::broadcast("sender");
-        let target = SendTarget::Agent(AgentId::from("receiver"));
+        let target = SendTarget::Agent(AgentId::new_unchecked("receiver"));
         let result = validate_route_target(&route, &target);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("broadcast"));
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn test_validate_route_target_system_to_agent() {
         let route = Route::system("receiver");
-        let target = SendTarget::Agent(AgentId::from("receiver"));
+        let target = SendTarget::Agent(AgentId::new_unchecked("receiver"));
         assert!(validate_route_target(&route, &target).is_ok());
     }
 

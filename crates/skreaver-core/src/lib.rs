@@ -7,6 +7,7 @@ pub mod agent;
 pub mod auth;
 pub mod collections;
 pub mod error;
+pub mod identifiers;
 pub mod in_memory;
 pub mod memory;
 pub mod metadata;
@@ -31,6 +32,9 @@ pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 pub use collections::{
     NonEmptyQueue, NonEmptyVec, non_empty_queue::EmptyQueueError, non_empty_vec::EmptyVecError,
 };
+
+// Re-export identifier types
+pub use identifiers::{AgentId, IdValidationError, RequestId, SessionId, ToolId};
 
 // Re-export auth types
 pub use auth::{

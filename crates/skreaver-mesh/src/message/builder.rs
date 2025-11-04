@@ -22,25 +22,21 @@ impl MessageBuilder {
     }
 
     /// Create a unicast message builder
-    pub fn unicast(
-        from: impl Into<AgentId>,
-        to: impl Into<AgentId>,
-        payload: impl Into<MessagePayload>,
-    ) -> Self {
+    pub fn unicast(from: AgentId, to: AgentId, payload: impl Into<MessagePayload>) -> Self {
         Self {
             message: Message::unicast(from, to, payload),
         }
     }
 
     /// Create a broadcast message builder
-    pub fn broadcast(from: impl Into<AgentId>, payload: impl Into<MessagePayload>) -> Self {
+    pub fn broadcast(from: AgentId, payload: impl Into<MessagePayload>) -> Self {
         Self {
             message: Message::broadcast(from, payload),
         }
     }
 
     /// Create a system message builder
-    pub fn system(to: impl Into<AgentId>, payload: impl Into<MessagePayload>) -> Self {
+    pub fn system(to: AgentId, payload: impl Into<MessagePayload>) -> Self {
         Self {
             message: Message::system(to, payload),
         }

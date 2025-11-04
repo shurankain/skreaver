@@ -11,47 +11,53 @@ use std::time::{Duration, Instant};
 /// High-performance agent registry with caching and optimization
 pub struct OptimizedAgentRegistry {
     /// Primary agent storage with concurrent access
-    agents: DashMap<AgentId, Arc<crate::runtime::agent_instance::AgentInstance>>,
+    agents: DashMap<CachedAgentId, Arc<crate::runtime::agent_instance::AgentInstance>>,
     /// LRU cache for frequently accessed agents
-    agent_cache: Cache<AgentId, Arc<crate::runtime::agent_instance::AgentInstance>>,
+    agent_cache: Cache<CachedAgentId, Arc<crate::runtime::agent_instance::AgentInstance>>,
     /// Performance metrics
     metrics: Arc<RegistryMetrics>,
 }
 
-/// Fast agent ID type with optimized hashing
+/// Fast agent ID type with optimized hashing (internal optimization)
+///
+/// This type wraps the unified `skreaver_core::AgentId` with a pre-computed hash
+/// for faster lookups in the agent registry. The hash is computed once during
+/// creation and reused for all subsequent hash operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentId {
-    id: Arc<str>, // Shared string to reduce allocations
-    hash: u64,    // Pre-computed hash for faster lookups
+pub struct CachedAgentId {
+    id: skreaver_core::AgentId,
+    hash: u64,
 }
 
-impl AgentId {
-    /// Create a new agent ID with pre-computed hash
-    pub fn new(id: String) -> Self {
+impl CachedAgentId {
+    /// Create a new cached agent ID with pre-computed hash
+    pub fn new(id: skreaver_core::AgentId) -> Self {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        id.hash(&mut hasher);
+        id.as_str().hash(&mut hasher);
         let hash = hasher.finish();
-        
-        Self {
-            id: Arc::from(id),
-            hash,
-        }
+
+        Self { id, hash }
     }
-    
+
     /// Get the string representation
     pub fn as_str(&self) -> &str {
+        self.id.as_str()
+    }
+
+    /// Get the underlying AgentId
+    pub fn inner(&self) -> &skreaver_core::AgentId {
         &self.id
     }
 }
 
-impl Hash for AgentId {
+impl Hash for CachedAgentId {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write_u64(self.hash);
     }
 }
 
-impl From<String> for AgentId {
-    fn from(id: String) -> Self {
+impl From<skreaver_core::AgentId> for CachedAgentId {
+    fn from(id: skreaver_core::AgentId) -> Self {
         Self::new(id)
     }
 }
@@ -83,7 +89,7 @@ impl OptimizedAgentRegistry {
     }
     
     /// Get an agent with optimized lookup
-    pub async fn get_agent(&self, id: &AgentId) -> Option<Arc<crate::runtime::agent_instance::AgentInstance>> {
+    pub async fn get_agent(&self, id: &CachedAgentId) -> Option<Arc<crate::runtime::agent_instance::AgentInstance>> {
         let start = Instant::now();
         self.metrics.lookups.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         
@@ -109,19 +115,19 @@ impl OptimizedAgentRegistry {
     }
     
     /// Insert an agent with cache invalidation
-    pub async fn insert_agent(&self, id: AgentId, agent: Arc<crate::runtime::agent_instance::AgentInstance>) {
+    pub async fn insert_agent(&self, id: CachedAgentId, agent: Arc<crate::runtime::agent_instance::AgentInstance>) {
         self.agents.insert(id.clone(), agent.clone());
         self.agent_cache.insert(id, agent).await;
     }
-    
-    /// Remove an agent with cache invalidation  
-    pub async fn remove_agent(&self, id: &AgentId) -> Option<Arc<crate::runtime::agent_instance::AgentInstance>> {
+
+    /// Remove an agent with cache invalidation
+    pub async fn remove_agent(&self, id: &CachedAgentId) -> Option<Arc<crate::runtime::agent_instance::AgentInstance>> {
         self.agent_cache.invalidate(id).await;
         self.agents.remove(id).map(|(_, agent)| agent)
     }
-    
+
     /// Get all agent IDs efficiently
-    pub fn get_all_ids(&self) -> Vec<AgentId> {
+    pub fn get_all_ids(&self) -> Vec<CachedAgentId> {
         self.agents.iter().map(|entry| entry.key().clone()).collect()
     }
     
@@ -158,7 +164,7 @@ impl OptimizedAgentRegistry {
 /// Optimized request processing with batching
 pub struct RequestBatcher {
     /// Pending requests grouped by agent
-    pending_requests: Arc<RwLock<HashMap<AgentId, Vec<BatchedRequest>>>>,
+    pending_requests: Arc<RwLock<HashMap<CachedAgentId, Vec<BatchedRequest>>>>,
     /// Batch processing configuration
     config: BatchConfig,
 }
@@ -214,7 +220,7 @@ impl RequestBatcher {
     /// Submit a request for batching
     pub async fn submit_request(
         &self,
-        agent_id: AgentId,
+        agent_id: CachedAgentId,
         content: String,
     ) -> Result<String, String> {
         if !self.config.enabled {
@@ -279,7 +285,7 @@ impl RequestBatcher {
         });
     }
     
-    async fn process_batch(agent_id: AgentId, batch: Vec<BatchedRequest>) {
+    async fn process_batch(agent_id: CachedAgentId, batch: Vec<BatchedRequest>) {
         // TODO: Implement actual batch processing with agent
         // For now, simulate processing each request individually
         
@@ -449,11 +455,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_agent_id_hashing() {
-        let id1 = AgentId::new("test-agent".to_string());
-        let id2 = AgentId::new("test-agent".to_string());
-        let id3 = AgentId::new("different-agent".to_string());
-        
+    fn test_cached_agent_id_hashing() {
+        let id1 = CachedAgentId::new(skreaver_core::AgentId::new_unchecked("test-agent"));
+        let id2 = CachedAgentId::new(skreaver_core::AgentId::new_unchecked("test-agent"));
+        let id3 = CachedAgentId::new(skreaver_core::AgentId::new_unchecked("different-agent"));
+
         assert_eq!(id1, id2);
         assert_ne!(id1, id3);
         assert_eq!(id1.hash, id2.hash);

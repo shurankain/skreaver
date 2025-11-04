@@ -34,18 +34,18 @@ pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
 #[cfg(feature = "security-basic")]
 pub use validation::{DomainValidator, InputValidator, PathValidator};
 
+use crate::identifiers::{AgentId, SessionId, ToolId};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Security context for operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityContext {
     /// Unique session identifier
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     /// Agent identifier
-    pub agent_id: String,
+    pub agent_id: AgentId,
     /// Tool being used
-    pub tool_name: String,
+    pub tool_name: ToolId,
     /// User or service identity
     pub principal: Option<String>,
     /// Security policy to apply
@@ -55,9 +55,9 @@ pub struct SecurityContext {
 }
 
 impl SecurityContext {
-    pub fn new(agent_id: String, tool_name: String, policy: SecurityPolicy) -> Self {
+    pub fn new(agent_id: AgentId, tool_name: ToolId, policy: SecurityPolicy) -> Self {
         Self {
-            session_id: Uuid::new_v4(),
+            session_id: SessionId::generate(),
             agent_id,
             tool_name,
             principal: None,
@@ -99,8 +99,8 @@ impl SecurityManager {
         }
     }
 
-    pub fn create_context(&self, agent_id: String, tool_name: String) -> SecurityContext {
-        let policy = self.config.get_tool_policy(&tool_name);
+    pub fn create_context(&self, agent_id: AgentId, tool_name: ToolId) -> SecurityContext {
+        let policy = self.config.get_tool_policy(tool_name.as_str());
         let limits = self.config.resources.clone();
 
         SecurityContext::new(agent_id, tool_name, policy).with_limits(limits)

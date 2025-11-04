@@ -58,21 +58,18 @@ pub enum Route {
 
 impl Route {
     /// Create a unicast route from one agent to another
-    pub fn unicast(from: impl Into<AgentId>, to: impl Into<AgentId>) -> Self {
-        Route::Unicast {
-            from: from.into(),
-            to: to.into(),
-        }
+    pub fn unicast(from: AgentId, to: AgentId) -> Self {
+        Route::Unicast { from, to }
     }
 
     /// Create a broadcast route from an agent
-    pub fn broadcast(from: impl Into<AgentId>) -> Self {
-        Route::Broadcast { from: from.into() }
+    pub fn broadcast(from: AgentId) -> Self {
+        Route::Broadcast { from }
     }
 
     /// Create a system route to a specific agent
-    pub fn system(to: impl Into<AgentId>) -> Self {
-        Route::System { to: to.into() }
+    pub fn system(to: AgentId) -> Self {
+        Route::System { to }
     }
 
     /// Create an anonymous route (system-wide)

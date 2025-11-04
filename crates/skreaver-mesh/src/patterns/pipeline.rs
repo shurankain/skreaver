@@ -124,9 +124,9 @@ mod tests {
         let mesh = Arc::new(MockMesh);
 
         let stages = vec![
-            PipelineStage::new(AgentId::from("stage-1"), "validate"),
-            PipelineStage::new(AgentId::from("stage-2"), "process"),
-            PipelineStage::new(AgentId::from("stage-3"), "output"),
+            PipelineStage::new(AgentId::new_unchecked("stage-1"), "validate"),
+            PipelineStage::new(AgentId::new_unchecked("stage-2"), "process"),
+            PipelineStage::new(AgentId::new_unchecked("stage-3"), "output"),
         ];
 
         let pipeline = Pipeline::new(mesh, stages);

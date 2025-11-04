@@ -28,7 +28,7 @@
 //!     // Send point-to-point message
 //!     let msg = Message::new("hello".to_string())
 //!         .with_metadata("priority", "high");
-//!     mesh.send(&AgentId::from("agent-2"), msg).await?;
+//!     mesh.send(&AgentId::new_unchecked("agent-2"), msg).await?;
 //!
 //!     // Broadcast to all agents
 //!     let broadcast_msg = Message::new("shutdown".to_string());

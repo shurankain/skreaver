@@ -39,6 +39,7 @@ pub use types::{
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AgentId;
 
     #[test]
     fn test_message_creation() {
@@ -51,10 +52,14 @@ mod tests {
 
     #[test]
     fn test_message_builder_new_api() {
-        let msg = MessageBuilder::unicast("agent-1", "agent-2", "test")
-            .with_metadata("priority", "high")
-            .with_correlation_id("req-123")
-            .build();
+        let msg = MessageBuilder::unicast(
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+            "test",
+        )
+        .with_metadata("priority", "high")
+        .with_correlation_id("req-123")
+        .build();
 
         assert!(msg.is_unicast());
         assert_eq!(msg.sender().map(|a| a.as_str()), Some("agent-1"));
@@ -65,10 +70,14 @@ mod tests {
 
     #[test]
     fn test_message_builder_unicast() {
-        let msg = MessageBuilder::unicast("agent-1", "agent-2", "test")
-            .with_metadata("priority", "high")
-            .with_correlation_id("req-123")
-            .build();
+        let msg = MessageBuilder::unicast(
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+            "test",
+        )
+        .with_metadata("priority", "high")
+        .with_correlation_id("req-123")
+        .build();
 
         assert!(msg.is_unicast());
         assert_eq!(msg.sender().map(|a| a.as_str()), Some("agent-1"));
@@ -79,7 +88,11 @@ mod tests {
 
     #[test]
     fn test_message_serialization() {
-        let msg = Message::unicast("agent-1", "agent-2", "test payload");
+        let msg = Message::unicast(
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+            "test payload",
+        );
 
         let json = msg.to_json().unwrap();
         let deserialized = Message::from_json(&json).unwrap();
@@ -103,7 +116,11 @@ mod tests {
     #[test]
     fn test_message_routing_patterns() {
         // Unicast: from agent to agent
-        let unicast = Message::unicast("agent-1", "agent-2", "test");
+        let unicast = Message::unicast(
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+            "test",
+        );
         assert!(unicast.is_unicast());
         assert!(!unicast.is_broadcast());
         assert!(!unicast.is_system());
@@ -112,7 +129,7 @@ mod tests {
         assert_eq!(unicast.recipient().map(|a| a.as_str()), Some("agent-2"));
 
         // Broadcast: from agent to all
-        let broadcast = Message::broadcast("agent-1", "announcement");
+        let broadcast = Message::broadcast(AgentId::new_unchecked("agent-1"), "announcement");
         assert!(!broadcast.is_unicast());
         assert!(broadcast.is_broadcast());
         assert!(!broadcast.is_system());
@@ -121,7 +138,7 @@ mod tests {
         assert_eq!(broadcast.recipient(), None);
 
         // System: to agent, no sender
-        let system = Message::system("agent-1", "config update");
+        let system = Message::system(AgentId::new_unchecked("agent-1"), "config update");
         assert!(!system.is_unicast());
         assert!(!system.is_broadcast());
         assert!(system.is_system());
@@ -142,19 +159,23 @@ mod tests {
     #[test]
     fn test_message_routing_patterns_direct_constructors() {
         // Unicast: from agent to agent
-        let unicast = Message::unicast("agent-1", "agent-2", "test");
+        let unicast = Message::unicast(
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+            "test",
+        );
         assert!(unicast.is_unicast());
         assert_eq!(unicast.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(unicast.recipient().map(|a| a.as_str()), Some("agent-2"));
 
         // Broadcast: from agent to all
-        let broadcast = Message::broadcast("agent-1", "announcement");
+        let broadcast = Message::broadcast(AgentId::new_unchecked("agent-1"), "announcement");
         assert!(broadcast.is_broadcast());
         assert_eq!(broadcast.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(broadcast.recipient(), None);
 
         // System: to agent, no sender
-        let system = Message::system("agent-1", "config update");
+        let system = Message::system(AgentId::new_unchecked("agent-1"), "config update");
         assert!(system.is_system());
         assert_eq!(system.sender(), None);
         assert_eq!(system.recipient().map(|a| a.as_str()), Some("agent-1"));
@@ -162,17 +183,20 @@ mod tests {
 
     #[test]
     fn test_route_helpers() {
-        let route = Route::unicast("agent-1", "agent-2");
+        let route = Route::unicast(
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+        );
         assert!(route.has_sender());
         assert!(route.has_recipient());
         assert_eq!(route.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(route.recipient().map(|a| a.as_str()), Some("agent-2"));
 
-        let broadcast = Route::broadcast("agent-1");
+        let broadcast = Route::broadcast(AgentId::new_unchecked("agent-1"));
         assert!(broadcast.has_sender());
         assert!(!broadcast.has_recipient());
 
-        let system = Route::system("agent-1");
+        let system = Route::system(AgentId::new_unchecked("agent-1"));
         assert!(!system.has_sender());
         assert!(system.has_recipient());
 
@@ -184,7 +208,10 @@ mod tests {
     #[test]
     fn test_typed_message_unicast() {
         let msg = TypedMessage::with_payload("test")
-            .unicast("sender", "receiver")
+            .unicast(
+                AgentId::new_unchecked("sender"),
+                AgentId::new_unchecked("receiver"),
+            )
             .with_metadata("key", "value");
 
         // Guaranteed methods - no Option unwrapping needed
@@ -198,7 +225,8 @@ mod tests {
 
     #[test]
     fn test_typed_message_broadcast() {
-        let msg = TypedMessage::with_payload("announce").broadcast("announcer");
+        let msg =
+            TypedMessage::with_payload("announce").broadcast(AgentId::new_unchecked("announcer"));
 
         // Only sender available, no recipient method exists
         assert_eq!(msg.sender().as_str(), "announcer");
@@ -209,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_typed_message_system() {
-        let msg = TypedMessage::with_payload("config").system("agent-1");
+        let msg = TypedMessage::with_payload("config").system(AgentId::new_unchecked("agent-1"));
 
         // Only recipient available, no sender method exists
         assert_eq!(msg.recipient().as_str(), "agent-1");

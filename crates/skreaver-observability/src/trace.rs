@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_session_lifecycle() {
         let tracker = SessionTracker::new();
-        let agent_id = AgentId::new("test-agent").unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
 
         // Start session
         let session_id = tracker.start_session(agent_id.clone()).unwrap();
@@ -356,8 +356,8 @@ mod tests {
     #[test]
     fn test_tool_span_creation() {
         let tracker = SessionTracker::new();
-        let agent_id = AgentId::new("test-agent").unwrap();
-        let tool_name = crate::tags::ToolName::new("test_tool").unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
+        let tool_name = crate::tags::ToolName::new_unchecked("test_tool");
 
         let session_id = tracker.start_session(agent_id).unwrap();
         let span = tracker
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_trace_context() {
-        let agent_id = AgentId::new("test-agent").unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let session_id = SessionId::generate();
 
         let context = TraceContext::from_session(session_id.clone(), agent_id.clone());

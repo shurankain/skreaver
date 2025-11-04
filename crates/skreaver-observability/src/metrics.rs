@@ -684,7 +684,7 @@ mod tests {
     fn test_tool_execution_recording() {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let registry = Arc::new(MetricsRegistry::new(&format!("test{}", &id[0..8])).unwrap());
-        let tool_name = ToolName::new("test_tool").unwrap();
+        let tool_name = ToolName::new_unchecked("test_tool");
         let duration = std::time::Duration::from_millis(100);
 
         registry
@@ -701,14 +701,14 @@ mod tests {
 
         // Add 20 tools (at limit)
         for i in 0..20 {
-            let tool_name = ToolName::new(format!("tool_{}", i)).unwrap();
+            let tool_name = ToolName::new_unchecked(format!("tool_{}", i));
             registry
                 .record_tool_execution(&tool_name, std::time::Duration::from_millis(1))
                 .unwrap();
         }
 
         // 21st tool should fail
-        let tool_name = ToolName::new("tool_21").unwrap();
+        let tool_name = ToolName::new_unchecked("tool_21");
         let result =
             registry.record_tool_execution(&tool_name, std::time::Duration::from_millis(1));
         assert!(matches!(
@@ -723,7 +723,7 @@ mod tests {
         let registry = Arc::new(MetricsRegistry::new(&format!("test{}", &id[0..8])).unwrap());
         let collector = MetricsCollector::new(registry);
 
-        let tool_name = ToolName::new("test_tool").unwrap();
+        let tool_name = ToolName::new_unchecked("test_tool");
         let timer = collector.start_tool_timer(tool_name);
 
         // Timer should finish without error

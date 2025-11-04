@@ -10,10 +10,11 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::runtime::{
-    agent_instance::{AgentId, AgentIdError, AgentInstance, CoordinatorTrait},
+    agent_instance::{AgentId, AgentInstance, CoordinatorTrait},
     agent_status::AgentStatusEnum,
     api_types::{AgentEndpoints, AgentSpec, AgentType, CreateAgentResponse},
 };
+use skreaver_core::IdValidationError;
 
 /// Factory error types
 #[derive(Debug, Clone)]
@@ -21,7 +22,7 @@ pub enum AgentFactoryError {
     /// Agent type not registered in factory
     UnknownAgentType(AgentType),
     /// Invalid agent ID format
-    InvalidAgentId(AgentIdError),
+    InvalidAgentId(IdValidationError),
     /// Agent already exists with the same ID
     AgentAlreadyExists(String),
     /// Agent creation failed
@@ -95,8 +96,8 @@ pub trait AgentBuilder: Send + Sync {
 pub struct AgentFactory {
     /// Registry of agent builders by type
     builders: HashMap<AgentType, Box<dyn AgentBuilder>>,
-    /// Created agent instances
-    agents: Arc<RwLock<HashMap<String, AgentInstance>>>,
+    /// Created agent instances (using AgentId as key for type safety)
+    agents: Arc<RwLock<HashMap<AgentId, AgentInstance>>>,
 }
 
 impl AgentFactory {
@@ -145,13 +146,12 @@ impl AgentFactory {
             None => self.generate_agent_id(&spec),
         };
 
-        let agent_id =
-            AgentId::new(agent_id_str.clone()).map_err(AgentFactoryError::InvalidAgentId)?;
+        let agent_id = AgentId::parse(&agent_id_str).map_err(AgentFactoryError::InvalidAgentId)?;
 
         // Check if agent already exists
         {
             let agents = self.agents.read().await;
-            if agents.contains_key(&agent_id_str) {
+            if agents.contains_key(&agent_id) {
                 return Err(AgentFactoryError::AgentAlreadyExists(agent_id_str));
             }
         }
@@ -160,7 +160,8 @@ impl AgentFactory {
         let coordinator = builder.build_coordinator(&spec)?;
 
         // Create agent instance
-        let agent_instance = AgentInstance::new(agent_id, spec.agent_type.to_string(), coordinator);
+        let agent_instance =
+            AgentInstance::new(agent_id.clone(), spec.agent_type.to_string(), coordinator);
 
         // Set agent to ready state
         agent_instance.set_status(AgentStatusEnum::Ready).await;
@@ -185,7 +186,7 @@ impl AgentFactory {
         // Store agent instance
         {
             let mut agents = self.agents.write().await;
-            agents.insert(agent_id_str.clone(), agent_instance);
+            agents.insert(agent_id.clone(), agent_instance);
         }
 
         // Create response
@@ -200,15 +201,20 @@ impl AgentFactory {
 
     /// Check if an agent exists
     pub async fn has_agent(&self, agent_id: &str) -> bool {
-        let agents = self.agents.read().await;
-        agents.contains_key(agent_id)
+        if let Ok(agent_id) = AgentId::parse(agent_id) {
+            let agents = self.agents.read().await;
+            agents.contains_key(&agent_id)
+        } else {
+            false
+        }
     }
 
     /// Remove an agent by ID
     pub async fn remove_agent(&self, agent_id: &str) -> Result<(), AgentFactoryError> {
+        let agent_id = AgentId::parse(agent_id).map_err(AgentFactoryError::InvalidAgentId)?;
         let mut agents = self.agents.write().await;
         agents
-            .remove(agent_id)
+            .remove(&agent_id)
             .ok_or_else(|| AgentFactoryError::AgentNotFound(agent_id.to_string()))?;
         Ok(())
     }
@@ -216,7 +222,7 @@ impl AgentFactory {
     /// List all agent IDs
     pub async fn list_agent_ids(&self) -> Vec<String> {
         let agents = self.agents.read().await;
-        agents.keys().cloned().collect()
+        agents.keys().map(|id| id.to_string()).collect()
     }
 
     /// Get agent count
@@ -247,7 +253,7 @@ impl AgentFactory {
     }
 
     /// Get agents map reference for external access
-    pub fn agents(&self) -> Arc<RwLock<HashMap<String, AgentInstance>>> {
+    pub fn agents(&self) -> Arc<RwLock<HashMap<AgentId, AgentInstance>>> {
         Arc::clone(&self.agents)
     }
 

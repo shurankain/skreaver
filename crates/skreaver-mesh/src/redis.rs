@@ -354,7 +354,7 @@ impl AgentMesh for RedisMesh {
             .await
             .map_err(|e| MeshError::BackendError(e.to_string()))?;
 
-        Ok(agent_ids.into_iter().map(AgentId::from).collect())
+        Ok(agent_ids.into_iter().map(AgentId::new_unchecked).collect())
     }
 }
 
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_key_generation() {
-        let agent_id = AgentId::from("agent-1");
+        let agent_id = AgentId::new_unchecked("agent-1");
         let key = RedisMesh::agent_key(&agent_id);
         assert_eq!(key, "skreaver:agent:agent-1:mailbox");
 
@@ -460,15 +460,21 @@ mod tests {
 
     #[test]
     fn test_validate_send_route_unicast_valid() {
-        let route = Route::unicast("sender", "recipient");
-        let to = AgentId::from("recipient");
+        let route = Route::unicast(
+            AgentId::new_unchecked("sender"),
+            AgentId::new_unchecked("recipient"),
+        );
+        let to = AgentId::new_unchecked("recipient");
         assert!(validate_send_route(&route, &to).is_ok());
     }
 
     #[test]
     fn test_validate_send_route_unicast_mismatch() {
-        let route = Route::unicast("sender", "recipient");
-        let to = AgentId::from("wrong-recipient");
+        let route = Route::unicast(
+            AgentId::new_unchecked("sender"),
+            AgentId::new_unchecked("recipient"),
+        );
+        let to = AgentId::new_unchecked("wrong-recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
         assert!(
@@ -481,8 +487,8 @@ mod tests {
 
     #[test]
     fn test_validate_send_route_broadcast_invalid() {
-        let route = Route::broadcast("sender");
-        let to = AgentId::from("recipient");
+        let route = Route::broadcast(AgentId::new_unchecked("sender"));
+        let to = AgentId::new_unchecked("recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
         assert!(
@@ -496,7 +502,7 @@ mod tests {
     #[test]
     fn test_validate_send_route_anonymous_invalid() {
         let route = Route::anonymous();
-        let to = AgentId::from("recipient");
+        let to = AgentId::new_unchecked("recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
         assert!(
@@ -509,22 +515,22 @@ mod tests {
 
     #[test]
     fn test_validate_send_route_system_valid() {
-        let route = Route::system("recipient");
-        let to = AgentId::from("recipient");
+        let route = Route::system(AgentId::new_unchecked("recipient"));
+        let to = AgentId::new_unchecked("recipient");
         assert!(validate_send_route(&route, &to).is_ok());
     }
 
     #[test]
     fn test_validate_send_route_system_mismatch() {
-        let route = Route::system("recipient");
-        let to = AgentId::from("wrong-recipient");
+        let route = Route::system(AgentId::new_unchecked("recipient"));
+        let to = AgentId::new_unchecked("wrong-recipient");
         let result = validate_send_route(&route, &to);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_broadcast_route_broadcast_valid() {
-        let route = Route::broadcast("sender");
+        let route = Route::broadcast(AgentId::new_unchecked("sender"));
         assert!(validate_broadcast_route(&route).is_ok());
     }
 
@@ -536,7 +542,10 @@ mod tests {
 
     #[test]
     fn test_validate_broadcast_route_unicast_invalid() {
-        let route = Route::unicast("sender", "recipient");
+        let route = Route::unicast(
+            AgentId::new_unchecked("sender"),
+            AgentId::new_unchecked("recipient"),
+        );
         let result = validate_broadcast_route(&route);
         assert!(result.is_err());
         assert!(
@@ -549,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_validate_broadcast_route_system_invalid() {
-        let route = Route::system("recipient");
+        let route = Route::system(AgentId::new_unchecked("recipient"));
         let result = validate_broadcast_route(&route);
         assert!(result.is_err());
         assert!(

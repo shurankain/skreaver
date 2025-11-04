@@ -51,10 +51,25 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
     Sse<impl Stream<Item = Result<axum::response::sse::Event, axum::BoxError>>>,
     (StatusCode, Json<ErrorResponse>),
 > {
+    // Parse agent ID
+    let parsed_id = match skreaver_core::AgentId::parse(&agent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_agent_id".to_string(),
+                    message: format!("Invalid agent ID: {}", e),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
     // Verify agent exists
     {
         let agents = runtime.agents.read().await;
-        if !agents.contains_key(&agent_id) {
+        if !agents.contains_key(&parsed_id) {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
@@ -72,7 +87,8 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
     // Start background task to execute agent with input if provided
     if let Some(input) = params.input {
         let runtime_clone = runtime.clone();
-        let agent_id_clone = agent_id.clone();
+        let agent_id_clone = agent_id.clone(); // Keep String for SSE events
+        let parsed_id_clone = parsed_id.clone(); // Use AgentId for HashMap lookup
         let debug = params.debug;
         let timeout = params.timeout_seconds.unwrap_or(300); // Default 5 minutes
 
@@ -103,7 +119,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
                             // Access the agent instance here
                             let response = {
                                 let mut agents = runtime_clone.agents.write().await;
-                                if let Some(instance) = agents.get_mut(&agent_id_clone) {
+                                if let Some(instance) = agents.get_mut(&parsed_id_clone) {
                                     let response = instance.coordinator.step(input);
                                     drop(agents); // Release lock immediately
                                     Ok(response)
@@ -196,10 +212,24 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
         let _ = registry.record_http_request(&route, "POST", start_time.elapsed());
     }
 
-    // Check if agent exists first
+    // Parse and check if agent exists first
+    let parsed_id = match skreaver_core::AgentId::parse(&agent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_agent_id".to_string(),
+                    message: format!("Invalid agent ID: {}", e),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
     {
         let agents = runtime.agents.read().await;
-        if !agents.contains_key(&agent_id) {
+        if !agents.contains_key(&parsed_id) {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
@@ -242,25 +272,28 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     // Start processing the queued request
     let runtime_clone = runtime.clone();
     let agent_id_clone = agent_id.clone();
+    let parsed_id_clone = parsed_id.clone();
     tokio::spawn(async move {
         let agent_id_for_processing = agent_id_clone.clone();
+        let parsed_id_for_processing = parsed_id_clone.clone();
         let runtime_for_closure = runtime_clone.clone();
         if runtime_clone
             .backpressure_manager
             .process_next_queued_request(&agent_id_clone, move |input| {
                 let runtime_inner = runtime_for_closure.clone();
                 let agent_id_for_closure = agent_id_for_processing.clone();
+                let parsed_id_for_closure = parsed_id_for_processing.clone();
                 async move {
                     // Process the request within backpressure constraints
                     let mut agents = runtime_inner.agents.write().await;
-                    if let Some(instance) = agents.get_mut(&agent_id_for_closure) {
+                    if let Some(instance) = agents.get_mut(&parsed_id_for_closure) {
                         // Create agent session for observability
                         let session_id = SessionId::generate();
 
                         // Record agent session start
                         if let Some(registry) = get_metrics_registry() {
-                            let obs_agent_id = ObsAgentId::new(agent_id_for_closure.clone())
-                                .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
+                            let obs_agent_id = ObsAgentId::parse(agent_id_for_closure.as_str())
+                                .unwrap_or_else(|_| ObsAgentId::new_unchecked("invalid-agent"));
                             let tags = skreaver_observability::CardinalTags::for_agent_session(
                                 obs_agent_id.clone(),
                                 session_id.clone(),
@@ -272,8 +305,8 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
 
                         // Record agent session end
                         if let Some(registry) = get_metrics_registry() {
-                            let obs_agent_id = ObsAgentId::new(agent_id_for_closure.clone())
-                                .unwrap_or_else(|_| ObsAgentId::new("invalid-agent").unwrap());
+                            let obs_agent_id = ObsAgentId::parse(agent_id_for_closure.as_str())
+                                .unwrap_or_else(|_| ObsAgentId::new_unchecked("invalid-agent"));
                             let tags = skreaver_observability::CardinalTags::for_agent_session(
                                 obs_agent_id,
                                 session_id,
@@ -348,10 +381,24 @@ pub async fn observe_agent_stream<T: ToolRegistry + Clone + Send + Sync>(
     Sse<impl Stream<Item = Result<axum::response::sse::Event, axum::BoxError>>>,
     (StatusCode, Json<ErrorResponse>),
 > {
-    // Verify agent exists
+    // Parse and verify agent exists
+    let parsed_id = match skreaver_core::AgentId::parse(&agent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_agent_id".to_string(),
+                    message: format!("Invalid agent ID: {}", e),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
     {
         let agents = runtime.agents.read().await;
-        if !agents.contains_key(&agent_id) {
+        if !agents.contains_key(&parsed_id) {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
@@ -369,11 +416,12 @@ pub async fn observe_agent_stream<T: ToolRegistry + Clone + Send + Sync>(
     // Start background task to process observation
     let runtime_clone = runtime.clone();
     let agent_id_clone = agent_id.clone();
+    let parsed_id_clone = parsed_id.clone();
     let input = request.input;
 
     tokio::spawn(async move {
         let mut agents = runtime_clone.agents.write().await;
-        if let Some(instance) = agents.get_mut(&agent_id_clone) {
+        if let Some(instance) = agents.get_mut(&parsed_id_clone) {
             let _result = executor
                 .execute_with_streaming(agent_id_clone.clone(), |exec| async move {
                     exec.thinking(&agent_id_clone, "Analyzing input").await;
@@ -414,10 +462,24 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
 ) -> Result<Json<BatchObserveResponse>, (StatusCode, Json<ErrorResponse>)> {
     let start_time = std::time::Instant::now();
 
-    // Verify agent exists
+    // Parse and verify agent exists
+    let parsed_id = match skreaver_core::AgentId::parse(&agent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_agent_id".to_string(),
+                    message: format!("Invalid agent ID: {}", e),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
     {
         let agents = runtime.agents.read().await;
-        if !agents.contains_key(&agent_id) {
+        if !agents.contains_key(&parsed_id) {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
@@ -480,7 +542,7 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
             )
         })?;
         let runtime_clone = runtime.clone();
-        let agent_id_clone = agent_id.clone();
+        let parsed_id_clone = parsed_id.clone();
         let results_clone = Arc::clone(&results);
         let timeout_duration = std::time::Duration::from_secs(request.timeout_seconds);
         let input_clone = input.clone();
@@ -492,7 +554,7 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
             let result = tokio::time::timeout(timeout_duration, async {
                 // Minimize lock scope within timeout
                 let mut agents = runtime_clone.agents.write().await;
-                if let Some(instance) = agents.get_mut(&agent_id_clone) {
+                if let Some(instance) = agents.get_mut(&parsed_id_clone) {
                     let response = instance.coordinator.step(input);
                     drop(agents); // Release lock immediately after step
                     Ok(response)

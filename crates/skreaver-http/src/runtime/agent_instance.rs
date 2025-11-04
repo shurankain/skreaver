@@ -7,72 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 
-/// Unique identifier for agent instances
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AgentId(String);
-
-impl AgentId {
-    /// Create a new agent ID with validation
-    pub fn new(id: String) -> Result<Self, AgentIdError> {
-        if id.is_empty() {
-            return Err(AgentIdError::Empty);
-        }
-
-        if id.len() > 128 {
-            return Err(AgentIdError::TooLong);
-        }
-
-        // Validate characters (alphanumeric, hyphens, underscores only)
-        if !id
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(AgentIdError::InvalidCharacters);
-        }
-
-        Ok(Self(id))
-    }
-
-    /// Get the string representation of the ID
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for AgentId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<AgentId> for String {
-    fn from(id: AgentId) -> Self {
-        id.0
-    }
-}
-
-/// Errors when creating agent IDs
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AgentIdError {
-    Empty,
-    TooLong,
-    InvalidCharacters,
-}
-
-impl std::fmt::Display for AgentIdError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Empty => write!(f, "Agent ID cannot be empty"),
-            Self::TooLong => write!(f, "Agent ID cannot exceed 128 characters"),
-            Self::InvalidCharacters => write!(
-                f,
-                "Agent ID can only contain alphanumeric characters, hyphens, and underscores"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for AgentIdError {}
+// Re-export unified AgentId from skreaver-core
+pub use skreaver_core::AgentId;
 
 /// Comprehensive agent instance with state tracking
 pub struct AgentInstance {
@@ -289,23 +225,14 @@ mod tests {
     #[test]
     fn test_agent_id_validation() {
         // Valid IDs
-        assert!(AgentId::new("test-agent".to_string()).is_ok());
-        assert!(AgentId::new("agent_123".to_string()).is_ok());
-        assert!(AgentId::new("a".to_string()).is_ok());
+        assert!(AgentId::parse("test-agent").is_ok());
+        assert!(AgentId::parse("agent_123").is_ok());
+        assert!(AgentId::parse("a").is_ok());
 
         // Invalid IDs
-        assert!(matches!(
-            AgentId::new("".to_string()),
-            Err(AgentIdError::Empty)
-        ));
-        assert!(matches!(
-            AgentId::new("a".repeat(129)),
-            Err(AgentIdError::TooLong)
-        ));
-        assert!(matches!(
-            AgentId::new("test@agent".to_string()),
-            Err(AgentIdError::InvalidCharacters)
-        ));
+        assert!(AgentId::parse("").is_err());
+        assert!(AgentId::parse("a".repeat(129)).is_err());
+        assert!(AgentId::parse("test@agent").is_err());
     }
 
     #[tokio::test]
@@ -320,7 +247,7 @@ mod tests {
             }
         }
 
-        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let instance =
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
@@ -356,7 +283,7 @@ mod tests {
             }
         }
 
-        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let instance =
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
@@ -383,7 +310,7 @@ mod tests {
             .with_tag("team".to_string(), "data-science".to_string())
             .with_tag("env".to_string(), "staging".to_string());
 
-        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let instance = AgentInstance::new_with_metadata(
             agent_id,
             "MockAgent".to_string(),
@@ -410,7 +337,7 @@ mod tests {
             }
         }
 
-        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let instance =
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
@@ -441,7 +368,7 @@ mod tests {
             }
         }
 
-        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let instance =
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
@@ -478,7 +405,7 @@ mod tests {
             }
         }
 
-        let agent_id = AgentId::new("test-agent".to_string()).unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let instance =
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 

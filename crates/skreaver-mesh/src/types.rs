@@ -4,142 +4,18 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// Error type for ID validation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IdValidationError {
-    /// The ID string is empty
-    Empty,
-    /// The ID contains only whitespace
-    WhitespaceOnly,
-    /// The ID has leading or trailing whitespace
-    LeadingTrailingWhitespace,
-    /// The ID contains invalid characters
-    InvalidCharacters,
-}
+// Re-export unified types from skreaver-core
+pub use skreaver_core::{AgentId, IdValidationError};
 
-impl fmt::Display for IdValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => write!(f, "ID cannot be empty"),
-            Self::WhitespaceOnly => write!(f, "ID cannot be whitespace-only"),
-            Self::LeadingTrailingWhitespace => {
-                write!(f, "ID cannot have leading or trailing whitespace")
-            }
-            Self::InvalidCharacters => write!(
-                f,
-                "ID can only contain alphanumeric characters, hyphens, underscores, and dots"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for IdValidationError {}
-
-/// Unique identifier for an agent in the mesh
+/// Legacy AgentId type alias for backward compatibility
 ///
-/// ## Validation
-/// Use `AgentId::parse()` to create validated IDs. The `from()` constructor
-/// is deprecated as it doesn't validate input.
-///
-/// Valid IDs:
-/// - Non-empty
-/// - No leading/trailing whitespace
-/// - Only alphanumeric, hyphens, underscores, dots
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AgentId(String);
-
-impl AgentId {
-    /// Parse and validate an agent ID from a string
-    ///
-    /// Returns an error if the string is invalid (empty, whitespace-only,
-    /// contains invalid characters, etc.)
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use skreaver_mesh::AgentId;
-    ///
-    /// // Valid IDs
-    /// assert!(AgentId::parse("agent-1").is_ok());
-    /// assert!(AgentId::parse("my_agent").is_ok());
-    /// assert!(AgentId::parse("agent.123").is_ok());
-    ///
-    /// // Invalid IDs
-    /// assert!(AgentId::parse("").is_err());           // Empty
-    /// assert!(AgentId::parse("   ").is_err());        // Whitespace only
-    /// assert!(AgentId::parse(" agent").is_err());     // Leading whitespace
-    /// assert!(AgentId::parse("agent/path").is_err()); // Invalid char
-    /// ```
-    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
-        let s = id.as_ref();
-
-        // Check for empty string
-        if s.is_empty() {
-            return Err(IdValidationError::Empty);
-        }
-
-        // Check for whitespace-only
-        if s.trim().is_empty() {
-            return Err(IdValidationError::WhitespaceOnly);
-        }
-
-        // Check for leading/trailing whitespace
-        if s != s.trim() {
-            return Err(IdValidationError::LeadingTrailingWhitespace);
-        }
-
-        // Validate characters (alphanumeric, hyphen, underscore, dot)
-        if !s
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
-        {
-            return Err(IdValidationError::InvalidCharacters);
-        }
-
-        Ok(Self(s.to_string()))
-    }
-
-    /// Get the agent ID as a string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl FromStr for AgentId {
-    type Err = IdValidationError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s)
-    }
-}
-
-impl From<String> for AgentId {
-    /// Creates an AgentId from a String.
-    ///
-    /// # Panics
-    /// Panics if the string fails validation (empty, whitespace-only, invalid characters).
-    /// For non-panicking construction, use `AgentId::parse()` instead.
-    fn from(s: String) -> Self {
-        Self::parse(&s).unwrap_or_else(|e| panic!("Invalid AgentId '{}': {}", s, e))
-    }
-}
-
-impl From<&str> for AgentId {
-    /// Creates an AgentId from a string slice.
-    ///
-    /// # Panics
-    /// Panics if the string fails validation (empty, whitespace-only, invalid characters).
-    /// For non-panicking construction, use `AgentId::parse()` instead.
-    fn from(s: &str) -> Self {
-        Self::parse(s).unwrap_or_else(|e| panic!("Invalid AgentId '{}': {}", s, e))
-    }
-}
-
-impl fmt::Display for AgentId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+/// **DEPRECATED**: Use `skreaver_core::AgentId` directly instead.
+/// This type alias will be removed in version 0.7.0.
+#[deprecated(
+    since = "0.6.0",
+    note = "Use skreaver_core::AgentId instead. This alias will be removed in 0.7.0"
+)]
+pub type LegacyAgentId = AgentId;
 
 /// Topic identifier for pub/sub messaging
 ///
@@ -260,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_agent_id_from_string() {
-        let id: AgentId = "agent-2".into();
+        let id = AgentId::parse("agent-2").unwrap();
         assert_eq!(id.as_str(), "agent-2");
     }
 
@@ -278,9 +154,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid AgentId")]
-    fn test_agent_id_from_panics_on_empty() {
-        let _: AgentId = "".into();
+    fn test_agent_id_parse_fails_on_empty() {
+        assert!(AgentId::parse("").is_err());
     }
 
     #[test]
@@ -337,15 +212,9 @@ mod tests {
 
     #[test]
     fn test_agent_id_parse_invalid_characters() {
-        // Path traversal attempts
-        assert_eq!(
-            AgentId::parse("../agent"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
-            AgentId::parse("agent/../../etc/passwd"),
-            Err(IdValidationError::InvalidCharacters)
-        );
+        // Path traversal attempts - unified AgentId detects these specifically
+        assert!(AgentId::parse("../agent").is_err());
+        assert!(AgentId::parse("agent/../../etc/passwd").is_err());
 
         // Other invalid characters
         assert_eq!(
@@ -447,18 +316,22 @@ mod tests {
 
     #[test]
     fn test_id_validation_error_display() {
-        assert_eq!(IdValidationError::Empty.to_string(), "ID cannot be empty");
+        // Updated to match unified error messages from skreaver-core
+        assert_eq!(
+            IdValidationError::Empty.to_string(),
+            "Identifier cannot be empty"
+        );
         assert_eq!(
             IdValidationError::WhitespaceOnly.to_string(),
-            "ID cannot be whitespace-only"
+            "Identifier cannot be whitespace-only"
         );
         assert_eq!(
             IdValidationError::LeadingTrailingWhitespace.to_string(),
-            "ID cannot have leading or trailing whitespace"
+            "Identifier cannot have leading or trailing whitespace"
         );
         assert_eq!(
             IdValidationError::InvalidCharacters.to_string(),
-            "ID can only contain alphanumeric characters, hyphens, underscores, and dots"
+            "Identifier can only contain alphanumeric characters, hyphens, underscores, and dots"
         );
     }
 }

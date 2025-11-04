@@ -85,9 +85,10 @@ impl<T: Tool> Tool for SecureTool<T> {
 
     fn call(&self, input: String) -> ExecutionResult {
         // For the regular call method, we create a default security context
-        let context = self
-            .security_manager
-            .create_context("default_agent".to_string(), self.inner.name().to_string());
+        let context = self.security_manager.create_context(
+            crate::identifiers::AgentId::new_unchecked("default_agent"),
+            crate::identifiers::ToolId::new_unchecked(self.inner.name()),
+        );
 
         self.secure_call(input, context)
     }

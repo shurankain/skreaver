@@ -15,10 +15,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::runtime::{
-    agent_instance::{AgentExecutionError, AgentIdError},
-    auth_token::AuthTokenError,
-    rate_limit::RateLimitError,
+    agent_instance::AgentExecutionError, auth_token::AuthTokenError, rate_limit::RateLimitError,
 };
+use skreaver_core::IdValidationError;
 
 /// Request ID for distributed tracing and error correlation
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -111,7 +110,7 @@ pub enum AgentError {
     /// Agent not found
     NotFound(String),
     /// Agent ID validation failed
-    InvalidId(AgentIdError),
+    InvalidId(IdValidationError),
     /// Agent execution failed
     ExecutionFailed(AgentExecutionError),
     /// Agent is in wrong state for operation
@@ -598,8 +597,8 @@ impl From<RateLimitError> for RuntimeError {
     }
 }
 
-impl From<AgentIdError> for RuntimeError {
-    fn from(err: AgentIdError) -> Self {
+impl From<IdValidationError> for RuntimeError {
+    fn from(err: IdValidationError) -> Self {
         Self::Agent(AgentError::InvalidId(err))
     }
 }

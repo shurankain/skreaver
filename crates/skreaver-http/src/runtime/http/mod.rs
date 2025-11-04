@@ -29,8 +29,8 @@ use skreaver_tools::{SecureToolRegistry, ToolRegistry};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
-/// Unique identifier for an agent instance
-pub type AgentId = String;
+// Re-export unified AgentId from skreaver-core
+pub use skreaver_core::AgentId;
 
 /// HTTP server state containing all running agents and security configuration
 ///
@@ -268,16 +268,18 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
     }
 
     /// Add an agent instance to the runtime (legacy method for backward compatibility)
-    pub async fn add_agent<A>(&self, agent_id: String, agent: A) -> Result<(), String>
+    pub async fn add_agent<A>(&self, agent_id: impl AsRef<str>, agent: A) -> Result<(), String>
     where
         A: Agent + Send + Sync + 'static,
         A::Observation: From<String> + std::fmt::Display,
         A::Action: ToString,
     {
+        let agent_id =
+            AgentId::parse(agent_id.as_ref()).map_err(|e| format!("Invalid agent ID: {}", e))?;
+
         let coordinator = Coordinator::new(agent, (*self.tool_registry).clone());
         let agent_instance = crate::runtime::agent_instance::AgentInstance::new(
-            crate::runtime::agent_instance::AgentId::new(agent_id.clone())
-                .map_err(|e| e.to_string())?,
+            agent_id.clone(),
             std::any::type_name::<A>().to_string(),
             Box::new(coordinator),
         );

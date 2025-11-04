@@ -341,7 +341,7 @@ mod tests {
     async fn test_worker_pool_registration() {
         let pool = WorkerPool::new(SupervisorConfig::default());
 
-        let worker1 = AgentId::from("worker-1");
+        let worker1 = AgentId::new_unchecked("worker-1");
         pool.register_worker(worker1.clone()).await;
 
         assert_eq!(pool.worker_count().await, 1);
@@ -354,8 +354,8 @@ mod tests {
     async fn test_worker_load_balancing() {
         let pool = WorkerPool::new(SupervisorConfig::default());
 
-        let worker1 = AgentId::from("worker-1");
-        let worker2 = AgentId::from("worker-2");
+        let worker1 = AgentId::new_unchecked("worker-1");
+        let worker2 = AgentId::new_unchecked("worker-2");
 
         pool.register_worker(worker1.clone()).await;
         pool.register_worker(worker2.clone()).await;
@@ -380,7 +380,7 @@ mod tests {
         };
         let pool = WorkerPool::new(config);
 
-        let worker1 = AgentId::from("worker-1");
+        let worker1 = AgentId::new_unchecked("worker-1");
         pool.register_worker(worker1.clone()).await;
 
         // Wait for heartbeat timeout

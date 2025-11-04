@@ -6,6 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+// Re-export unified identifier types from skreaver-core
+pub use skreaver_core::{AgentId, SessionId, ToolId as ToolName};
+
 /// Cardinal tags for Skreaver telemetry as specified in DEVELOPMENT_PLAN.md
 /// These tags are used consistently across all metrics and traces
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -92,100 +95,8 @@ impl Default for CardinalTags {
     }
 }
 
-/// Agent identifier with validation
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AgentId(String);
-
-impl AgentId {
-    /// Create new agent ID with validation
-    pub fn new(id: impl Into<String>) -> Result<Self, TagValidationError> {
-        let id = id.into();
-        if id.is_empty() || id.len() > 64 {
-            return Err(TagValidationError::InvalidAgentId(id));
-        }
-        // Only allow alphanumeric, hyphens, and underscores
-        if !id
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(TagValidationError::InvalidAgentId(id));
-        }
-        Ok(Self(id))
-    }
-
-    /// Get the raw string value
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for AgentId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Tool name with cardinality enforcement (≤20 tools per DEVELOPMENT_PLAN.md)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ToolName(String);
-
-impl ToolName {
-    /// Create new tool name with validation
-    pub fn new(name: impl Into<String>) -> Result<Self, TagValidationError> {
-        let name = name.into();
-        if name.is_empty() || name.len() > 32 {
-            return Err(TagValidationError::InvalidToolName(name));
-        }
-        // Only allow alphanumeric and underscores (snake_case)
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Err(TagValidationError::InvalidToolName(name));
-        }
-        Ok(Self(name))
-    }
-
-    /// Get the raw string value
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for ToolName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Session identifier for request correlation
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SessionId(uuid::Uuid);
-
-impl SessionId {
-    /// Generate new session ID
-    pub fn generate() -> Self {
-        Self(uuid::Uuid::new_v4())
-    }
-
-    /// Create from existing UUID
-    pub fn from_uuid(uuid: uuid::Uuid) -> Self {
-        Self(uuid)
-    }
-
-    /// Get the UUID value
-    pub fn as_uuid(&self) -> uuid::Uuid {
-        self.0
-    }
-
-    /// Get string representation
-    pub fn as_str(&self) -> String {
-        self.0.to_string()
-    }
-}
-
-impl fmt::Display for SessionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+// Note: AgentId, ToolName (ToolId), and SessionId are now re-exported from skreaver-core
+// This eliminates ~90 lines of duplicate validation code and ensures consistency
 
 /// Error kinds with controlled cardinality (≤10 per DEVELOPMENT_PLAN.md)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -279,26 +190,26 @@ mod tests {
 
     #[test]
     fn test_agent_id_validation() {
-        assert!(AgentId::new("valid-agent_123").is_ok());
-        assert!(AgentId::new("").is_err());
-        assert!(AgentId::new("a".repeat(65)).is_err());
-        assert!(AgentId::new("invalid@agent").is_err());
+        assert!(AgentId::parse("valid-agent_123").is_ok());
+        assert!(AgentId::parse("").is_err());
+        assert!(AgentId::parse("a".repeat(129)).is_err());
+        assert!(AgentId::parse("invalid@agent").is_err());
     }
 
     #[test]
     fn test_tool_name_validation() {
-        assert!(ToolName::new("valid_tool").is_ok());
-        assert!(ToolName::new("http_client").is_ok());
-        assert!(ToolName::new("").is_err());
-        assert!(ToolName::new("a".repeat(33)).is_err());
-        assert!(ToolName::new("invalid-tool").is_err());
+        assert!(ToolName::parse("valid_tool").is_ok());
+        assert!(ToolName::parse("http_client").is_ok());
+        assert!(ToolName::parse("").is_err());
+        assert!(ToolName::parse("a".repeat(129)).is_err());
+        assert!(ToolName::parse("invalid-tool").is_ok()); // Hyphens are valid in unified type
     }
 
     #[test]
     fn test_cardinal_tags_builder() {
-        let agent_id = AgentId::new("test-agent").unwrap();
+        let agent_id = AgentId::new_unchecked("test-agent");
         let session_id = SessionId::generate();
-        let tool_name = ToolName::new("test_tool").unwrap();
+        let tool_name = ToolName::new_unchecked("test_tool");
 
         let tags = CardinalTags::new()
             .with_agent_id(agent_id.clone())

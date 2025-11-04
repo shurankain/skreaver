@@ -54,19 +54,10 @@ impl Message {
     }
 
     /// Create a unicast message from one agent to another
-    pub fn unicast(
-        from: impl Into<AgentId>,
-        to: impl Into<AgentId>,
-        payload: impl Into<MessagePayload>,
-    ) -> Self {
-        let from_id = from.into();
-        let to_id = to.into();
+    pub fn unicast(from: AgentId, to: AgentId, payload: impl Into<MessagePayload>) -> Self {
         Self {
             id: MessageId::new(),
-            route: Route::Unicast {
-                from: from_id,
-                to: to_id,
-            },
+            route: Route::Unicast { from, to },
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: chrono::Utc::now(),
@@ -75,11 +66,10 @@ impl Message {
     }
 
     /// Create a broadcast message from an agent
-    pub fn broadcast(from: impl Into<AgentId>, payload: impl Into<MessagePayload>) -> Self {
-        let from_id = from.into();
+    pub fn broadcast(from: AgentId, payload: impl Into<MessagePayload>) -> Self {
         Self {
             id: MessageId::new(),
-            route: Route::Broadcast { from: from_id },
+            route: Route::Broadcast { from },
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: chrono::Utc::now(),
@@ -88,11 +78,10 @@ impl Message {
     }
 
     /// Create a system message to a specific agent
-    pub fn system(to: impl Into<AgentId>, payload: impl Into<MessagePayload>) -> Self {
-        let to_id = to.into();
+    pub fn system(to: AgentId, payload: impl Into<MessagePayload>) -> Self {
         Self {
             id: MessageId::new(),
-            route: Route::System { to: to_id },
+            route: Route::System { to },
             payload: payload.into(),
             metadata: HashMap::new(),
             timestamp: chrono::Utc::now(),

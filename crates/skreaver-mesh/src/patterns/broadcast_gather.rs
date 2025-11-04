@@ -147,9 +147,9 @@ mod tests {
         let bg = BroadcastGather::new(mesh);
 
         let targets = vec![
-            AgentId::from("agent-1"),
-            AgentId::from("agent-2"),
-            AgentId::from("agent-3"),
+            AgentId::new_unchecked("agent-1"),
+            AgentId::new_unchecked("agent-2"),
+            AgentId::new_unchecked("agent-3"),
         ];
 
         let result = bg.multicast(targets, Message::new("test")).await;

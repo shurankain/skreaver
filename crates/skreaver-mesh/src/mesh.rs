@@ -26,7 +26,7 @@ pub type MessageStream = Pin<Box<dyn Stream<Item = MeshResult<Message>> + Send +
 /// async fn example(mesh: impl AgentMesh) -> Result<(), Box<dyn std::error::Error>> {
 ///     // Send point-to-point message
 ///     let msg = Message::new("hello");
-///     mesh.send(&AgentId::from("agent-2"), msg).await?;
+///     mesh.send(&AgentId::new_unchecked("agent-2"), msg).await?;
 ///
 ///     // Broadcast to all agents
 ///     let broadcast = Message::new("announcement");
@@ -214,7 +214,7 @@ mod tests {
     async fn test_mock_mesh_send() {
         let mesh = MockMesh;
         let msg = Message::new("test");
-        let result = mesh.send(&AgentId::from("agent-1"), msg).await;
+        let result = mesh.send(&AgentId::new_unchecked("agent-1"), msg).await;
         assert!(result.is_ok());
     }
 

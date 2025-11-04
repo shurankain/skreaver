@@ -23,8 +23,8 @@ mod redis_tests {
             }
         };
 
-        let sender = AgentId::from("sender");
-        let receiver = AgentId::from("receiver");
+        let sender = AgentId::new_unchecked("sender");
+        let receiver = AgentId::new_unchecked("receiver");
 
         // Register agents
         mesh.register_presence(&sender, 60).await.unwrap();
@@ -56,7 +56,7 @@ mod redis_tests {
             }
         };
 
-        let publisher = AgentId::from("publisher");
+        let publisher = AgentId::new_unchecked("publisher");
         let topic = Topic::from("test-topic");
 
         mesh.register_presence(&publisher, 60).await.unwrap();
@@ -100,8 +100,8 @@ mod redis_tests {
             }
         };
 
-        let agent1 = AgentId::from("agent-1");
-        let agent2 = AgentId::from("agent-2");
+        let agent1 = AgentId::new_unchecked("agent-1");
+        let agent2 = AgentId::new_unchecked("agent-2");
 
         // Register agents
         mesh.register_presence(&agent1, 60).await.unwrap();
@@ -137,7 +137,7 @@ mod redis_tests {
             }
         };
 
-        let receiver = AgentId::from("queue-receiver");
+        let receiver = AgentId::new_unchecked("queue-receiver");
         mesh.register_presence(&receiver, 60).await.unwrap();
 
         // Send multiple messages without receiving
@@ -168,8 +168,8 @@ mod redis_tests {
             }
         };
 
-        let sender = AgentId::from("meta-sender");
-        let receiver = AgentId::from("meta-receiver");
+        let sender = AgentId::new_unchecked("meta-sender");
+        let receiver = AgentId::new_unchecked("meta-receiver");
 
         mesh.register_presence(&sender, 60).await.unwrap();
         mesh.register_presence(&receiver, 60).await.unwrap();
@@ -201,8 +201,8 @@ mod redis_tests {
             }
         };
 
-        let requester = AgentId::from("requester");
-        let responder = AgentId::from("responder");
+        let requester = AgentId::new_unchecked("requester");
+        let responder = AgentId::new_unchecked("responder");
 
         mesh.register_presence(&requester, 60).await.unwrap();
         mesh.register_presence(&responder, 60).await.unwrap();

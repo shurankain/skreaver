@@ -224,7 +224,7 @@ mod tests {
         let request = Message::new("test");
         let result = rr
             .request(
-                &AgentId::from("agent-1"),
+                &AgentId::new_unchecked("agent-1"),
                 request,
                 Some(Duration::from_millis(100)),
             )
@@ -243,7 +243,7 @@ mod tests {
         tokio::spawn(async move {
             let _ = rr_clone
                 .request(
-                    &AgentId::from("agent-1"),
+                    &AgentId::new_unchecked("agent-1"),
                     Message::new("test"),
                     Some(Duration::from_secs(10)),
                 )

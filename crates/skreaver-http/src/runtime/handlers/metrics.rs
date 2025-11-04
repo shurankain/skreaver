@@ -36,10 +36,25 @@ pub async fn get_agent_queue_metrics<T: ToolRegistry + Clone + Send + Sync>(
     State(runtime): State<HttpAgentRuntime<T>>,
     Path(agent_id): Path<String>,
 ) -> Result<Json<QueueMetricsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Parse and verify agent ID
+    let parsed_id = match skreaver_core::AgentId::parse(&agent_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "invalid_agent_id".to_string(),
+                    message: format!("Invalid agent ID: {}", e),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
     // Verify agent exists
     {
         let agents = runtime.agents.read().await;
-        if !agents.contains_key(&agent_id) {
+        if !agents.contains_key(&parsed_id) {
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
