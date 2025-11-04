@@ -17,16 +17,15 @@ use uuid::Uuid;
 mod config;
 mod error;
 mod metrics;
-mod request;
 mod queue;
+mod request;
 
 // Public re-exports
 pub use config::{BackpressureConfig, BackpressureMode, RequestPriority};
 pub use error::BackpressureError;
 pub use metrics::QueueMetrics;
 pub use request::{
-    Completed, Failed, Processing, Queued, QueuedRequest, Request, ResponseReceiver,
-    ResponseSender,
+    Completed, Failed, Processing, Queued, QueuedRequest, Request, ResponseReceiver, ResponseSender,
 };
 
 // Internal imports

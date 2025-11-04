@@ -2,7 +2,7 @@
 
 use rusqlite::{Connection, params};
 
-use skreaver_core::error::{MemoryError, MemoryErrorKind, MemoryBackend};
+use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 
 use crate::admin::{AppliedMigration, MigrationStatus};
 

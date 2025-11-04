@@ -11,7 +11,7 @@ pub use tokens::{AccessToken, JwtToken, RefreshToken, Token, TokenPair};
 
 use super::{AuthError, AuthMethod, AuthResult, Principal, TokenBlacklist};
 use chrono::{DateTime, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use std::sync::Arc;
 
 /// JWT Manager for token operations
@@ -431,7 +431,7 @@ mod tests {
     #[tokio::test]
     async fn test_jwt_expiration() {
         use chrono::Duration;
-        use jsonwebtoken::{encode, Header};
+        use jsonwebtoken::{Header, encode};
 
         let config = JwtConfig::default();
         let manager = JwtManager::new(config.clone());
@@ -636,7 +636,7 @@ mod tests {
     async fn test_jwt_revocation_already_expired() {
         use crate::auth::InMemoryBlacklist;
         use chrono::Duration;
-        use jsonwebtoken::{encode, Header};
+        use jsonwebtoken::{Header, encode};
 
         let config = JwtConfig::default();
         let blacklist = Arc::new(InMemoryBlacklist::new());

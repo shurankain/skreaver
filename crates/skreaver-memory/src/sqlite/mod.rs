@@ -13,17 +13,17 @@ use skreaver_core::error::MemoryError;
 use skreaver_core::memory::MemoryKey;
 
 // Module declarations
-pub mod pool;
+mod admin;
 pub mod migration;
+pub mod pool;
 mod reader;
-mod writer;
 mod snapshot;
 mod transaction;
-mod admin;
+mod writer;
 
 // Re-exports for public API
-pub use pool::{SqlitePool, PooledConnection};
-pub use migration::{MigrationEngine, Migration};
+pub use migration::{Migration, MigrationEngine};
+pub use pool::{PooledConnection, SqlitePool};
 
 /// SQLite-based memory backend with all Phase 1.1 features
 pub struct SqliteMemory {
@@ -85,9 +85,9 @@ impl Clone for SqliteMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skreaver_core::memory::{MemoryReader, MemoryUpdate, MemoryWriter};
-    use crate::admin::MemoryAdmin;
     use crate::admin::BackupFormat;
+    use crate::admin::MemoryAdmin;
+    use skreaver_core::memory::{MemoryReader, MemoryUpdate, MemoryWriter};
     use tempfile::tempdir;
 
     #[test]

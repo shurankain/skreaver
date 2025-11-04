@@ -29,8 +29,8 @@ use std::marker::PhantomData;
 
 use super::core::Message;
 use super::types::{
-    AnonymousRoute, BroadcastRoute, MessageId, MessageMetadata, MessagePayload, Route,
-    SystemRoute, UnicastRoute, Unrouted,
+    AnonymousRoute, BroadcastRoute, MessageId, MessageMetadata, MessagePayload, Route, SystemRoute,
+    UnicastRoute, Unrouted,
 };
 use crate::types::AgentId;
 

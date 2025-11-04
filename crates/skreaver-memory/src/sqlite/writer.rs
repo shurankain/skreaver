@@ -2,7 +2,7 @@
 
 use rusqlite::params;
 
-use skreaver_core::error::{MemoryError, MemoryErrorKind, MemoryBackend};
+use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 use skreaver_core::memory::{MemoryKey, MemoryUpdate, MemoryWriter};
 
 use super::SqliteMemory;

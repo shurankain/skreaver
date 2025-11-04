@@ -4,7 +4,9 @@
 //! to enforce compile-time guarantees about logging, redaction, and stack trace settings.
 
 use super::logging::{LogFormat, LogLevel};
-use super::types::{LogAll, LogSelective, NoRedaction, NoStackTraces, RedactSecrets, WithStackTraces};
+use super::types::{
+    LogAll, LogSelective, NoRedaction, NoStackTraces, RedactSecrets, WithStackTraces,
+};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 

@@ -11,9 +11,7 @@ use axum::{
 };
 use serde_json::{Value, json};
 use skreaver_core::InMemoryMemory;
-use skreaver_core::{
-    Agent, ExecutionResult, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall,
-};
+use skreaver_core::{Agent, ExecutionResult, MemoryReader, MemoryUpdate, MemoryWriter, ToolCall};
 use skreaver_tools::InMemoryToolRegistry;
 use tower::ServiceExt;
 
@@ -722,8 +720,7 @@ async fn test_public_endpoint_no_auth_required() {
         .unwrap();
     let response = app.clone().oneshot(request).await.unwrap();
     assert!(
-        response.status() == StatusCode::OK
-            || response.status() == StatusCode::SERVICE_UNAVAILABLE,
+        response.status() == StatusCode::OK || response.status() == StatusCode::SERVICE_UNAVAILABLE,
         "Endpoint /ready should be accessible without auth (got {})",
         response.status()
     );

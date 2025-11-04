@@ -1,8 +1,8 @@
 //! Code templates for agent and tool generation
 
+use super::loader::TemplateLoader;
 use std::fmt;
 use std::str::FromStr;
-use super::loader::TemplateLoader;
 
 /// Agent template types
 #[derive(Debug, Clone, Copy)]
@@ -26,7 +26,6 @@ impl FromStr for AgentTemplate {
 }
 
 impl AgentTemplate {
-
     /// Get the template identifier string
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -73,7 +72,6 @@ impl FromStr for ToolTemplate {
 }
 
 impl ToolTemplate {
-
     pub fn all() -> Vec<(&'static str, &'static str)> {
         vec![
             (

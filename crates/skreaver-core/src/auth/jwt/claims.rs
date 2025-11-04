@@ -1,7 +1,7 @@
 //! JWT claims structures and validation
 
 use super::config::JwtConfig;
-use crate::auth::{rbac::Role, Principal};
+use crate::auth::{Principal, rbac::Role};
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

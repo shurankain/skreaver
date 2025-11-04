@@ -3,10 +3,7 @@
 //! This module provides configuration structures for the HTTP runtime,
 //! including rate limiting, backpressure, connection limits, and observability settings.
 
-use crate::runtime::{
-    backpressure::BackpressureConfig,
-    rate_limit::RateLimitConfig,
-};
+use crate::runtime::{backpressure::BackpressureConfig, rate_limit::RateLimitConfig};
 use skreaver_observability::ObservabilityConfig;
 use std::path::PathBuf;
 

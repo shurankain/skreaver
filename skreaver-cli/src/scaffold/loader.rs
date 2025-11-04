@@ -37,73 +37,73 @@ impl TemplateLoader {
         // Register agent templates
         hbs.register_template_string(
             "agents/simple/cargo",
-            include_str!("../../templates/agents/simple/Cargo.toml.hbs")
+            include_str!("../../templates/agents/simple/Cargo.toml.hbs"),
         )?;
         hbs.register_template_string(
             "agents/simple/main",
-            include_str!("../../templates/agents/simple/src/main.rs.hbs")
+            include_str!("../../templates/agents/simple/src/main.rs.hbs"),
         )?;
 
         hbs.register_template_string(
             "agents/reasoning/cargo",
-            include_str!("../../templates/agents/reasoning/Cargo.toml.hbs")
+            include_str!("../../templates/agents/reasoning/Cargo.toml.hbs"),
         )?;
         hbs.register_template_string(
             "agents/reasoning/main",
-            include_str!("../../templates/agents/reasoning/src/main.rs.hbs")
+            include_str!("../../templates/agents/reasoning/src/main.rs.hbs"),
         )?;
         hbs.register_template_string(
             "agents/reasoning/tools_mod",
-            include_str!("../../templates/agents/reasoning/src/tools/mod.rs.hbs")
+            include_str!("../../templates/agents/reasoning/src/tools/mod.rs.hbs"),
         )?;
 
         hbs.register_template_string(
             "agents/multi-tool/cargo",
-            include_str!("../../templates/agents/multi-tool/Cargo.toml.hbs")
+            include_str!("../../templates/agents/multi-tool/Cargo.toml.hbs"),
         )?;
         hbs.register_template_string(
             "agents/multi-tool/main",
-            include_str!("../../templates/agents/multi-tool/src/main.rs.hbs")
+            include_str!("../../templates/agents/multi-tool/src/main.rs.hbs"),
         )?;
 
         // Register tool templates
         hbs.register_template_string(
             "tools/http_client",
-            include_str!("../../templates/tools/http_client.rs.hbs")
+            include_str!("../../templates/tools/http_client.rs.hbs"),
         )?;
         hbs.register_template_string(
             "tools/database",
-            include_str!("../../templates/tools/database.rs.hbs")
+            include_str!("../../templates/tools/database.rs.hbs"),
         )?;
         hbs.register_template_string(
             "tools/custom",
-            include_str!("../../templates/tools/custom.rs.hbs")
+            include_str!("../../templates/tools/custom.rs.hbs"),
         )?;
         hbs.register_template_string(
             "tools/calculator",
-            include_str!("../../templates/tools/calculator.rs.hbs")
+            include_str!("../../templates/tools/calculator.rs.hbs"),
         )?;
         hbs.register_template_string(
             "tools/filesystem",
-            include_str!("../../templates/tools/filesystem.rs.hbs")
+            include_str!("../../templates/tools/filesystem.rs.hbs"),
         )?;
         hbs.register_template_string(
             "tools/api_client",
-            include_str!("../../templates/tools/api_client.rs.hbs")
+            include_str!("../../templates/tools/api_client.rs.hbs"),
         )?;
         hbs.register_template_string(
             "tools/workflow",
-            include_str!("../../templates/tools/workflow.rs.hbs")
+            include_str!("../../templates/tools/workflow.rs.hbs"),
         )?;
 
         // Register project templates
         hbs.register_template_string(
             "project/readme",
-            include_str!("../../templates/project/README.md.hbs")
+            include_str!("../../templates/project/README.md.hbs"),
         )?;
         hbs.register_template_string(
             "project/gitignore",
-            include_str!("../../templates/project/.gitignore")
+            include_str!("../../templates/project/.gitignore"),
         )?;
 
         Ok(Self { handlebars: hbs })
@@ -111,9 +111,7 @@ impl TemplateLoader {
 
     /// Get the global template loader instance
     pub fn global() -> &'static Self {
-        TEMPLATE_LOADER.get_or_init(|| {
-            Self::new().expect("Failed to initialize template loader")
-        })
+        TEMPLATE_LOADER.get_or_init(|| Self::new().expect("Failed to initialize template loader"))
     }
 
     /// Render a template with the given name and data
@@ -124,7 +122,11 @@ impl TemplateLoader {
     }
 
     /// Render agent Cargo.toml
-    pub fn render_agent_cargo(&self, agent_type: &str, name: &str) -> Result<String, TemplateError> {
+    pub fn render_agent_cargo(
+        &self,
+        agent_type: &str,
+        name: &str,
+    ) -> Result<String, TemplateError> {
         let template_name = format!("agents/{}/cargo", agent_type);
         self.render(&template_name, &json!({ "name": name }))
     }
@@ -148,10 +150,13 @@ impl TemplateLoader {
 
     /// Render project README
     pub fn render_readme(&self, name: &str, template: &str) -> Result<String, TemplateError> {
-        self.render("project/readme", &json!({
-            "name": name,
-            "template": template
-        }))
+        self.render(
+            "project/readme",
+            &json!({
+                "name": name,
+                "template": template
+            }),
+        )
     }
 
     /// Render project .gitignore
