@@ -3,6 +3,7 @@
 //! This module provides authentication middleware for the HTTP runtime,
 //! supporting JWT tokens and API keys for secure agent access.
 
+use crate::runtime::security::SecretKey;
 use axum::{
     Json,
     extract::Request,
@@ -16,21 +17,23 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// JWT secret key - MUST be set via SKREAVER_JWT_SECRET environment variable in production
-/// In debug/test builds, uses a default test secret for convenience
-static JWT_SECRET: Lazy<String> = Lazy::new(|| {
-    std::env::var("SKREAVER_JWT_SECRET").unwrap_or_else(|_| {
-        // In test/debug builds, provide a default. In release builds, panic.
-        #[cfg(any(test, debug_assertions))]
-        {
-            "test-secret-for-development-only-generate-real-secret-for-production".to_string()
-        }
+/// JWT secret key - uses SecretKey with graceful fallback in debug builds
+/// In production, uses environment variable or generates random key (invalidates existing tokens)
+static JWT_SECRET: Lazy<SecretKey> = Lazy::new(|| {
+    #[cfg(any(test, debug_assertions))]
+    {
+        SecretKey::from_env_or_default(
+            "SKREAVER_JWT_SECRET",
+            Some("test-secret-for-development-only-generate-real-secret-for-production"),
+        )
+    }
 
-        #[cfg(not(any(test, debug_assertions)))]
-        {
-            panic!("SKREAVER_JWT_SECRET environment variable must be set in production. Generate with: openssl rand -base64 32")
-        }
-    })
+    #[cfg(not(any(test, debug_assertions)))]
+    {
+        // In production: load from env or generate random (with warning)
+        // This prevents panics but will invalidate existing tokens if env var missing
+        SecretKey::from_env_or_default("SKREAVER_JWT_SECRET", None)
+    }
 });
 
 /// API keys storage - Hardcoded test key in debug builds, empty in release builds
