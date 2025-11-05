@@ -12,45 +12,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::runtime::{
     agent_instance::AgentExecutionError, auth_token::AuthTokenError, rate_limit::RateLimitError,
 };
 use skreaver_core::IdValidationError;
 
-/// Request ID for distributed tracing and error correlation
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct RequestId(String);
-
-impl RequestId {
-    /// Generate a new random request ID
-    pub fn new() -> Self {
-        Self(Uuid::new_v4().to_string())
-    }
-
-    /// Create from existing string (for header extraction)
-    pub fn from_string(s: String) -> Self {
-        Self(s)
-    }
-
-    /// Get as string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Default for RequestId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for RequestId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+// Re-export unified RequestId from skreaver-core
+pub use skreaver_core::RequestId;
 
 /// Extension for storing RequestId in request context
 #[derive(Clone, Debug)]
@@ -66,8 +35,8 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
         .headers()
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
-        .map(|s| RequestId::from_string(s.to_string()))
-        .unwrap_or_default();
+        .map(|s| RequestId::new_unchecked(s.to_string()))
+        .unwrap_or_else(RequestId::generate);
 
     // Store in extensions
     request

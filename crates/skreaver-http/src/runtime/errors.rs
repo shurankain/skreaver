@@ -15,40 +15,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
-/// Unique identifier for tracking requests across the system
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct RequestId(String);
-
-impl RequestId {
-    /// Create a new unique request ID
-    pub fn new() -> Self {
-        Self(Uuid::new_v4().to_string())
-    }
-
-    /// Create from an existing string (useful for parsing from headers)
-    pub fn from_string(id: String) -> Self {
-        Self(id)
-    }
-
-    /// Get the underlying string value
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Default for RequestId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for RequestId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+// Re-export unified RequestId from skreaver-core
+pub use skreaver_core::RequestId;
 
 /// Extension for storing RequestId in Axum request extensions
 ///
@@ -81,8 +50,8 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
         .headers()
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
-        .map(|s| RequestId::from_string(s.to_string()))
-        .unwrap_or_default();
+        .map(|s| RequestId::new_unchecked(s.to_string()))
+        .unwrap_or_else(RequestId::generate);
 
     // Store in extensions for handlers and error responses
     request
@@ -521,8 +490,8 @@ mod tests {
 
     #[test]
     fn test_request_id_creation() {
-        let id1 = RequestId::new();
-        let id2 = RequestId::new();
+        let id1 = RequestId::generate();
+        let id2 = RequestId::generate();
 
         assert_ne!(id1, id2);
         assert!(!id1.as_str().is_empty());
@@ -530,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_error_response_creation() {
-        let request_id = RequestId::new();
+        let request_id = RequestId::generate();
         let error = RuntimeError::AgentNotFound {
             agent_id: "test-agent".to_string(),
             request_id: request_id.clone(),
@@ -545,7 +514,7 @@ mod tests {
 
     #[test]
     fn test_status_code_mapping() {
-        let request_id = RequestId::new();
+        let request_id = RequestId::generate();
 
         let not_found = RuntimeError::AgentNotFound {
             agent_id: "test".to_string(),
@@ -570,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_error_details() {
-        let request_id = RequestId::new();
+        let request_id = RequestId::generate();
         let error = RuntimeError::InvalidInput {
             field: "agent_id".to_string(),
             reason: "must not be empty".to_string(),
