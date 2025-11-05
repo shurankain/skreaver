@@ -1,5 +1,6 @@
 //! Security error types and handling
 
+use crate::identifiers::{AgentId, ToolId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -75,13 +76,16 @@ pub enum SecurityError {
 }
 
 /// Security violation details for audit logging
+///
+/// **Security**: As of v0.6.0, uses validated `AgentId` and `ToolId` types
+/// to prevent path traversal and injection attacks in audit logs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityViolation {
     pub violation_type: String,
     pub severity: ViolationSeverity,
     pub description: String,
-    pub agent_id: String,
-    pub tool_name: String,
+    pub agent_id: AgentId,
+    pub tool_name: ToolId,
     pub input_hash: Option<String>,
     pub timestamp: OffsetDateTime,
     pub remediation: Option<String>,
@@ -139,8 +143,8 @@ impl From<SecurityError> for SecurityViolation {
             violation_type,
             severity,
             description,
-            agent_id: "unknown".to_string(),  // Will be set by caller
-            tool_name: "unknown".to_string(), // Will be set by caller
+            agent_id: AgentId::new_unchecked("unknown"),  // Will be set by caller
+            tool_name: ToolId::new_unchecked("unknown"), // Will be set by caller
             input_hash: None,
             timestamp: OffsetDateTime::now_utc(),
             remediation: None,
@@ -149,7 +153,13 @@ impl From<SecurityError> for SecurityViolation {
 }
 
 impl SecurityViolation {
-    pub fn with_context(mut self, agent_id: String, tool_name: String) -> Self {
+    /// Set the security context (agent and tool) for this violation
+    ///
+    /// # Security
+    ///
+    /// As of v0.6.0, requires validated `AgentId` and `ToolId` types,
+    /// preventing path traversal and injection attacks in audit logs.
+    pub fn with_context(mut self, agent_id: AgentId, tool_name: ToolId) -> Self {
         self.agent_id = agent_id;
         self.tool_name = tool_name;
         self
