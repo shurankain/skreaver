@@ -26,10 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Connected to Redis mesh");
 
     // Agent IDs
-    let coordinator_id = AgentId::from("coordinator");
-    let worker1_id = AgentId::from("worker-1");
-    let worker2_id = AgentId::from("worker-2");
-    let worker3_id = AgentId::from("worker-3");
+    let coordinator_id = AgentId::new_unchecked("coordinator");
+    let worker1_id = AgentId::new_unchecked("worker-1");
+    let worker2_id = AgentId::new_unchecked("worker-2");
+    let worker3_id = AgentId::new_unchecked("worker-3");
 
     // Register agents
     mesh.register_presence(&coordinator_id, 60).await?;

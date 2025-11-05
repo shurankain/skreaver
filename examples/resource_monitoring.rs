@@ -18,9 +18,12 @@
 //! 5. Resource limit enforcement
 //! 6. Automatic limit violation detection
 
-use skreaver_core::security::{
-    SecurityContext, SecurityPolicy,
-    limits::{ResourceLimits, ResourceTracker},
+use skreaver_core::{
+    AgentId, ToolId,
+    security::{
+        SecurityContext, SecurityPolicy,
+        limits::{ResourceLimits, ResourceTracker},
+    },
 };
 use std::thread;
 use std::time::Duration;
@@ -64,7 +67,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 3: Monitor current process
     print_banner("Step 3: Monitor Current Process Resources");
     let policy = create_default_policy();
-    let context = SecurityContext::new("demo_agent".to_string(), "demo_tool".to_string(), policy);
+    let context = SecurityContext::new(
+        AgentId::new_unchecked("demo_agent"),
+        ToolId::new_unchecked("demo_tool"),
+        policy
+    );
 
     // Check current limits
     match tracker.check_limits(&context) {
@@ -139,8 +146,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a new context for the strict tracker
     let policy2 = create_default_policy();
     let context2 = SecurityContext::new(
-        "strict_agent".to_string(),
-        "strict_tool".to_string(),
+        AgentId::new_unchecked("strict_agent"),
+        ToolId::new_unchecked("strict_tool"),
         policy2,
     );
 
@@ -166,8 +173,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check if we exceed the limit
     let policy3 = create_default_policy();
     let context3 = SecurityContext::new(
-        "strict_agent".to_string(),
-        "strict_tool".to_string(),
+        AgentId::new_unchecked("strict_agent"),
+        ToolId::new_unchecked("strict_tool"),
         policy3,
     );
 

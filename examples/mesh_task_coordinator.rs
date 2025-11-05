@@ -46,9 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn 3 worker agents
     let worker_ids = vec![
-        AgentId::from("worker-1"),
-        AgentId::from("worker-2"),
-        AgentId::from("worker-3"),
+        AgentId::new_unchecked("worker-1"),
+        AgentId::new_unchecked("worker-2"),
+        AgentId::new_unchecked("worker-3"),
     ];
 
     for worker_id in worker_ids.clone() {
