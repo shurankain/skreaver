@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let context = SecurityContext::new(
         AgentId::new_unchecked("demo_agent"),
         ToolId::new_unchecked("demo_tool"),
-        policy
+        policy,
     );
 
     // Check current limits
