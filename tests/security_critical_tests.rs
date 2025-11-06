@@ -217,7 +217,7 @@ fn test_boundary_value_validation() {
 
     // Test maximum length values (MemoryKey=128, ToolName=64)
     let max_length_key = "a".repeat(128);
-    let max_length_tool = "a".repeat(64);
+    let max_length_tool = "a".repeat(128); // ToolName now uses unified ToolId with max 128
 
     // These should work at the boundary
     assert!(MemoryKey::new(&max_length_key).is_ok());
@@ -225,7 +225,7 @@ fn test_boundary_value_validation() {
 
     // These should fail beyond the boundary
     let too_long_key = "a".repeat(129);
-    let too_long_tool = "a".repeat(65);
+    let too_long_tool = "a".repeat(129); // ToolName max is now 128
 
     assert!(MemoryKey::new(&too_long_key).is_err());
     assert!(ToolName::new(&too_long_tool).is_err());

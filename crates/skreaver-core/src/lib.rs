@@ -34,7 +34,7 @@ pub use collections::{
 };
 
 // Re-export identifier types
-pub use identifiers::{AgentId, IdValidationError, RequestId, SessionId, ToolId};
+pub use identifiers::{AgentId, IdValidationError, PrincipalId, RequestId, SessionId, ToolId};
 
 // Re-export auth types
 pub use auth::{

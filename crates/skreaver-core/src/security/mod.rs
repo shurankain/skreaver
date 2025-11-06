@@ -34,10 +34,13 @@ pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
 #[cfg(feature = "security-basic")]
 pub use validation::{DomainValidator, InputValidator, PathValidator};
 
-use crate::identifiers::{AgentId, SessionId, ToolId};
+use crate::identifiers::{AgentId, PrincipalId, SessionId, ToolId};
 use serde::{Deserialize, Serialize};
 
 /// Security context for operations
+///
+/// **Security**: As of v0.6.0, uses validated `PrincipalId` instead of raw `String`
+/// to prevent injection attacks and audit log corruption.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityContext {
     /// Unique session identifier
@@ -46,8 +49,8 @@ pub struct SecurityContext {
     pub agent_id: AgentId,
     /// Tool being used
     pub tool_name: ToolId,
-    /// User or service identity
-    pub principal: Option<String>,
+    /// User or service identity (validated to prevent injection attacks)
+    pub principal: Option<PrincipalId>,
     /// Security policy to apply
     pub policy: SecurityPolicy,
     /// Resource limits for this context
@@ -66,7 +69,35 @@ impl SecurityContext {
         }
     }
 
-    pub fn with_principal(mut self, principal: String) -> Self {
+    /// Set the principal (user/service identity) for this security context
+    ///
+    /// # Security
+    ///
+    /// As of v0.6.0, requires a validated `PrincipalId` to prevent injection attacks.
+    /// The principal is validated to block:
+    /// - SQL injection patterns
+    /// - Path traversal sequences
+    /// - Shell metacharacters
+    /// - LDAP injection attempts
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use skreaver_core::{SecurityContext, PrincipalId, AgentId, ToolId, SecurityPolicy};
+    ///
+    /// let policy = SecurityPolicy {
+    ///     fs_policy: Default::default(),
+    ///     http_policy: Default::default(),
+    ///     network_policy: Default::default(),
+    /// };
+    ///
+    /// let context = SecurityContext::new(
+    ///     AgentId::new_unchecked("agent-1"),
+    ///     ToolId::new_unchecked("calculator"),
+    ///     policy
+    /// ).with_principal(PrincipalId::new_unchecked("alice@example.com"));
+    /// ```
+    pub fn with_principal(mut self, principal: PrincipalId) -> Self {
         self.principal = Some(principal);
         self
     }

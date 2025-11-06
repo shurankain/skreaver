@@ -347,6 +347,172 @@ impl TryFrom<String> for RequestId {
     }
 }
 
+/// Validated principal identifier for authentication and authorization
+///
+/// Represents a user or service identity with security-first validation to prevent
+/// injection attacks and audit log corruption.
+///
+/// # Security
+///
+/// `PrincipalId` enforces strict validation rules:
+/// - Non-empty, maximum 256 characters (reasonable for emails/usernames)
+/// - Only alphanumeric characters plus `@`, `.`, `-`, `_` (common in identities)
+/// - No path traversal sequences (`../`, `./`)
+/// - No SQL injection patterns (`;`, `--`, `/*`)
+/// - No shell metacharacters
+///
+/// # Examples
+///
+/// ```rust
+/// use skreaver_core::PrincipalId;
+///
+/// // Valid principals
+/// let user = PrincipalId::parse("user@example.com").unwrap();
+/// let service = PrincipalId::parse("service-account-123").unwrap();
+/// let system = PrincipalId::parse("system.admin").unwrap();
+///
+/// // Invalid principals (injection attempts blocked)
+/// assert!(PrincipalId::parse("admin'; DROP TABLE users--").is_err());
+/// assert!(PrincipalId::parse("../etc/passwd").is_err());
+/// assert!(PrincipalId::parse("user; rm -rf /").is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct PrincipalId(String);
+
+impl PrincipalId {
+    /// Maximum allowed length for principal identifiers (reasonable for emails/usernames)
+    pub const MAX_LENGTH: usize = 256;
+
+    /// Parse and validate a principal identifier
+    ///
+    /// # Validation Rules
+    ///
+    /// - Non-empty (minimum 1 character)
+    /// - Maximum 256 characters
+    /// - Only alphanumeric characters, `@`, `.`, `-`, `_`
+    /// - No path traversal sequences (`../`, `./`)
+    /// - No leading or trailing whitespace
+    ///
+    /// # Security
+    ///
+    /// This validation prevents:
+    /// - SQL injection: `"admin'; DROP TABLE users--"`
+    /// - Path traversal: `"../../../etc/passwd"`
+    /// - Shell injection: `"user; rm -rf /"`
+    /// - LDAP injection: `"*)(uid=*))(|(uid=*"`
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use skreaver_core::PrincipalId;
+    ///
+    /// let principal = PrincipalId::parse("alice@example.com")?;
+    /// assert_eq!(principal.as_str(), "alice@example.com");
+    /// # Ok::<(), skreaver_core::IdValidationError>(())
+    /// ```
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
+        let id = id.as_ref();
+
+        // Check for empty
+        if id.is_empty() {
+            return Err(IdValidationError::Empty);
+        }
+
+        // Check for whitespace only
+        if id.trim().is_empty() {
+            return Err(IdValidationError::WhitespaceOnly);
+        }
+
+        // Check for leading/trailing whitespace
+        if id != id.trim() {
+            return Err(IdValidationError::LeadingTrailingWhitespace);
+        }
+
+        // Check length
+        if id.len() > Self::MAX_LENGTH {
+            return Err(IdValidationError::TooLong {
+                length: id.len(),
+                max: Self::MAX_LENGTH,
+            });
+        }
+
+        // Check for path traversal
+        if id.contains("../") || id.contains("./") || id.contains("..\\") || id.contains(".\\") {
+            return Err(IdValidationError::PathTraversal);
+        }
+
+        // Check for SQL injection patterns
+        if id.contains(';') || id.contains("--") || id.contains("/*") || id.contains("*/") {
+            return Err(IdValidationError::InvalidCharacters);
+        }
+
+        // Check for shell metacharacters
+        if id
+            .chars()
+            .any(|c| matches!(c, '|' | '&' | '`' | '$' | '>' | '<' | '\\' | '\n' | '\r'))
+        {
+            return Err(IdValidationError::InvalidCharacters);
+        }
+
+        // Check valid characters: alphanumeric + @ . - _
+        if !id
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '@' | '.' | '-' | '_'))
+        {
+            return Err(IdValidationError::InvalidCharacters);
+        }
+
+        Ok(Self(id.to_string()))
+    }
+
+    /// Get the principal ID as a string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Create a principal ID without validation (for testing only)
+    ///
+    /// # Safety
+    ///
+    /// This bypasses all security validation. Only use for:
+    /// - Testing with known-good values
+    /// - Migration from legacy systems (validate externally)
+    /// - System-generated principals (ensure generation is secure)
+    #[doc(hidden)]
+    pub fn new_unchecked(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+impl fmt::Display for PrincipalId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for PrincipalId {
+    type Err = IdValidationError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl From<PrincipalId> for String {
+    fn from(id: PrincipalId) -> Self {
+        id.0
+    }
+}
+
+impl TryFrom<String> for PrincipalId {
+    type Error = IdValidationError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,6 +572,129 @@ mod tests {
     fn test_display_trait() {
         let agent = AgentId::parse("my-agent").unwrap();
         assert_eq!(format!("{}", agent), "my-agent");
+    }
+
+    // PrincipalId tests
+    #[test]
+    fn test_principal_id_valid() {
+        // Valid email-like principals
+        assert!(PrincipalId::parse("user@example.com").is_ok());
+        assert!(PrincipalId::parse("alice.bob@company.org").is_ok());
+
+        // Valid username-like principals
+        assert!(PrincipalId::parse("alice").is_ok());
+        assert!(PrincipalId::parse("user-123").is_ok());
+        assert!(PrincipalId::parse("service_account").is_ok());
+
+        // Valid system/service accounts
+        assert!(PrincipalId::parse("system.admin").is_ok());
+        assert!(PrincipalId::parse("service-worker-1").is_ok());
+        assert!(PrincipalId::parse("bot_assistant").is_ok());
+    }
+
+    #[test]
+    fn test_principal_id_sql_injection_blocked() {
+        // SQL injection attempts should be blocked
+        assert!(PrincipalId::parse("admin'; DROP TABLE users--").is_err());
+        assert!(PrincipalId::parse("user'; DELETE FROM *--").is_err());
+        assert!(PrincipalId::parse("alice;").is_err());
+        assert!(PrincipalId::parse("user--comment").is_err());
+        assert!(PrincipalId::parse("admin/*comment*/").is_err());
+        assert!(PrincipalId::parse("user*/malicious/*").is_err());
+    }
+
+    #[test]
+    fn test_principal_id_path_traversal_blocked() {
+        // Path traversal attempts should be blocked
+        assert!(PrincipalId::parse("../etc/passwd").is_err());
+        assert!(PrincipalId::parse("../../root").is_err());
+        assert!(PrincipalId::parse("./config").is_err());
+        assert!(PrincipalId::parse("user/../admin").is_err());
+        assert!(PrincipalId::parse("..\\windows\\system32").is_err());
+    }
+
+    #[test]
+    fn test_principal_id_shell_injection_blocked() {
+        // Shell metacharacters should be blocked
+        assert!(PrincipalId::parse("user; rm -rf /").is_err());
+        assert!(PrincipalId::parse("alice | cat /etc/passwd").is_err());
+        assert!(PrincipalId::parse("user && whoami").is_err());
+        assert!(PrincipalId::parse("user`whoami`").is_err());
+        assert!(PrincipalId::parse("user$var").is_err());
+        assert!(PrincipalId::parse("user > file").is_err());
+        assert!(PrincipalId::parse("user < file").is_err());
+        assert!(PrincipalId::parse("user\\escape").is_err());
+    }
+
+    #[test]
+    fn test_principal_id_empty_invalid() {
+        assert!(PrincipalId::parse("").is_err());
+        assert!(PrincipalId::parse("   ").is_err());
+        assert!(PrincipalId::parse("\t").is_err());
+        assert!(PrincipalId::parse("\n").is_err());
+    }
+
+    #[test]
+    fn test_principal_id_whitespace_invalid() {
+        // Leading/trailing whitespace not allowed
+        assert!(PrincipalId::parse(" alice").is_err());
+        assert!(PrincipalId::parse("alice ").is_err());
+        assert!(PrincipalId::parse(" alice ").is_err());
+
+        // Embedded newlines/carriage returns not allowed
+        assert!(PrincipalId::parse("user\nname").is_err());
+        assert!(PrincipalId::parse("user\rname").is_err());
+    }
+
+    #[test]
+    fn test_principal_id_too_long() {
+        let long_principal = "a".repeat(257);
+        assert!(PrincipalId::parse(long_principal).is_err());
+
+        // 256 should be ok
+        let max_principal = "a".repeat(256);
+        assert!(PrincipalId::parse(max_principal).is_ok());
+    }
+
+    #[test]
+    fn test_principal_id_invalid_characters() {
+        // Characters outside allowed set
+        assert!(PrincipalId::parse("user#tag").is_err());
+        assert!(PrincipalId::parse("user%percent").is_err());
+        assert!(PrincipalId::parse("user*wildcard").is_err());
+        assert!(PrincipalId::parse("user(paren").is_err());
+        assert!(PrincipalId::parse("user)paren").is_err());
+        assert!(PrincipalId::parse("user=equals").is_err());
+        assert!(PrincipalId::parse("user+plus").is_err());
+        assert!(PrincipalId::parse("user[bracket").is_err());
+        assert!(PrincipalId::parse("user{brace").is_err());
+    }
+
+    #[test]
+    fn test_principal_id_display() {
+        let principal = PrincipalId::parse("alice@example.com").unwrap();
+        assert_eq!(format!("{}", principal), "alice@example.com");
+        assert_eq!(principal.as_str(), "alice@example.com");
+    }
+
+    #[test]
+    fn test_principal_id_serde() {
+        use serde_json;
+
+        let principal = PrincipalId::parse("user@example.com").unwrap();
+        let json = serde_json::to_string(&principal).unwrap();
+        assert_eq!(json, "\"user@example.com\"");
+
+        let deserialized: PrincipalId = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, principal);
+    }
+
+    #[test]
+    fn test_principal_id_ldap_injection_blocked() {
+        // LDAP injection attempts
+        assert!(PrincipalId::parse("*").is_err());
+        assert!(PrincipalId::parse("user*").is_err());
+        assert!(PrincipalId::parse("*)(uid=*))(|(uid=*").is_err());
     }
 
     #[test]
