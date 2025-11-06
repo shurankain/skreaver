@@ -143,7 +143,7 @@ impl From<SecurityError> for SecurityViolation {
             violation_type,
             severity,
             description,
-            agent_id: AgentId::new_unchecked("unknown"),  // Will be set by caller
+            agent_id: AgentId::new_unchecked("unknown"), // Will be set by caller
             tool_name: ToolId::new_unchecked("unknown"), // Will be set by caller
             input_hash: None,
             timestamp: OffsetDateTime::now_utc(),
