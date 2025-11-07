@@ -87,24 +87,26 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
     // Start background task to execute agent with input if provided
     if let Some(input) = params.input {
         let runtime_clone = runtime.clone();
-        let agent_id_clone = agent_id.clone(); // Keep String for SSE events
-        let parsed_id_clone = parsed_id.clone(); // Use AgentId for HashMap lookup
+        // Use Arc<str> to avoid multiple String clones - just increment refcount
+        let agent_id_arc: Arc<str> = Arc::from(agent_id.as_str());
+        let parsed_id_clone = parsed_id.clone(); // AgentId is small, single clone OK
         let debug = params.debug;
         let timeout = params.timeout_seconds.unwrap_or(300); // Default 5 minutes
 
         tokio::spawn(async move {
-            let agent_id_for_timeout = agent_id_clone.clone();
+            let agent_id_for_timeout = Arc::clone(&agent_id_arc);
 
             // Apply timeout to the entire operation
             let execution_result =
                 tokio::time::timeout(std::time::Duration::from_secs(timeout), async {
+                    let agent_id_for_streaming = Arc::clone(&agent_id_arc);
                     executor
-                        .execute_with_streaming(agent_id_clone.clone(), |exec| async move {
+                        .execute_with_streaming(agent_id_arc.to_string(), |exec| async move {
                             if debug {
-                                exec.thinking(&agent_id_clone, "Starting agent processing")
+                                exec.thinking(&agent_id_for_streaming, "Starting agent processing")
                                     .await;
                                 exec.partial(
-                                    &agent_id_clone,
+                                    &agent_id_for_streaming,
                                     &format!(
                                         "Debug: Processing input of {} characters",
                                         input.len()
@@ -113,7 +115,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
                                 .await;
                             }
 
-                            exec.thinking(&agent_id_clone, "Processing observation")
+                            exec.thinking(&agent_id_for_streaming, "Processing observation")
                                 .await;
 
                             // Access the agent instance here
@@ -130,7 +132,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
 
                             if debug {
                                 exec.partial(
-                                    &agent_id_clone,
+                                    &agent_id_for_streaming,
                                     &format!(
                                         "Debug: Generated response of {} characters",
                                         response.len()
@@ -139,7 +141,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
                                 .await;
                             }
 
-                            exec.partial(&agent_id_clone, &response).await;
+                            exec.partial(&agent_id_for_streaming, &response).await;
                             Ok(response)
                         })
                         .await
@@ -150,7 +152,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
             if execution_result.is_err() {
                 let _ = executor
                     .send_update(streaming::AgentUpdate::Error {
-                        agent_id: agent_id_for_timeout,
+                        agent_id: agent_id_for_timeout.to_string(),
                         error: format!("Operation timed out after {} seconds", timeout),
                         timestamp: chrono::Utc::now(),
                     })
@@ -159,7 +161,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
         });
     } else {
         // Send a status ping for connection health
-        let agent_id_clone = agent_id.clone();
+        let agent_id_arc: Arc<str> = Arc::from(agent_id.as_str());
         tokio::spawn(async move {
             let _ = executor
                 .send_update(streaming::AgentUpdate::Ping {
@@ -170,7 +172,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
             // Send initial status for this agent
             let _ = executor
                 .send_update(streaming::AgentUpdate::Started {
-                    agent_id: agent_id_clone,
+                    agent_id: agent_id_arc.to_string(),
                     timestamp: chrono::Utc::now(),
                 })
                 .await;
@@ -245,9 +247,12 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     let priority = RequestPriority::Normal; // TODO: Allow setting priority in request
     let timeout = Some(std::time::Duration::from_secs(30)); // TODO: Make configurable
 
+    // Share input via Arc to avoid cloning
+    let input_arc = Arc::new(request.input);
+
     let (_request_id, rx) = runtime
         .backpressure_manager
-        .queue_request_with_input(agent_id.clone(), request.input.clone(), priority, timeout)
+        .queue_request_with_input(agent_id.clone(), (*input_arc).clone(), priority, timeout)
         .await
         .map_err(|e| {
             let status = match e {
@@ -270,29 +275,32 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
         })?;
 
     // Start processing the queued request
-    let runtime_clone = runtime.clone();
-    let agent_id_clone = agent_id.clone();
-    let parsed_id_clone = parsed_id.clone();
+    // Use Arc<str> to avoid String clones
+    let agent_id_arc: Arc<str> = Arc::from(agent_id.as_str());
+    let runtime_arc = runtime.clone(); // HttpAgentRuntime is cheap to clone (all Arc fields)
+    let parsed_id_arc = Arc::new(parsed_id.clone());
+
     tokio::spawn(async move {
-        let agent_id_for_processing = agent_id_clone.clone();
-        let parsed_id_for_processing = parsed_id_clone.clone();
-        let runtime_for_closure = runtime_clone.clone();
-        if runtime_clone
+        let agent_id_for_processing = Arc::clone(&agent_id_arc);
+        let parsed_id_for_processing = Arc::clone(&parsed_id_arc);
+        let runtime_for_closure = runtime_arc.clone();
+
+        if runtime_arc
             .backpressure_manager
-            .process_next_queued_request(&agent_id_clone, move |input| {
+            .process_next_queued_request(&agent_id_arc, move |input| {
                 let runtime_inner = runtime_for_closure.clone();
-                let agent_id_for_closure = agent_id_for_processing.clone();
-                let parsed_id_for_closure = parsed_id_for_processing.clone();
+                let agent_id_for_closure = Arc::clone(&agent_id_for_processing);
+                let parsed_id_for_closure = Arc::clone(&parsed_id_for_processing);
                 async move {
                     // Process the request within backpressure constraints
                     let mut agents = runtime_inner.agents.write().await;
-                    if let Some(instance) = agents.get_mut(&parsed_id_for_closure) {
+                    if let Some(instance) = agents.get_mut(&*parsed_id_for_closure) {
                         // Create agent session for observability
                         let session_id = SessionId::generate();
 
                         // Record agent session start
                         if let Some(registry) = get_metrics_registry() {
-                            let obs_agent_id = ObsAgentId::parse(agent_id_for_closure.as_str())
+                            let obs_agent_id = ObsAgentId::parse(&agent_id_for_closure)
                                 .unwrap_or_else(|_| ObsAgentId::new_unchecked("invalid-agent"));
                             let tags = skreaver_observability::CardinalTags::for_agent_session(
                                 obs_agent_id.clone(),
@@ -305,7 +313,7 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
 
                         // Record agent session end
                         if let Some(registry) = get_metrics_registry() {
-                            let obs_agent_id = ObsAgentId::parse(agent_id_for_closure.as_str())
+                            let obs_agent_id = ObsAgentId::parse(&agent_id_for_closure)
                                 .unwrap_or_else(|_| ObsAgentId::new_unchecked("invalid-agent"));
                             let tags = skreaver_observability::CardinalTags::for_agent_session(
                                 obs_agent_id,
@@ -415,18 +423,20 @@ pub async fn observe_agent_stream<T: ToolRegistry + Clone + Send + Sync>(
 
     // Start background task to process observation
     let runtime_clone = runtime.clone();
-    let agent_id_clone = agent_id.clone();
+    // Use Arc<str> to avoid String clones
+    let agent_id_arc: Arc<str> = Arc::from(agent_id.as_str());
     let parsed_id_clone = parsed_id.clone();
     let input = request.input;
 
     tokio::spawn(async move {
         let mut agents = runtime_clone.agents.write().await;
         if let Some(instance) = agents.get_mut(&parsed_id_clone) {
+            let agent_id_for_streaming = Arc::clone(&agent_id_arc);
             let _result = executor
-                .execute_with_streaming(agent_id_clone.clone(), |exec| async move {
-                    exec.thinking(&agent_id_clone, "Analyzing input").await;
+                .execute_with_streaming(agent_id_arc.to_string(), |exec| async move {
+                    exec.thinking(&agent_id_for_streaming, "Analyzing input").await;
                     let response = instance.coordinator.step(input);
-                    exec.partial(&agent_id_clone, &response).await;
+                    exec.partial(&agent_id_for_streaming, &response).await;
                     Ok(response)
                 })
                 .await;
@@ -530,6 +540,10 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
 
     let mut handles = Vec::new();
 
+    // Pre-compute shared values outside the loop
+    let timeout_duration = std::time::Duration::from_secs(request.timeout_seconds);
+    let parsed_id_arc = Arc::new(parsed_id);
+
     for (index, input) in request.inputs.into_iter().enumerate() {
         let permit = semaphore.clone().acquire_owned().await.map_err(|_| {
             (
@@ -542,10 +556,10 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
             )
         })?;
         let runtime_clone = runtime.clone();
-        let parsed_id_clone = parsed_id.clone();
+        let parsed_id_clone = Arc::clone(&parsed_id_arc);
         let results_clone = Arc::clone(&results);
-        let timeout_duration = std::time::Duration::from_secs(request.timeout_seconds);
-        let input_clone = input.clone();
+        // Wrap input in Arc to avoid clone
+        let input_arc = Arc::new(input);
 
         let handle = tokio::spawn(async move {
             let _permit = permit; // Hold the permit for the duration of this task
@@ -554,8 +568,9 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
             let result = tokio::time::timeout(timeout_duration, async {
                 // Minimize lock scope within timeout
                 let mut agents = runtime_clone.agents.write().await;
-                if let Some(instance) = agents.get_mut(&parsed_id_clone) {
-                    let response = instance.coordinator.step(input);
+                if let Some(instance) = agents.get_mut(&*parsed_id_clone) {
+                    // Clone input only once when needed for processing
+                    let response = instance.coordinator.step((*input_arc).clone());
                     drop(agents); // Release lock immediately after step
                     Ok(response)
                 } else {
@@ -568,7 +583,7 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
             let batch_result = match result {
                 Ok(Ok(response)) => BatchResult {
                     index,
-                    input: input_clone,
+                    input: (*input_arc).clone(),
                     response,
                     processing_time_ms: op_start.elapsed().as_millis() as u64,
                     success: true,
@@ -576,7 +591,7 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
                 },
                 Ok(Err(error)) => BatchResult {
                     index,
-                    input: input_clone.clone(),
+                    input: (*input_arc).clone(),
                     response: String::new(),
                     processing_time_ms: op_start.elapsed().as_millis() as u64,
                     success: false,
@@ -584,7 +599,7 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
                 },
                 Err(_) => BatchResult {
                     index,
-                    input: input_clone.clone(),
+                    input: (*input_arc).clone(),
                     response: String::new(),
                     processing_time_ms: timeout_duration.as_millis() as u64,
                     success: false,

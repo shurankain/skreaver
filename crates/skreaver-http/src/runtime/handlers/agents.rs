@@ -153,7 +153,7 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync + 'static>(
 
     match agents.get(&parsed_id) {
         Some(instance) => Ok(Json(AgentStatus {
-            agent_id: agent_id.clone(),
+            agent_id, // No need to clone, we own it
             agent_type: instance.coordinator.get_agent_type().to_string(),
             status: "running".to_string(),
             created_at: chrono::Utc::now(), // TODO: Track actual creation time
