@@ -12,7 +12,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::runtime::{
     HttpAgentRuntime, HttpRuntimeConfig,
-    auth::require_auth,
+    auth::{inject_api_key_manager, require_auth},
     connection_limits::connection_limit_middleware,
     docs::{openapi_spec, swagger_ui},
     error::request_id_middleware,
@@ -47,8 +47,9 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
 
     /// Create the Axum router with custom configuration
     pub fn router_with_config(self, config: HttpRuntimeConfig) -> Router {
-        // Clone connection tracker for middleware
+        // Clone connection tracker and API key manager for middleware
         let connection_tracker = Arc::clone(&self.connection_tracker);
+        let api_key_manager = Arc::clone(&self.api_key_manager);
 
         // Protected routes - require authentication
         // Use route_layer to apply middleware to specific routes before merging
@@ -86,6 +87,12 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
 
         // Add request ID middleware (applies to all routes, should be early in the stack)
         router = router.layer(middleware::from_fn(request_id_middleware));
+
+        // Add API key manager injection middleware (applies to all routes)
+        router = router.layer(middleware::from_fn_with_state(
+            api_key_manager,
+            inject_api_key_manager,
+        ));
 
         // Add connection limit middleware (applies to all routes)
         // Use from_fn_with_state to pass the tracker as state

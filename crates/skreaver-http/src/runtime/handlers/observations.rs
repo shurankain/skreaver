@@ -434,7 +434,8 @@ pub async fn observe_agent_stream<T: ToolRegistry + Clone + Send + Sync>(
             let agent_id_for_streaming = Arc::clone(&agent_id_arc);
             let _result = executor
                 .execute_with_streaming(agent_id_arc.to_string(), |exec| async move {
-                    exec.thinking(&agent_id_for_streaming, "Analyzing input").await;
+                    exec.thinking(&agent_id_for_streaming, "Analyzing input")
+                        .await;
                     let response = instance.coordinator.step(input);
                     exec.partial(&agent_id_for_streaming, &response).await;
                     Ok(response)

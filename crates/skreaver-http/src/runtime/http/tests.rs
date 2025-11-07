@@ -764,12 +764,20 @@ async fn test_observe_endpoint_requires_auth() {
 async fn test_api_key_authentication() {
     let runtime = create_test_runtime();
     setup_test_agent(&runtime, "test-agent").await;
+
+    // Generate a valid API key for testing
+    let api_key = runtime
+        .api_key_manager
+        .generate("Test Key".to_string(), vec![skreaver_core::Role::Agent])
+        .await
+        .unwrap();
+
     let app = runtime.router();
 
-    // Try with test API key (available in debug builds)
+    // Try with generated API key
     let request = Request::builder()
         .uri("/agents")
-        .header("Authorization", "Bearer sk-test-key-123")
+        .header("Authorization", format!("Bearer {}", api_key.key))
         .body(Body::empty())
         .unwrap();
 
@@ -781,12 +789,20 @@ async fn test_api_key_authentication() {
 async fn test_x_api_key_header_authentication() {
     let runtime = create_test_runtime();
     setup_test_agent(&runtime, "test-agent").await;
+
+    // Generate a valid API key for testing
+    let api_key = runtime
+        .api_key_manager
+        .generate("Test Key".to_string(), vec![skreaver_core::Role::Agent])
+        .await
+        .unwrap();
+
     let app = runtime.router();
 
     // Try with X-API-Key header
     let request = Request::builder()
         .uri("/agents")
-        .header("X-API-Key", "sk-test-key-123")
+        .header("X-API-Key", api_key.key.as_str())
         .body(Body::empty())
         .unwrap();
 

@@ -47,6 +47,8 @@ pub struct HttpAgentRuntime<T: ToolRegistry> {
     pub security_config: Arc<SecurityConfig>,
     /// Connection tracker for HTTP connection limits
     pub connection_tracker: Arc<crate::runtime::connection_limits::ConnectionTracker>,
+    /// API key manager for secure key storage, rotation, and revocation
+    pub api_key_manager: Arc<skreaver_core::ApiKeyManager>,
 }
 
 // AgentInstance and CoordinatorTrait are now imported from agent_instance module
@@ -181,6 +183,10 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             config.connection_limits.mode
         );
 
+        // Create API key manager for secure credential storage
+        let api_key_manager = crate::runtime::auth::create_api_key_manager();
+        tracing::info!("API key manager initialized with secure storage");
+
         Self {
             agents: agent_factory.agents(),
             tool_registry: Arc::new(secure_registry),
@@ -189,6 +195,7 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             agent_factory: Arc::new(agent_factory),
             security_config: security_config_arc,
             connection_tracker,
+            api_key_manager,
         }
     }
 

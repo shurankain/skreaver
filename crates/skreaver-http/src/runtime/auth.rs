@@ -15,7 +15,8 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation, decode, encode};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use skreaver_core::{ApiKeyConfig, ApiKeyManager, Role};
+use std::sync::Arc;
 
 /// JWT secret key - uses SecretKey with graceful fallback in debug builds
 /// In production, uses environment variable or generates random key (invalidates existing tokens)
@@ -36,45 +37,54 @@ static JWT_SECRET: Lazy<SecretKey> = Lazy::new(|| {
     }
 });
 
-/// API keys storage - Hardcoded test key in debug builds, empty in release builds
-/// In production, this should be backed by a database (see skreaver-core::auth::AuthManager)
-static API_KEYS: Lazy<HashMap<String, ApiKeyData>> = Lazy::new(|| {
-    let mut keys = HashMap::new();
+/// Create API key manager with test key in debug builds only
+/// In production, keys should be generated dynamically and stored securely
+pub fn create_api_key_manager() -> Arc<ApiKeyManager> {
+    let config = ApiKeyConfig {
+        prefix: "sk-".to_string(),
+        min_length: 32,
+        allow_rotation: true,
+        default_expiry_days: Some(90), // 90-day expiry by default
+        max_keys_per_principal: 10,    // Max 10 keys per user/service
+    };
 
-    // In debug builds, include test key for convenience
+    let manager = Arc::new(ApiKeyManager::new(config));
+
+    // In debug builds, create test key for convenience
     #[cfg(debug_assertions)]
     {
-        keys.insert(
-            "sk-test-key-123".to_string(),
-            ApiKeyData {
-                name: "Test Key (DEBUG BUILD ONLY)".to_string(),
-                permissions: vec!["read".to_string(), "write".to_string()],
-                created_at: Utc::now(),
-            },
-        );
+        let manager_clone = Arc::clone(&manager);
+        tokio::spawn(async move {
+            match manager_clone
+                .generate("Test Key (DEBUG BUILD ONLY)".to_string(), vec![Role::Agent])
+                .await
+            {
+                Ok(key) => {
+                    tracing::info!(
+                        "🔑 Debug API key generated: {} (first 16 chars shown for security)",
+                        &key.key[..std::cmp::min(16, key.key.len())]
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to generate debug API key: {}", e);
+                }
+            }
+        });
     }
 
-    // In release builds, only add test key if explicitly enabled
+    // In release builds, warn if test key env var is set (but don't create it)
     #[cfg(not(debug_assertions))]
     {
         if std::env::var("SKREAVER_ENABLE_TEST_KEY").is_ok() {
-            tracing::warn!(
-                "⚠️  SECURITY WARNING: Test API key 'sk-test-key-123' is enabled in RELEASE BUILD. \
-                 DO NOT USE IN PRODUCTION. Unset SKREAVER_ENABLE_TEST_KEY to disable."
-            );
-            keys.insert(
-                "sk-test-key-123".to_string(),
-                ApiKeyData {
-                    name: "Test Key (DANGER: ENABLED IN RELEASE)".to_string(),
-                    permissions: vec!["read".to_string(), "write".to_string()],
-                    created_at: Utc::now(),
-                },
+            tracing::error!(
+                "⚠️  SECURITY ERROR: SKREAVER_ENABLE_TEST_KEY is set in RELEASE BUILD. \
+                 This variable is IGNORED in release mode. Generate keys via API instead."
             );
         }
     }
 
-    keys
-});
+    manager
+}
 
 /// JWT claims structure
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,14 +93,6 @@ pub struct Claims {
     pub exp: usize,               // Expiration time
     pub iat: usize,               // Issued at
     pub permissions: Vec<String>, // User permissions
-}
-
-/// API key metadata
-#[derive(Debug, Clone)]
-pub struct ApiKeyData {
-    pub name: String,
-    pub permissions: Vec<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Authentication context passed to handlers
@@ -146,8 +148,9 @@ pub fn validate_jwt_token(token: &str) -> Result<TokenData<Claims>, jsonwebtoken
 }
 
 /// Extract auth context from request headers
-pub fn extract_auth_context(
+pub async fn extract_auth_context(
     headers: &HeaderMap,
+    api_key_manager: &ApiKeyManager,
 ) -> Result<AuthContext, (StatusCode, Json<AuthError>)> {
     // Check for Authorization header
     if let Some(auth_header) = headers.get(AUTHORIZATION) {
@@ -183,38 +186,48 @@ pub fn extract_auth_context(
 
             // If JWT validation failed, check if it's an API key (starts with sk-)
             if token.starts_with("sk-") {
-                if let Some(key_data) = API_KEYS.get(token) {
-                    // Record successful API key authentication
-                    if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                        registry
-                            .core_metrics()
-                            .security_auth_attempts_total
-                            .with_label_values(&["success"])
-                            .inc();
-                    }
+                match api_key_manager.authenticate(token).await {
+                    Ok(principal) => {
+                        // Record successful API key authentication
+                        if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                            registry
+                                .core_metrics()
+                                .security_auth_attempts_total
+                                .with_label_values(&["success"])
+                                .inc();
+                        }
 
-                    return Ok(AuthContext {
-                        user_id: format!("api-key-{}", &token[3..std::cmp::min(11, token.len())]), // First 8 chars after sk-
-                        permissions: key_data.permissions.clone(),
-                        auth_method: AuthMethod::ApiKey(token.to_string()),
-                    });
-                } else {
-                    // Record failed API key authentication
-                    if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                        registry
-                            .core_metrics()
-                            .security_auth_attempts_total
-                            .with_label_values(&["failure"])
-                            .inc();
-                    }
+                        // Extract permissions from roles
+                        let permissions = principal
+                            .roles
+                            .iter()
+                            .map(|role| format!("{:?}", role).to_lowercase())
+                            .collect();
 
-                    return Err((
-                        StatusCode::UNAUTHORIZED,
-                        Json(AuthError {
-                            error: "invalid_api_key".to_string(),
-                            message: "Invalid API key".to_string(),
-                        }),
-                    ));
+                        return Ok(AuthContext {
+                            user_id: principal.id,
+                            permissions,
+                            auth_method: AuthMethod::ApiKey(token.to_string()),
+                        });
+                    }
+                    Err(_e) => {
+                        // Record failed API key authentication
+                        if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                            registry
+                                .core_metrics()
+                                .security_auth_attempts_total
+                                .with_label_values(&["failure"])
+                                .inc();
+                        }
+
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            Json(AuthError {
+                                error: "invalid_api_key".to_string(),
+                                message: "Invalid or revoked API key".to_string(),
+                            }),
+                        ));
+                    }
                 }
             }
 
@@ -249,38 +262,48 @@ pub fn extract_auth_context(
             )
         })?;
 
-        if let Some(key_data) = API_KEYS.get(api_key) {
-            // Record successful API key authentication
-            if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                registry
-                    .core_metrics()
-                    .security_auth_attempts_total
-                    .with_label_values(&["success"])
-                    .inc();
-            }
+        match api_key_manager.authenticate(api_key).await {
+            Ok(principal) => {
+                // Record successful API key authentication
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_auth_attempts_total
+                        .with_label_values(&["success"])
+                        .inc();
+                }
 
-            return Ok(AuthContext {
-                user_id: format!("api-key-{}", &api_key[3..11]), // First 8 chars after sk-
-                permissions: key_data.permissions.clone(),
-                auth_method: AuthMethod::ApiKey(api_key.to_string()),
-            });
-        } else {
-            // Record failed API key authentication
-            if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                registry
-                    .core_metrics()
-                    .security_auth_attempts_total
-                    .with_label_values(&["failure"])
-                    .inc();
-            }
+                // Extract permissions from roles
+                let permissions = principal
+                    .roles
+                    .iter()
+                    .map(|role| format!("{:?}", role).to_lowercase())
+                    .collect();
 
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                Json(AuthError {
-                    error: "invalid_api_key".to_string(),
-                    message: "Invalid API key".to_string(),
-                }),
-            ));
+                return Ok(AuthContext {
+                    user_id: principal.id,
+                    permissions,
+                    auth_method: AuthMethod::ApiKey(api_key.to_string()),
+                });
+            }
+            Err(_e) => {
+                // Record failed API key authentication
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_auth_attempts_total
+                        .with_label_values(&["failure"])
+                        .inc();
+                }
+
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(AuthError {
+                        error: "invalid_api_key".to_string(),
+                        message: "Invalid or revoked API key".to_string(),
+                    }),
+                ));
+            }
         }
     }
 
@@ -302,12 +325,39 @@ pub fn extract_auth_context(
     ))
 }
 
+/// Middleware to inject API key manager into request extensions
+pub async fn inject_api_key_manager(
+    axum::extract::State(api_key_manager): axum::extract::State<Arc<ApiKeyManager>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    // Add API key manager to request extensions
+    request.extensions_mut().insert(api_key_manager);
+    next.run(request).await
+}
+
 /// Middleware to require authentication for protected endpoints
+/// Note: The API key manager should be added to request extensions by inject_api_key_manager middleware
 pub async fn require_auth(
     mut request: Request,
     next: Next,
 ) -> Result<Response, (StatusCode, Json<AuthError>)> {
-    let auth_context = extract_auth_context(request.headers())?;
+    // Get API key manager from request extensions
+    let api_key_manager = request
+        .extensions()
+        .get::<Arc<ApiKeyManager>>()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AuthError {
+                    error: "missing_api_key_manager".to_string(),
+                    message: "API key manager not configured".to_string(),
+                }),
+            )
+        })?
+        .clone();
+
+    let auth_context = extract_auth_context(request.headers(), &api_key_manager).await?;
 
     // Add auth context to request extensions for handlers to access
     request.extensions_mut().insert(auth_context);
@@ -328,7 +378,22 @@ pub fn require_permissions(
     move |mut request: Request, next: Next| {
         let required_perms = required_permissions.clone();
         Box::pin(async move {
-            let auth_context = extract_auth_context(request.headers())?;
+            // Get API key manager from request extensions
+            let api_key_manager = request
+                .extensions()
+                .get::<Arc<ApiKeyManager>>()
+                .ok_or_else(|| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(AuthError {
+                            error: "missing_api_key_manager".to_string(),
+                            message: "API key manager not configured".to_string(),
+                        }),
+                    )
+                })?
+                .clone();
+
+            let auth_context = extract_auth_context(request.headers(), &api_key_manager).await?;
 
             // Check if user has required permissions
             let has_permission = required_perms
@@ -370,13 +435,22 @@ mod tests {
         assert_eq!(token_data.claims.permissions, permissions);
     }
 
-    #[test]
-    fn test_api_key_validation() {
-        let mut headers = HeaderMap::new();
-        headers.insert("X-API-Key", HeaderValue::from_static("sk-test-key-123"));
+    #[tokio::test]
+    async fn test_api_key_validation() {
+        // Create API key manager
+        let manager = create_api_key_manager();
 
-        let auth_context = extract_auth_context(&headers).unwrap();
-        assert!(auth_context.user_id.starts_with("api-key-"));
-        assert!(auth_context.permissions.contains(&"read".to_string()));
+        // Generate a test key
+        let key = manager
+            .generate("Test Key".to_string(), vec![Role::Agent])
+            .await
+            .unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert("X-API-Key", HeaderValue::from_str(&key.key).unwrap());
+
+        let auth_context = extract_auth_context(&headers, &manager).await.unwrap();
+        assert!(!auth_context.user_id.is_empty());
+        assert!(!auth_context.permissions.is_empty());
     }
 }
