@@ -12,7 +12,7 @@ impl MemoryReader for SqliteMemory {
         let conn = self.pool.acquire()?;
         let namespaced_key = self.namespaced_key(key);
 
-        conn.as_ref()
+        conn.get_connection()
             .query_row(
                 "SELECT value FROM memory WHERE key = ?1",
                 params![namespaced_key],
@@ -41,16 +41,16 @@ impl MemoryReader for SqliteMemory {
             placeholders
         );
 
-        let mut stmt = conn
-            .as_ref()
-            .prepare(&query)
-            .map_err(|e| MemoryError::LoadFailed {
-                key: MemoryKey::new("batch").unwrap(),
-                backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::IoError {
-                    details: e.to_string(),
-                },
-            })?;
+        let mut stmt =
+            conn.get_connection()
+                .prepare(&query)
+                .map_err(|e| MemoryError::LoadFailed {
+                    key: MemoryKey::new("batch").unwrap(),
+                    backend: MemoryBackend::Sqlite,
+                    kind: MemoryErrorKind::IoError {
+                        details: e.to_string(),
+                    },
+                })?;
 
         let mut results = std::collections::HashMap::new();
         let params: Vec<&dyn rusqlite::ToSql> = namespaced_keys

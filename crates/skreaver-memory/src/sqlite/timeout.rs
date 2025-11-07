@@ -14,9 +14,9 @@
 //! combined with application-level timeout wrappers for long-running operations.
 
 use rusqlite::Connection;
+use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 use std::thread;
 use std::time::Duration;
-use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 
 /// Configuration for database operation timeouts
 #[derive(Debug, Clone)]
@@ -37,10 +37,10 @@ pub struct TimeoutConfig {
 impl Default for TimeoutConfig {
     fn default() -> Self {
         Self {
-            statement_timeout: Duration::from_secs(30),      // 30 seconds per statement
-            transaction_timeout: Duration::from_secs(60),    // 1 minute per transaction
-            migration_timeout: Duration::from_secs(300),     // 5 minutes for migrations
-            connection_timeout: Duration::from_secs(10),     // 10 seconds to get connection
+            statement_timeout: Duration::from_secs(30), // 30 seconds per statement
+            transaction_timeout: Duration::from_secs(60), // 1 minute per transaction
+            migration_timeout: Duration::from_secs(300), // 5 minutes for migrations
+            connection_timeout: Duration::from_secs(10), // 10 seconds to get connection
         }
     }
 }
@@ -79,11 +79,7 @@ impl TimeoutConfig {
 /// - Long-running queries
 /// - Buggy migrations
 /// - Malicious SQL
-pub fn with_timeout<F, T>(
-    timeout: Duration,
-    operation_name: &str,
-    f: F,
-) -> Result<T, MemoryError>
+pub fn with_timeout<F, T>(timeout: Duration, operation_name: &str, f: F) -> Result<T, MemoryError>
 where
     F: FnOnce() -> Result<T, MemoryError> + Send + 'static,
     T: Send + 'static,
@@ -107,19 +103,24 @@ where
                 timeout_seconds: timeout.as_secs(),
             },
         }),
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(MemoryError::ConnectionFailed {
-            backend: MemoryBackend::Sqlite,
-            kind: MemoryErrorKind::InternalError {
-                backend_error: format!("Operation '{}' thread disconnected", operation_name),
-            },
-        }),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(MemoryError::ConnectionFailed {
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InternalError {
+                    backend_error: format!("Operation '{}' thread disconnected", operation_name),
+                },
+            })
+        }
     }
 }
 
 /// Configure a connection with appropriate timeouts
 ///
 /// This sets SQLite's busy_timeout to prevent indefinite blocking on locked databases.
-pub fn configure_connection_timeouts(conn: &Connection, config: &TimeoutConfig) -> Result<(), MemoryError> {
+pub fn configure_connection_timeouts(
+    conn: &Connection,
+    config: &TimeoutConfig,
+) -> Result<(), MemoryError> {
     // Set busy timeout - how long to wait for locks
     let timeout_ms = config.statement_timeout.as_millis() as i32;
     conn.busy_timeout(Duration::from_millis(timeout_ms as u64))
@@ -154,24 +155,18 @@ mod tests {
 
     #[test]
     fn test_with_timeout_success() {
-        let result = with_timeout(
-            Duration::from_secs(1),
-            "test_operation",
-            || Ok::<i32, MemoryError>(42),
-        );
+        let result = with_timeout(Duration::from_secs(1), "test_operation", || {
+            Ok::<i32, MemoryError>(42)
+        });
         assert_eq!(result.unwrap(), 42);
     }
 
     #[test]
     fn test_with_timeout_timeout() {
-        let result = with_timeout(
-            Duration::from_millis(100),
-            "slow_operation",
-            || {
-                thread::sleep(Duration::from_secs(2));
-                Ok::<(), MemoryError>(())
-            },
-        );
+        let result = with_timeout(Duration::from_millis(100), "slow_operation", || {
+            thread::sleep(Duration::from_secs(2));
+            Ok::<(), MemoryError>(())
+        });
 
         assert!(result.is_err());
         match result {

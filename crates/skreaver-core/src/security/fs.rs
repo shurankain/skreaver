@@ -12,10 +12,7 @@
 //! - **Audit Trail**: All operations are logged for security monitoring
 
 use super::SecurityError;
-use crate::security::{
-    policy::FileSystemPolicy,
-    validation::PathValidator,
-};
+use crate::security::{policy::FileSystemPolicy, validation::PathValidator};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -142,12 +139,10 @@ impl SecureFileSystem {
         }
 
         // Perform the actual write operation
-        std::fs::write(&validated.inner, contents_ref).map_err(|e| {
-            SecurityError::FileSystemError {
-                operation: "write".to_string(),
-                path: validated.inner.to_string_lossy().to_string(),
-                error: e.to_string(),
-            }
+        std::fs::write(&validated.inner, contents_ref).map_err(|e| SecurityError::FileSystemError {
+            operation: "write".to_string(),
+            path: validated.inner.to_string_lossy().to_string(),
+            error: e.to_string(),
         })
     }
 
@@ -208,7 +203,6 @@ impl SecureFileSystem {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,25 +231,26 @@ mod tests {
     fn test_file_size_limit_enforced() {
         use crate::security::FileSizeLimit;
 
-        let mut policy = FileSystemPolicy::default();
-        policy.max_file_size = FileSizeLimit::new(100).unwrap(); // Very small limit
+        let policy = FileSystemPolicy {
+            max_file_size: FileSizeLimit::new(100).unwrap(), // Very small limit
+            ..Default::default()
+        };
 
-        let fs = SecureFileSystem::new(policy);
+        let _fs = SecureFileSystem::new(policy);
 
         // Writing large content should fail due to size limit
         // even before path validation
         let large_content = "x".repeat(200);
 
-        // Use a write that would bypass path validation to test the size limit directly
-        // Since we can't actually write to a validated path (it needs to exist),
-        // we just verify that attempting to write large content fails
+        // Verify the content is larger than the limit
         assert_eq!(large_content.len(), 200);
-        assert!(200 > 100, "Content is larger than the limit");
 
         // The actual file size check happens in write()
         // If we could get a validated path, this would fail:
         // let result = fs.write(validated_path, large_content);
         // assert!(matches!(result, Err(SecurityError::FileSizeLimitExceeded { .. })));
+        //
+        // This test mainly documents the expected behavior rather than testing it directly
     }
 
     #[test]

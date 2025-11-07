@@ -12,7 +12,7 @@ impl MemoryWriter for SqliteMemory {
         let conn = self.pool.acquire()?;
         let namespaced_key = self.namespaced_key(&update.key);
 
-        conn.as_ref()
+        conn.get_connection()
             .execute(
                 "INSERT INTO memory (key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET
@@ -38,15 +38,15 @@ impl MemoryWriter for SqliteMemory {
 
         let mut conn = self.pool.acquire()?;
 
-        let tx =
-            conn.as_mut()
-                .unchecked_transaction()
-                .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: MemoryBackend::Sqlite,
-                    kind: MemoryErrorKind::InternalError {
-                        backend_error: format!("Failed to begin transaction: {}", e),
-                    },
-                })?;
+        let tx = conn
+            .get_connection_mut()
+            .unchecked_transaction()
+            .map_err(|e| MemoryError::ConnectionFailed {
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to begin transaction: {}", e),
+                },
+            })?;
 
         {
             let mut stmt = tx

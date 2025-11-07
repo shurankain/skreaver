@@ -22,7 +22,7 @@ impl TransactionalMemory for SqliteMemory {
             })?;
 
         // Begin savepoint for transaction isolation
-        conn.as_mut()
+        conn.get_connection_mut()
             .execute(&format!("SAVEPOINT {}", savepoint_name), [])
             .map_err(|e| TransactionError::TransactionFailed {
                 reason: format!("Failed to begin transaction savepoint: {}", e),
@@ -48,7 +48,7 @@ impl TransactionalMemory for SqliteMemory {
         match result {
             Ok(value) => {
                 // Release the savepoint (commit)
-                conn.as_mut()
+                conn.get_connection_mut()
                     .execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), [])
                     .map_err(|e| TransactionError::TransactionFailed {
                         reason: format!("Failed to commit transaction: {}", e),
@@ -58,14 +58,14 @@ impl TransactionalMemory for SqliteMemory {
             Err(tx_error) => {
                 // Rollback to savepoint
                 if let Err(rollback_err) = conn
-                    .as_mut()
+                    .get_connection_mut()
                     .execute(&format!("ROLLBACK TO SAVEPOINT {}", savepoint_name), [])
                 {
                     eprintln!("Warning: Failed to rollback transaction: {}", rollback_err);
                 }
                 // Also release the savepoint after rollback
                 let _ = conn
-                    .as_mut()
+                    .get_connection_mut()
                     .execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), []);
                 Err(tx_error)
             }

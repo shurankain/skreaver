@@ -373,14 +373,14 @@ impl PooledConnection {
     }
 
     /// Get reference to the underlying connection
-    pub fn as_ref(&self) -> &Connection {
+    pub fn get_connection(&self) -> &Connection {
         self.connection
             .as_ref()
             .expect("Connection should be available")
     }
 
     /// Get mutable reference to the underlying connection
-    pub fn as_mut(&mut self) -> &mut Connection {
+    pub fn get_connection_mut(&mut self) -> &mut Connection {
         self.connection
             .as_mut()
             .expect("Connection should be available")

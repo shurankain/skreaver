@@ -62,7 +62,8 @@ impl MemoryAdmin for SqliteMemory {
 
     fn migrate_to_version(&mut self, version: Option<u32>) -> Result<(), MemoryError> {
         let conn = self.pool.acquire()?;
-        self.migration_engine.migrate(conn.as_ref(), version)
+        self.migration_engine
+            .migrate(conn.get_connection(), version)
     }
 
     fn health_status(&self) -> Result<HealthStatus, MemoryError> {
@@ -71,7 +72,7 @@ impl MemoryAdmin for SqliteMemory {
         // Try to get row count for additional health info
         let row_count = match self.pool.acquire() {
             Ok(conn) => conn
-                .as_ref()
+                .get_connection()
                 .query_row("SELECT COUNT(*) FROM memory", [], |row| {
                     row.get::<_, i64>(0)
                 })
@@ -104,6 +105,7 @@ impl MemoryAdmin for SqliteMemory {
 
     fn migration_status(&self) -> Result<MigrationStatus, MemoryError> {
         let conn = self.pool.acquire()?;
-        self.migration_engine.get_migration_status(conn.as_ref())
+        self.migration_engine
+            .get_migration_status(conn.get_connection())
     }
 }

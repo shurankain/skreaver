@@ -9,16 +9,20 @@
 //!
 //! ```
 //! use skreaver_mesh::TypedMessage;
+//! use skreaver_mesh::types::AgentId;
 //!
 //! // Unicast - both sender and recipient guaranteed
 //! let msg = TypedMessage::with_payload("hello")
-//!     .unicast("agent-1", "agent-2");
+//!     .unicast(
+//!         AgentId::new_unchecked("agent-1"),
+//!         AgentId::new_unchecked("agent-2")
+//!     );
 //! let sender = msg.sender(); // &AgentId - no Option!
 //! let recipient = msg.recipient(); // &AgentId - no Option!
 //!
 //! // Broadcast - only sender guaranteed
 //! let broadcast = TypedMessage::with_payload("announcement")
-//!     .broadcast("coordinator");
+//!     .broadcast(AgentId::new_unchecked("coordinator"));
 //! let from = broadcast.sender(); // &AgentId
 //! // broadcast.recipient(); // Compile error - no recipient!
 //! ```

@@ -22,7 +22,7 @@ impl SqliteMemory {
             })?;
 
         let mut stmt = conn
-            .as_ref()
+            .get_connection()
             .prepare("SELECT key, value FROM memory")
             .map_err(|e| MemoryError::SnapshotFailed {
                 backend: MemoryBackend::Sqlite,
@@ -85,15 +85,15 @@ impl SnapshotableMemory for SqliteMemory {
 
         let mut conn = self.pool.acquire()?;
 
-        let tx =
-            conn.as_mut()
-                .unchecked_transaction()
-                .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: MemoryBackend::Sqlite,
-                    kind: MemoryErrorKind::InternalError {
-                        backend_error: format!("Failed to begin restore transaction: {}", e),
-                    },
-                })?;
+        let tx = conn
+            .get_connection_mut()
+            .unchecked_transaction()
+            .map_err(|e| MemoryError::ConnectionFailed {
+                backend: MemoryBackend::Sqlite,
+                kind: MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to begin restore transaction: {}", e),
+                },
+            })?;
 
         // Clear existing data
         tx.execute("DELETE FROM memory", [])

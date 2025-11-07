@@ -322,7 +322,10 @@ impl AuditLogger {
             | SecurityEvent::ResourceLimitCheck { context, .. }
             | SecurityEvent::PolicyViolation { context, .. }
             | SecurityEvent::AuthorizationCheck { context, .. }
-            | SecurityEvent::SuspiciousActivity { context, .. } => Some(context.session_id),
+            | SecurityEvent::SuspiciousActivity { context, .. } => {
+                // Try to parse the SessionId as a UUID, but if it fails, return None
+                Uuid::parse_str(context.session_id.as_str()).ok()
+            }
             _ => None,
         }
     }
@@ -333,7 +336,9 @@ impl AuditLogger {
             | SecurityEvent::ResourceLimitCheck { context, .. }
             | SecurityEvent::PolicyViolation { context, .. }
             | SecurityEvent::AuthorizationCheck { context, .. }
-            | SecurityEvent::SuspiciousActivity { context, .. } => Some(context.agent_id.clone()),
+            | SecurityEvent::SuspiciousActivity { context, .. } => {
+                Some(context.agent_id.to_string())
+            }
             _ => None,
         }
     }
@@ -344,7 +349,9 @@ impl AuditLogger {
             | SecurityEvent::ResourceLimitCheck { context, .. }
             | SecurityEvent::PolicyViolation { context, .. }
             | SecurityEvent::AuthorizationCheck { context, .. }
-            | SecurityEvent::SuspiciousActivity { context, .. } => Some(context.tool_name.clone()),
+            | SecurityEvent::SuspiciousActivity { context, .. } => {
+                Some(context.tool_name.to_string())
+            }
             _ => None,
         }
     }
@@ -623,14 +630,16 @@ mod tests {
 
     #[test]
     fn test_violation_tracker() {
+        use crate::identifiers::{AgentId, ToolId};
+
         let mut tracker = ViolationTracker::new();
 
         let violation = SecurityViolation {
             violation_type: "test_violation".to_string(),
             severity: ViolationSeverity::Medium,
             description: "Test violation".to_string(),
-            agent_id: "test_agent".to_string(),
-            tool_name: "test_tool".to_string(),
+            agent_id: AgentId::new_unchecked("test_agent"),
+            tool_name: ToolId::new_unchecked("test_tool"),
             input_hash: None,
             timestamp: OffsetDateTime::now_utc(),
             remediation: None,

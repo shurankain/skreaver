@@ -26,13 +26,14 @@ pub use config::{
     Secret, SecretConfig, SecurityConfig, WithStackTraces,
 };
 pub use errors::{SecurityError, SecurityViolation};
-pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
-pub use policy::{
-    FileCountLimit, FileSizeLimit, FileSystemAccess, HttpAccess, NetworkPort, RedirectLimit,
-    ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds, ToolSecurityPolicy,
-};
 #[cfg(feature = "security-basic")]
 pub use fs::{SecureFileSystem, ValidatedPath};
+pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
+pub use policy::{
+    FileCountLimit, FileSizeLimit, FileSystemAccess, FileSystemPolicy, HttpAccess, NetworkPort,
+    RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds,
+    ToolSecurityPolicy,
+};
 #[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
 #[cfg(feature = "security-basic")]

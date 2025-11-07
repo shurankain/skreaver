@@ -197,10 +197,17 @@ async fn test_protected_endpoints_accept_valid_jwt() {
 
 #[tokio::test]
 async fn test_protected_endpoints_accept_valid_api_key() {
-    let app = create_test_app();
+    let registry = InMemoryToolRegistry::new();
+    let runtime = HttpAgentRuntime::new(registry);
 
-    // Use the default test API key from auth.rs
-    let api_key = "sk-test-key-123";
+    // Generate a valid API key from the runtime's ApiKeyManager
+    let api_key = runtime
+        .api_key_manager
+        .generate("Test API Key".to_string(), vec![skreaver_core::Role::Agent])
+        .await
+        .expect("Failed to generate API key");
+
+    let app = runtime.router_with_config(HttpRuntimeConfig::default());
 
     // Test /agents endpoint with valid API key via Authorization header
     let response = app
@@ -209,7 +216,7 @@ async fn test_protected_endpoints_accept_valid_api_key() {
             Request::builder()
                 .method("GET")
                 .uri("/agents")
-                .header(AUTHORIZATION, format!("Bearer {}", api_key))
+                .header(AUTHORIZATION, format!("Bearer {}", api_key.key))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -228,7 +235,7 @@ async fn test_protected_endpoints_accept_valid_api_key() {
             Request::builder()
                 .method("GET")
                 .uri("/agents")
-                .header("X-API-Key", api_key)
+                .header("X-API-Key", &api_key.key)
                 .body(Body::empty())
                 .unwrap(),
         )
