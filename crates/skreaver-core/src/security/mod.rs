@@ -7,6 +7,8 @@
 pub mod audit;
 pub mod config;
 pub mod errors;
+#[cfg(feature = "security-basic")]
+pub mod fs;
 pub mod limits;
 pub mod policy;
 #[cfg(feature = "security-basic")]
@@ -29,6 +31,8 @@ pub use policy::{
     FileCountLimit, FileSizeLimit, FileSystemAccess, HttpAccess, NetworkPort, RedirectLimit,
     ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds, ToolSecurityPolicy,
 };
+#[cfg(feature = "security-basic")]
+pub use fs::{SecureFileSystem, ValidatedPath};
 #[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
 #[cfg(feature = "security-basic")]

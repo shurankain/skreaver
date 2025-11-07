@@ -41,6 +41,13 @@ pub enum SecurityError {
     #[error("File size limit exceeded: {size} bytes > {limit} bytes")]
     FileSizeLimitExceeded { size: u64, limit: u64 },
 
+    #[error("File system operation '{operation}' failed for path '{path}': {error}")]
+    FileSystemError {
+        operation: String,
+        path: String,
+        error: String,
+    },
+
     #[error("Too many concurrent operations: {count} > {limit}")]
     ConcurrencyLimitExceeded { count: u32, limit: u32 },
 

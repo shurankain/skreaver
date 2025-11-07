@@ -24,7 +24,8 @@ pub use memory::{
 pub use metadata::{Metadata, MetadataBuilder, MetadataKey, MetadataValue};
 pub use security::{
     DomainValidator, InputValidator, PathValidator, ResourceLimits, ResourceTracker,
-    SecurityConfig, SecurityContext, SecurityError, SecurityManager, SecurityPolicy,
+    SecureFileSystem, SecurityConfig, SecurityContext, SecurityError, SecurityManager,
+    SecurityPolicy, ValidatedPath,
 };
 pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 
