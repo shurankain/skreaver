@@ -5,10 +5,12 @@ use rusqlite::{Connection, params};
 use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 
 use crate::admin::{AppliedMigration, MigrationStatus};
+use crate::sqlite::timeout::{TimeoutConfig, with_timeout};
 
 /// Migration engine for SQLite
 pub struct MigrationEngine {
     migrations: Vec<Migration>,
+    timeout_config: TimeoutConfig,
 }
 
 /// Individual migration definition
@@ -22,10 +24,16 @@ pub struct Migration {
 }
 
 impl MigrationEngine {
-    /// Create a new migration engine
+    /// Create a new migration engine with default timeout configuration
     pub fn new() -> Self {
+        Self::with_timeout_config(TimeoutConfig::default())
+    }
+
+    /// Create a new migration engine with custom timeout configuration
+    pub fn with_timeout_config(timeout_config: TimeoutConfig) -> Self {
         Self {
             migrations: Self::default_migrations(),
+            timeout_config,
         }
     }
 

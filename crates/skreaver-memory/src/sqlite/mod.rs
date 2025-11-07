@@ -18,12 +18,14 @@ pub mod migration;
 pub mod pool;
 mod reader;
 mod snapshot;
+pub mod timeout;
 mod transaction;
 mod writer;
 
 // Re-exports for public API
 pub use migration::{Migration, MigrationEngine};
 pub use pool::{PooledConnection, SqlitePool};
+pub use timeout::TimeoutConfig;
 
 /// SQLite-based memory backend with all Phase 1.1 features
 pub struct SqliteMemory {

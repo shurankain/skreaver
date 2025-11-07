@@ -194,6 +194,12 @@ pub enum MemoryErrorKind {
     /// Backend service unavailable
     ServiceUnavailable { retry_after_ms: Option<u64> },
 
+    /// Operation timeout exceeded
+    Timeout {
+        operation: String,
+        timeout_seconds: u64,
+    },
+
     /// Internal backend error
     InternalError { backend_error: String },
 }
@@ -234,6 +240,16 @@ impl fmt::Display for MemoryErrorKind {
                 } else {
                     write!(f, "service unavailable")
                 }
+            }
+            MemoryErrorKind::Timeout {
+                operation,
+                timeout_seconds,
+            } => {
+                write!(
+                    f,
+                    "operation '{}' timed out after {} seconds",
+                    operation, timeout_seconds
+                )
             }
             MemoryErrorKind::InternalError { backend_error } => {
                 write!(f, "internal error: {}", backend_error)

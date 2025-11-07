@@ -239,6 +239,7 @@ impl MemoryError {
             | MemoryErrorKind::AccessDenied { .. }
             | MemoryErrorKind::SerializationError { .. }
             | MemoryErrorKind::IoError { .. }
+            | MemoryErrorKind::Timeout { .. } // Timeouts are generally not retryable
             | MemoryErrorKind::InternalError { .. } => false,
         }
     }
