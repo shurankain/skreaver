@@ -147,7 +147,7 @@ fn display_resource_limits(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("⚙️  Step 6: Resource Limits\n");
     println!("   Max Memory: {} MB", config.resources.max_memory_mb);
-    println!("   Max CPU: {:.1}%", config.resources.max_cpu_percent);
+    println!("   Max CPU: {:.1}%", config.resources.max_cpu_percent.get());
     println!(
         "   Max Execution Time: {:?}",
         config.resources.max_execution_time
@@ -316,7 +316,8 @@ fn demonstrate_resource_monitoring(config: &SecurityConfig) {
         );
         println!(
             "      CPU: {:.2}% (limit: {:.1}%)",
-            usage.cpu_percent, config.resources.max_cpu_percent
+            usage.cpu_percent,
+            config.resources.max_cpu_percent.get()
         );
         println!(
             "      Open Files: {} (limit: {})",
@@ -329,7 +330,7 @@ fn demonstrate_resource_monitoring(config: &SecurityConfig) {
 
         // Check if we're within limits
         let memory_ok = usage.memory_mb <= config.resources.max_memory_mb;
-        let cpu_ok = usage.cpu_percent <= config.resources.max_cpu_percent;
+        let cpu_ok = usage.cpu_percent <= config.resources.max_cpu_percent.get();
         let files_ok = usage.open_files <= config.resources.max_open_files;
 
         println!("\n   Limit Check:");

@@ -162,15 +162,7 @@ impl SecurityConfig {
             });
         }
 
-        // Validate CPU percentage
-        if self.resources.max_cpu_percent < 0.0 || self.resources.max_cpu_percent > 100.0 {
-            return Err(SecurityError::ConfigError {
-                message: format!(
-                    "max_cpu_percent must be 0.0-100.0, got {}",
-                    self.resources.max_cpu_percent
-                ),
-            });
-        }
+        // CPU percentage is now validated at the type level via CpuPercent
 
         // Validate file system policies (CRITICAL - must fail)
         if matches!(self.fs.access, FileSystemAccess::Enabled { .. })

@@ -134,7 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let strict_limits = ResourceLimits {
         max_memory_mb: 1, // Very low limit for demonstration
-        max_cpu_percent: 0.1,
+        max_cpu_percent: skreaver_core::security::CpuPercent::new(0.1).unwrap(),
         max_execution_time: Duration::from_secs(300),
         max_concurrent_operations: 2, // Only 2 operations allowed
         max_open_files: 1000,

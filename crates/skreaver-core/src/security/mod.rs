@@ -28,7 +28,7 @@ pub use config::{
 pub use errors::{SecurityError, SecurityViolation};
 #[cfg(feature = "security-basic")]
 pub use fs::{SecureFileSystem, ValidatedPath};
-pub use limits::{ResourceLimits, ResourceTracker, ResourceUsage};
+pub use limits::{CpuPercent, ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
     FileCountLimit, FileSizeLimit, FileSystemAccess, FileSystemPolicy, HttpAccess, NetworkPort,
     RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds,

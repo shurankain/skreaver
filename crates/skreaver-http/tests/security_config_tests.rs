@@ -92,7 +92,7 @@ async fn test_load_security_config_from_file() {
 
     // Verify resource limits are set
     assert!(security_config.resources.max_memory_mb > 0);
-    assert!(security_config.resources.max_cpu_percent > 0.0);
+    assert!(security_config.resources.max_cpu_percent.get() > 0.0);
 }
 
 #[tokio::test]
@@ -208,7 +208,7 @@ async fn test_security_config_resource_limits() {
         "Memory limit should be set"
     );
     assert!(
-        security_config.resources.max_cpu_percent > 0.0,
+        security_config.resources.max_cpu_percent.get() > 0.0,
         "CPU limit should be set"
     );
     assert!(

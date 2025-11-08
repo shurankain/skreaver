@@ -19,14 +19,15 @@
 //!
 //! ```rust
 //! use skreaver_core::security::{
+//!     CpuPercent,
 //!     limits::{ResourceLimits, ResourceTracker},
 //!     SecurityContext, SecurityPolicy,
 //! };
 //!
-//! // Configure resource limits
+//! // Configure resource limits with validated CPU percentage
 //! let limits = ResourceLimits {
 //!     max_memory_mb: 256,
-//!     max_cpu_percent: 75.0,
+//!     max_cpu_percent: CpuPercent::new(75.0).unwrap(),
 //!     max_execution_time: std::time::Duration::from_secs(300),
 //!     max_concurrent_operations: 20,
 //!     max_open_files: 200,
@@ -60,13 +61,104 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// Validated CPU percentage (0.0 to 100.0)
+///
+/// This type ensures that CPU percentages are always within valid bounds,
+/// making invalid states unrepresentable at the type level.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver_core::security::CpuPercent;
+///
+/// let valid = CpuPercent::new(50.0).unwrap();
+/// assert_eq!(valid.get(), 50.0);
+///
+/// assert!(CpuPercent::new(-10.0).is_none());
+/// assert!(CpuPercent::new(150.0).is_none());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct CpuPercent(f64);
+
+impl CpuPercent {
+    /// Create a new CPU percentage if the value is within bounds (0.0-100.0)
+    pub const fn new(value: f64) -> Option<Self> {
+        if value >= 0.0 && value <= 100.0 {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    /// Create a CPU percentage without validation (for internal use)
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure the value is within 0.0-100.0
+    const fn new_unchecked(value: f64) -> Self {
+        Self(value)
+    }
+
+    /// Get the underlying percentage value
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Default CPU percentage for production (50%)
+    pub const fn production() -> Self {
+        Self::new_unchecked(50.0)
+    }
+
+    /// Maximum CPU percentage (100%)
+    pub const fn max() -> Self {
+        Self::new_unchecked(100.0)
+    }
+}
+
+impl Default for CpuPercent {
+    fn default() -> Self {
+        Self::production()
+    }
+}
+
+impl std::fmt::Display for CpuPercent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}%", self.0)
+    }
+}
+
+// Serde support
+impl serde::Serialize for CpuPercent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CpuPercent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        CpuPercent::new(value).ok_or_else(|| {
+            serde::de::Error::custom(format!("CPU percentage must be 0.0-100.0, got {}", value))
+        })
+    }
+}
+
 /// Resource limits configuration
+///
+/// All fields are now validated at construction time, making invalid
+/// configurations unrepresentable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceLimits {
     /// Maximum memory usage in MB
     pub max_memory_mb: u64,
-    /// Maximum CPU usage percentage
-    pub max_cpu_percent: f64,
+    /// Maximum CPU usage percentage (validated 0.0-100.0)
+    pub max_cpu_percent: CpuPercent,
     /// Maximum execution time for single operation
     #[serde(with = "duration_serde", alias = "max_execution_time_seconds")]
     pub max_execution_time: Duration,
@@ -103,7 +195,7 @@ impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
             max_memory_mb: 128,
-            max_cpu_percent: 50.0,
+            max_cpu_percent: CpuPercent::production(),
             max_execution_time: Duration::from_secs(300),
             max_concurrent_operations: 10,
             max_open_files: 100,
@@ -186,12 +278,12 @@ impl ResourceTracker {
         }
 
         // Check CPU limit
-        if usage.cpu_percent > self.limits.max_cpu_percent {
+        if usage.cpu_percent > self.limits.max_cpu_percent.get() {
             // Record CPU limit exceeded metric
 
             return Err(SecurityError::CpuLimitExceeded {
                 usage: usage.cpu_percent,
-                limit: self.limits.max_cpu_percent,
+                limit: self.limits.max_cpu_percent.get(),
             });
         }
 
@@ -442,8 +534,31 @@ mod tests {
     fn test_resource_limits_default() {
         let limits = ResourceLimits::default();
         assert_eq!(limits.max_memory_mb, 128);
-        assert_eq!(limits.max_cpu_percent, 50.0);
+        assert_eq!(limits.max_cpu_percent.get(), 50.0);
         assert_eq!(limits.max_execution_time, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn test_cpu_percent_validation() {
+        // Valid values
+        assert!(CpuPercent::new(0.0).is_some());
+        assert!(CpuPercent::new(50.0).is_some());
+        assert!(CpuPercent::new(100.0).is_some());
+
+        // Invalid values
+        assert!(CpuPercent::new(-0.1).is_none());
+        assert!(CpuPercent::new(-100.0).is_none());
+        assert!(CpuPercent::new(100.1).is_none());
+        assert!(CpuPercent::new(200.0).is_none());
+        assert!(CpuPercent::new(f64::INFINITY).is_none());
+        assert!(CpuPercent::new(f64::NEG_INFINITY).is_none());
+        assert!(CpuPercent::new(f64::NAN).is_none());
+    }
+
+    #[test]
+    fn test_cpu_percent_display() {
+        let cpu = CpuPercent::new(75.5).unwrap();
+        assert_eq!(cpu.to_string(), "75.5%");
     }
 
     #[test]
@@ -565,7 +680,7 @@ mod tests {
         // Test that memory limits are actually enforced
         let limits = ResourceLimits {
             max_memory_mb: 1, // Set very low limit
-            max_cpu_percent: 100.0,
+            max_cpu_percent: CpuPercent::max(),
             max_execution_time: Duration::from_secs(300),
             max_concurrent_operations: 10,
             max_open_files: 1000,
@@ -613,7 +728,7 @@ mod tests {
         // we can reliably test the limit enforcement logic
         let limits = ResourceLimits {
             max_memory_mb: 1000,
-            max_cpu_percent: 1.0, // Set very low CPU limit
+            max_cpu_percent: CpuPercent::new(1.0).unwrap(), // Set very low CPU limit
             max_execution_time: Duration::from_secs(300),
             max_concurrent_operations: 10,
             max_open_files: 1000,
