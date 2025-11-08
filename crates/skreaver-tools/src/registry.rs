@@ -168,7 +168,7 @@ impl InMemoryToolRegistry {
         if let Some(standard_tool) = super::StandardTool::from_name(name) {
             self.standard_tools.insert(standard_tool, tool);
         } else {
-            let tool_name = super::ToolName::new(name).expect("Valid tool name");
+            let tool_name = super::ToolName::parse(name).expect("Valid tool name");
             self.custom_tools.insert(tool_name, tool);
         }
         self
@@ -194,7 +194,7 @@ impl InMemoryToolRegistry {
         if let Some(standard_tool) = super::StandardTool::from_name(name) {
             self.standard_tools.insert(standard_tool, tool);
         } else {
-            let tool_name = super::ToolName::new(name)?;
+            let tool_name = super::ToolName::parse(name)?;
             self.custom_tools.insert(tool_name, tool);
         }
         Ok(self)

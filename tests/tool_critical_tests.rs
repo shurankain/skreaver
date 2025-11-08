@@ -49,14 +49,14 @@ fn test_tool_default_response() {
 #[test]
 fn test_tool_name_validation() {
     // Valid tool names should work
-    assert!(ToolName::new("valid_tool").is_ok());
-    assert!(ToolName::new("valid-tool-123").is_ok());
-    assert!(ToolName::new("tool_with_underscores").is_ok());
+    assert!(ToolName::parse("valid_tool").is_ok());
+    assert!(ToolName::parse("valid-tool-123").is_ok());
+    assert!(ToolName::parse("tool_with_underscores").is_ok());
 
     // Invalid tool names should fail
-    assert!(ToolName::new("").is_err()); // Empty string
-    assert!(ToolName::new("tool with spaces").is_err()); // Contains spaces
-    assert!(ToolName::new("tool@symbol").is_err()); // Invalid characters
+    assert!(ToolName::parse("").is_err()); // Empty string
+    assert!(ToolName::parse("tool with spaces").is_err()); // Contains spaces
+    assert!(ToolName::parse("tool@symbol").is_err()); // Invalid characters
 }
 
 /// Test tool call creation and properties

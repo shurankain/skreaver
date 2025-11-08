@@ -5,8 +5,9 @@
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use skreaver::{
-    InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool, ToolCall, ToolName,
+    InMemoryMemory, MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, Tool, ToolCall,
 };
+use skreaver_core::ToolId as ToolName;
 use skreaver_testing::{MockTool, MockToolRegistry};
 use skreaver_tools::ToolRegistry;
 use std::time::Duration;
@@ -90,7 +91,7 @@ fn bench_tool_operations(c: &mut Criterion) {
 
     // Tool name validation
     group.bench_function("tool_name_validation", |b| {
-        b.iter(|| std::hint::black_box(ToolName::new(std::hint::black_box("valid_tool_name"))))
+        b.iter(|| std::hint::black_box(ToolName::parse(std::hint::black_box("valid_tool_name"))))
     });
 
     group.finish();
@@ -211,7 +212,7 @@ fn bench_error_handling(c: &mut Criterion) {
 
     // Invalid tool names
     group.bench_function("invalid_tool_name", |b| {
-        b.iter(|| std::hint::black_box(ToolName::new(std::hint::black_box(""))))
+        b.iter(|| std::hint::black_box(ToolName::parse(std::hint::black_box(""))))
     });
 
     group.finish();

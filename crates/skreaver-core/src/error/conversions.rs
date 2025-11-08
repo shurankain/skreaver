@@ -8,7 +8,7 @@ use super::agent::{AgentError, CoordinatorError};
 use super::memory::{MemoryError, TransactionError};
 use super::tool::ToolError;
 use super::types::{InputValidationError, MemoryBackend, MemoryErrorKind, ValidatedInput};
-use crate::tool::{ToolDispatch, ToolName};
+use crate::tool::ToolDispatch;
 
 /// Main error type for Skreaver operations - defined here to avoid circular dependencies
 /// with conversions.
@@ -86,9 +86,9 @@ impl From<crate::memory::InvalidMemoryKey> for TransactionError {
 }
 
 // Conversions to ToolError
-impl From<crate::tool::InvalidToolName> for ToolError {
-    fn from(err: crate::tool::InvalidToolName) -> Self {
-        ToolError::InvalidToolName {
+impl From<crate::IdValidationError> for ToolError {
+    fn from(err: crate::IdValidationError) -> Self {
+        ToolError::InvalidToolId {
             attempted_name: "unknown".to_string(),
             validation_error: err,
         }
@@ -98,8 +98,7 @@ impl From<crate::tool::InvalidToolName> for ToolError {
 impl From<InputValidationError> for ToolError {
     fn from(err: InputValidationError) -> Self {
         // Create a fallback tool dispatch for cases where we don't have context
-        let fallback_tool =
-            ToolDispatch::Custom(ToolName::new("unknown").expect("'unknown' is a valid tool name"));
+        let fallback_tool = ToolDispatch::Custom(crate::ToolId::new_unchecked("unknown"));
         let fallback_input = ValidatedInput::new_unchecked("".to_string());
 
         ToolError::InvalidInput {

@@ -7,12 +7,12 @@
 use proptest::prelude::*;
 use skreaver_core::{
     InMemoryMemory,
+    ToolId as ToolName, // ToolName is now an alias for ToolId
     error::TransactionError,
     memory::{
         MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory,
         TransactionalMemory,
     },
-    tool::ToolName,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ struct SimpleMockTool {
 impl SimpleMockTool {
     fn new(name: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Ok(Self {
-            name: ToolName::new(name)
+            name: ToolName::parse(name)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?,
             responses: HashMap::new(),
         })
@@ -144,7 +144,7 @@ fn malicious_value_strategy() -> impl Strategy<Value = String> {
 fn tool_name_strategy() -> impl Strategy<Value = ToolName> {
     prop::string::string_regex("[a-zA-Z0-9_-]{1,32}")
         .unwrap()
-        .prop_filter_map("Valid tool name", |s| ToolName::new(&s).ok())
+        .prop_filter_map("Valid tool name", |s| ToolName::parse(&s).ok())
 }
 
 proptest! {
@@ -257,7 +257,7 @@ proptest! {
     /// Property: Tool names should always be valid after construction
     #[test]
     fn prop_tool_name_validity(name_str in prop::string::string_regex("[a-zA-Z0-9_-]{1,64}").unwrap()) {
-        if let Ok(tool_name) = ToolName::new(&name_str) {
+        if let Ok(tool_name) = ToolName::parse(&name_str) {
             // Property: tool name string representation should match input
             prop_assert_eq!(tool_name.as_str(), name_str);
 
@@ -971,7 +971,7 @@ mod quickcheck_tests {
 
     #[quickcheck]
     fn qc_tool_name_validation(name: String) -> TestResult {
-        let result = ToolName::new(&name);
+        let result = ToolName::parse(&name);
 
         // If creation succeeds, the name should meet our criteria
         match result {

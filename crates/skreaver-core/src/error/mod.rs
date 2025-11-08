@@ -50,7 +50,7 @@ mod tests {
 
         // Test invalid name
         let error = ToolError::not_found_by_name("invalid tool name!");
-        assert!(matches!(error, ToolError::InvalidToolName { .. }));
+        assert!(matches!(error, ToolError::InvalidToolId { .. }));
         assert_eq!(error.tool_name(), None);
     }
 
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn test_tool_error_timeout() {
         let tool = crate::tool::ToolDispatch::Custom(
-            crate::tool::ToolName::new("custom_tool").expect("Valid tool name"),
+            crate::ToolId::parse("custom_tool").expect("Valid tool ID"),
         );
         let error = ToolError::timeout(tool, 5000);
 
@@ -139,10 +139,10 @@ mod tests {
 
     #[test]
     fn test_tool_error_conversions() {
-        // Test InvalidToolName conversion
-        let invalid_name = crate::tool::InvalidToolName::Empty;
-        let tool_error: ToolError = invalid_name.into();
-        assert!(matches!(tool_error, ToolError::InvalidToolName { .. }));
+        // Test IdValidationError conversion for tool IDs
+        let invalid_id = crate::IdValidationError::Empty;
+        let tool_error: ToolError = invalid_id.into();
+        assert!(matches!(tool_error, ToolError::InvalidToolId { .. }));
 
         // Test InputValidationError conversion
         let input_error = InputValidationError::Empty;

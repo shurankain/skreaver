@@ -91,7 +91,7 @@ fn test_tool_name_security_validation() {
     ];
 
     for dangerous_name in dangerous_tool_names {
-        let result = ToolName::new(dangerous_name);
+        let result = ToolName::parse(dangerous_name);
         // Should reject dangerous tool names
         assert!(
             result.is_err(),
@@ -102,7 +102,7 @@ fn test_tool_name_security_validation() {
 
     // Separate test for null byte which might be tricky
     let null_byte_name = "tool\x00null";
-    let result = ToolName::new(null_byte_name);
+    let result = ToolName::parse(null_byte_name);
     // Null bytes should be rejected - they're not alphanumeric, _, or -
     assert!(
         result.is_err(),
@@ -213,7 +213,7 @@ async fn test_concurrent_access_security() {
 fn test_boundary_value_validation() {
     // Test empty values
     assert!(MemoryKey::new("").is_err());
-    assert!(ToolName::new("").is_err());
+    assert!(ToolName::parse("").is_err());
 
     // Test maximum length values (MemoryKey=128, ToolName=64)
     let max_length_key = "a".repeat(128);
@@ -221,14 +221,14 @@ fn test_boundary_value_validation() {
 
     // These should work at the boundary
     assert!(MemoryKey::new(&max_length_key).is_ok());
-    assert!(ToolName::new(&max_length_tool).is_ok());
+    assert!(ToolName::parse(&max_length_tool).is_ok());
 
     // These should fail beyond the boundary
     let too_long_key = "a".repeat(129);
     let too_long_tool = "a".repeat(129); // ToolName max is now 128
 
     assert!(MemoryKey::new(&too_long_key).is_err());
-    assert!(ToolName::new(&too_long_tool).is_err());
+    assert!(ToolName::parse(&too_long_tool).is_err());
 }
 
 /// Test Unicode security considerations
@@ -245,7 +245,7 @@ fn test_unicode_security() {
 
     for unicode_input in unicode_inputs {
         let key_result = MemoryKey::new(unicode_input);
-        let tool_result = ToolName::new(unicode_input);
+        let tool_result = ToolName::parse(unicode_input);
 
         // Should handle Unicode consistently
         // Either accept and preserve, or reject consistently

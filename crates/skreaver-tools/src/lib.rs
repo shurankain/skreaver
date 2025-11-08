@@ -33,7 +33,9 @@ pub mod secure_registry;
 /// Standard tool library providing common functionality.
 pub mod standard;
 
-pub use core::{InvalidToolName, ToolCallBuildError, ToolCallBuilder, ToolName};
+pub use core::{ToolCallBuildError, ToolCallBuilder};
+// Type aliases for backward compatibility - ToolName now maps to ToolId
+pub use core::{InvalidToolName, ToolName};
 pub use registry::{InMemoryToolRegistry, ToolRegistry};
 pub use secure_registry::SecureToolRegistry;
 pub use skreaver_core::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};

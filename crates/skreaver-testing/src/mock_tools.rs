@@ -118,7 +118,7 @@ impl MockToolRegistry {
 
     /// Add a mock tool to the registry
     pub fn with_tool(mut self, tool: MockTool) -> Self {
-        let tool_name = ToolName::new(&tool.name).expect("Valid tool name");
+        let tool_name = ToolName::parse(&tool.name).expect("Valid tool name");
         self.tools.insert(tool_name, Arc::new(tool));
         self
     }
@@ -167,7 +167,7 @@ impl MockToolRegistry {
 
     /// Get a reference to a mock tool for inspection
     pub fn get_mock_tool(&self, name: &str) -> Option<Arc<MockTool>> {
-        let tool_name = ToolName::new(name).ok()?;
+        let tool_name = ToolName::parse(name).ok()?;
         self.tools.get(&tool_name).cloned()
     }
 
@@ -189,7 +189,7 @@ impl ToolRegistry for MockToolRegistry {
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult> {
         // For testing, we look up by name string regardless of dispatch type
         let name_str = call.name();
-        let tool_name = ToolName::new(name_str).ok()?;
+        let tool_name = ToolName::parse(name_str).ok()?;
         self.tools.get(&tool_name).map(|tool| tool.call(call.input))
     }
 }

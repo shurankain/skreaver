@@ -4,7 +4,7 @@ use skreaver::{ExecutionResult, InMemoryToolRegistry, MemoryKey, Tool, ToolCall,
 use skreaver_core::error::{
     MemoryBackend, MemoryError, MemoryErrorKind, ToolError, ValidatedInput,
 };
-use skreaver_core::tool::{ToolDispatch, ToolName};
+use skreaver_core::{ToolId as ToolName, tool::ToolDispatch};
 use std::sync::Arc;
 
 // Define result type for this example
@@ -96,7 +96,7 @@ fn main() -> SkreverResult<()> {
 
     // Example 5: Tool error handling with structured information
     println!("\n❌ Example 5: Structured tool error");
-    let tool_name = ToolName::new("calculator").expect("Valid tool name");
+    let tool_name = ToolName::parse("calculator").expect("Valid tool name");
     let tool_dispatch = ToolDispatch::Custom(tool_name);
     let validated_input = ValidatedInput::new("invalid_number".to_string()).expect("Valid input");
     let tool_error = ToolError::InvalidInput {

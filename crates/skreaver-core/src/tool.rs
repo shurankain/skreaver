@@ -1,193 +1,6 @@
-/// Validated tool name that prevents typos and ensures consistent naming.
-///
-/// `ToolName` is a newtype wrapper around `ToolId` that provides compile-time
-/// validation and prevents common errors like typos in tool names. It enforces
-/// naming conventions and length limits to ensure tool names are valid.
-///
-/// **Security**: As of v0.6.0, `ToolName` internally uses the unified `ToolId`
-/// type which blocks path traversal attacks and enforces consistent validation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ToolName(crate::ToolId);
-
-/// Errors that can occur when creating a `ToolName`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InvalidToolName {
-    /// Tool name is empty or contains only whitespace.
-    Empty,
-    /// Tool name exceeds the maximum allowed length.
-    TooLong(usize),
-    /// Tool name contains invalid characters.
-    InvalidChars(String),
-    /// Tool name contains path traversal sequences (security risk).
-    PathTraversal,
-}
-
-impl std::fmt::Display for InvalidToolName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InvalidToolName::Empty => write!(f, "Tool name cannot be empty"),
-            InvalidToolName::TooLong(len) => {
-                write!(f, "Tool name too long: {} characters (max 128)", len)
-            }
-            InvalidToolName::InvalidChars(name) => {
-                write!(f, "Tool name contains invalid characters: '{}'", name)
-            }
-            InvalidToolName::PathTraversal => {
-                write!(f, "Tool name cannot contain path traversal sequences (../)")
-            }
-        }
-    }
-}
-
-impl std::error::Error for InvalidToolName {}
-
-impl From<crate::IdValidationError> for InvalidToolName {
-    fn from(err: crate::IdValidationError) -> Self {
-        use crate::IdValidationError;
-        match err {
-            IdValidationError::Empty | IdValidationError::WhitespaceOnly => InvalidToolName::Empty,
-            IdValidationError::TooLong { length, .. } => InvalidToolName::TooLong(length),
-            IdValidationError::InvalidCharacters | IdValidationError::LeadingTrailingWhitespace => {
-                InvalidToolName::InvalidChars(String::new())
-            }
-            IdValidationError::PathTraversal => InvalidToolName::PathTraversal,
-        }
-    }
-}
-
-impl ToolName {
-    /// Maximum allowed length for tool names.
-    /// **Note**: As of v0.6.0, the actual limit is 128 characters (inherited from ToolId).
-    pub const MAX_LENGTH: usize = 128;
-
-    /// Create a new validated tool name.
-    ///
-    /// # Parameters
-    ///
-    /// * `name` - The tool name string to validate
-    ///
-    /// # Returns
-    ///
-    /// `Ok(ToolName)` if valid, `Err(InvalidToolName)` if validation fails
-    ///
-    /// # Validation Rules
-    ///
-    /// - Must not be empty or only whitespace
-    /// - Must not exceed 128 characters
-    /// - Must contain only alphanumeric characters, underscores, hyphens, and dots
-    /// - Must not contain path traversal sequences (`../`, `./`)
-    ///
-    /// # Security
-    ///
-    /// As of v0.6.0, this uses unified `ToolId` validation which prevents:
-    /// - Path traversal attacks
-    /// - Shell injection via tool names
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use skreaver_core::tool::ToolName;
-    ///
-    /// let name = ToolName::new("calculator").unwrap();
-    /// assert_eq!(name.as_str(), "calculator");
-    ///
-    /// // Path traversal blocked
-    /// assert!(ToolName::new("../etc/passwd").is_err());
-    /// ```
-    pub fn new(name: &str) -> Result<Self, InvalidToolName> {
-        crate::ToolId::parse(name)
-            .map(ToolName)
-            .map_err(InvalidToolName::from)
-    }
-
-    /// Get the tool name as a string slice.
-    ///
-    /// # Returns
-    ///
-    /// The validated tool name as a `&str`
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-
-    /// Get the length of the tool name in bytes.
-    ///
-    /// # Returns
-    ///
-    /// The length of the tool name
-    pub fn len(&self) -> usize {
-        self.0.as_str().len()
-    }
-
-    /// Check if the tool name is empty.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the tool name is empty (this should never happen for validated names)
-    pub fn is_empty(&self) -> bool {
-        self.0.as_str().is_empty()
-    }
-
-    /// Convert into the underlying string.
-    ///
-    /// # Returns
-    ///
-    /// The validated tool name as an owned `String`
-    pub fn into_string(self) -> String {
-        self.0.as_str().to_string()
-    }
-
-    /// Convert to the underlying ToolId.
-    ///
-    /// # Returns
-    ///
-    /// The validated tool ID
-    pub fn into_tool_id(self) -> crate::ToolId {
-        self.0
-    }
-
-    /// Get a reference to the underlying ToolId.
-    ///
-    /// # Returns
-    ///
-    /// Reference to the validated tool ID
-    pub fn as_tool_id(&self) -> &crate::ToolId {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for ToolName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.as_str())
-    }
-}
-
-impl AsRef<str> for ToolName {
-    fn as_ref(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl std::borrow::Borrow<str> for ToolName {
-    fn borrow(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl TryFrom<&str> for ToolName {
-    type Error = InvalidToolName;
-
-    fn try_from(name: &str) -> Result<Self, Self::Error> {
-        ToolName::new(name)
-    }
-}
-
-impl TryFrom<String> for ToolName {
-    type Error = InvalidToolName;
-
-    fn try_from(name: String) -> Result<Self, Self::Error> {
-        ToolName::new(&name)
-    }
-}
+// ToolName has been deprecated in favor of ToolId directly.
+// All validation is now handled by ToolId which provides the same security guarantees.
+// This reduces unnecessary type wrapping and allocation overhead.
 
 /// Standard tool types for strongly-typed dispatch.
 ///
@@ -300,16 +113,16 @@ pub enum ToolDispatch {
     /// Dispatch to a standard tool using compile-time validation.
     Standard(StandardTool),
     /// Dispatch to a custom tool using runtime validation.
-    Custom(ToolName),
+    Custom(crate::ToolId),
 }
 
 impl ToolDispatch {
     /// Create a dispatch method from a tool name string.
-    pub fn from_name(name: &str) -> Result<Self, InvalidToolName> {
+    pub fn from_name(name: &str) -> Result<Self, crate::IdValidationError> {
         if let Some(standard_tool) = StandardTool::from_name(name) {
             Ok(ToolDispatch::Standard(standard_tool))
         } else {
-            Ok(ToolDispatch::Custom(ToolName::new(name)?))
+            Ok(ToolDispatch::Custom(crate::ToolId::parse(name)?))
         }
     }
 
@@ -317,7 +130,7 @@ impl ToolDispatch {
     pub fn name(&self) -> &str {
         match self {
             ToolDispatch::Standard(tool) => tool.name(),
-            ToolDispatch::Custom(name) => name.as_str(),
+            ToolDispatch::Custom(tool_id) => tool_id.as_str(),
         }
     }
 }
@@ -358,8 +171,8 @@ impl ToolCall {
     ///
     /// # Returns
     ///
-    /// `Ok(ToolCall)` if the name is valid, `Err(InvalidToolName)` otherwise
-    pub fn new(name: &str, input: &str) -> Result<Self, InvalidToolName> {
+    /// `Ok(ToolCall)` if the name is valid, `Err(IdValidationError)` otherwise
+    pub fn new(name: &str, input: &str) -> Result<Self, crate::IdValidationError> {
         Ok(Self {
             dispatch: ToolDispatch::from_name(name)?,
             input: input.to_string(),
@@ -397,7 +210,7 @@ impl ToolCall {
     /// # Returns
     ///
     /// A new `ToolCall` instance
-    pub fn from_validated(name: ToolName, input: String) -> Self {
+    pub fn from_validated(name: crate::ToolId, input: String) -> Self {
         Self {
             dispatch: ToolDispatch::Custom(name),
             input,
@@ -413,8 +226,8 @@ impl ToolCall {
     ///
     /// # Returns
     ///
-    /// `Ok(ToolCall)` if the name is valid, `Err(InvalidToolName)` otherwise
-    pub fn from_owned(name: String, input: String) -> Result<Self, InvalidToolName> {
+    /// `Ok(ToolCall)` if the name is valid, `Err(IdValidationError)` otherwise
+    pub fn from_owned(name: String, input: String) -> Result<Self, crate::IdValidationError> {
         Ok(Self {
             dispatch: ToolDispatch::from_name(&name)?,
             input,
@@ -492,15 +305,15 @@ impl ToolCallBuilder {
 pub enum ToolCallBuildError {
     /// No tool name was provided.
     MissingName,
-    /// The provided tool name is invalid.
-    InvalidName(InvalidToolName),
+    /// The provided tool ID is invalid.
+    InvalidName(crate::IdValidationError),
 }
 
 impl std::fmt::Display for ToolCallBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ToolCallBuildError::MissingName => write!(f, "Tool name is required"),
-            ToolCallBuildError::InvalidName(err) => write!(f, "Invalid tool name: {}", err),
+            ToolCallBuildError::InvalidName(err) => write!(f, "Invalid tool ID: {}", err),
         }
     }
 }
@@ -921,26 +734,28 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_name_validation() {
-        // Valid names
-        assert!(ToolName::new("calculator").is_ok());
-        assert!(ToolName::new("tool_name").is_ok());
-        assert!(ToolName::new("tool-name").is_ok());
-        assert!(ToolName::new("Tool123").is_ok());
+    fn test_tool_id_validation_for_dispatch() {
+        use crate::ToolId;
 
-        // Invalid names
-        assert!(ToolName::new("").is_err());
-        assert!(ToolName::new("   ").is_err());
-        assert!(ToolName::new("tool with spaces").is_err());
-        assert!(ToolName::new("tool@special").is_err());
+        // Valid tool IDs (same validation as ToolName had)
+        assert!(ToolId::parse("calculator").is_ok());
+        assert!(ToolId::parse("tool_name").is_ok());
+        assert!(ToolId::parse("tool-name").is_ok());
+        assert!(ToolId::parse("Tool123").is_ok());
 
-        // Too long name (max is 128 as of v0.6.0)
+        // Invalid IDs
+        assert!(ToolId::parse("").is_err());
+        assert!(ToolId::parse("   ").is_err());
+        assert!(ToolId::parse("tool with spaces").is_err());
+        assert!(ToolId::parse("tool@special").is_err());
+
+        // Too long (max is 128)
         let long_name = "a".repeat(129);
-        assert!(ToolName::new(&long_name).is_err());
+        assert!(ToolId::parse(&long_name).is_err());
 
-        // Path traversal blocked (security fix in v0.6.0)
-        assert!(ToolName::new("../etc/passwd").is_err());
-        assert!(ToolName::new("./secret").is_err());
+        // Path traversal blocked
+        assert!(ToolId::parse("../etc/passwd").is_err());
+        assert!(ToolId::parse("./secret").is_err());
     }
 
     #[test]

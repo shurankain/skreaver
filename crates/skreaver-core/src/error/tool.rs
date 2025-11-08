@@ -47,12 +47,12 @@ pub enum ToolError {
     /// Tool registry is full or cannot accept more tools.
     RegistryFull,
 
-    /// Tool name validation failed during dispatch.
-    InvalidToolName {
-        /// The invalid tool name that was provided
+    /// Tool ID validation failed during dispatch.
+    InvalidToolId {
+        /// The invalid tool ID that was provided
         attempted_name: String,
         /// Validation error details
-        validation_error: crate::tool::InvalidToolName,
+        validation_error: crate::IdValidationError,
     },
 }
 
@@ -87,13 +87,13 @@ impl fmt::Display for ToolError {
                 )
             }
             ToolError::RegistryFull => write!(f, "Tool registry is full"),
-            ToolError::InvalidToolName {
+            ToolError::InvalidToolId {
                 attempted_name,
                 validation_error,
             } => {
                 write!(
                     f,
-                    "Invalid tool name '{}': {}",
+                    "Invalid tool ID '{}': {}",
                     attempted_name, validation_error
                 )
             }
@@ -113,7 +113,7 @@ impl ToolError {
     pub fn not_found_by_name(name: &str) -> Self {
         match ToolDispatch::from_name(name) {
             Ok(tool) => ToolError::NotFound { tool },
-            Err(validation_error) => ToolError::InvalidToolName {
+            Err(validation_error) => ToolError::InvalidToolId {
                 attempted_name: name.to_string(),
                 validation_error,
             },
@@ -129,7 +129,7 @@ impl ToolError {
     pub fn execution_failed_by_name(name: &str, message: String) -> Self {
         match ToolDispatch::from_name(name) {
             Ok(tool) => ToolError::ExecutionFailed { tool, message },
-            Err(validation_error) => ToolError::InvalidToolName {
+            Err(validation_error) => ToolError::InvalidToolId {
                 attempted_name: name.to_string(),
                 validation_error,
             },
@@ -157,7 +157,7 @@ impl ToolError {
     pub fn timeout_by_name(name: &str, duration_ms: u64) -> Self {
         match ToolDispatch::from_name(name) {
             Ok(tool) => ToolError::Timeout { tool, duration_ms },
-            Err(validation_error) => ToolError::InvalidToolName {
+            Err(validation_error) => ToolError::InvalidToolId {
                 attempted_name: name.to_string(),
                 validation_error,
             },
@@ -171,7 +171,7 @@ impl ToolError {
             | ToolError::ExecutionFailed { tool, .. }
             | ToolError::InvalidInput { tool, .. }
             | ToolError::Timeout { tool, .. } => Some(tool),
-            ToolError::RegistryFull | ToolError::InvalidToolName { .. } => None,
+            ToolError::RegistryFull | ToolError::InvalidToolId { .. } => None,
         }
     }
 
