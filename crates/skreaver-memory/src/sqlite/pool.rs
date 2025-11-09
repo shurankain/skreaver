@@ -140,27 +140,20 @@ impl SqlitePool {
 
     /// Sanitize error messages to prevent information disclosure
     pub(crate) fn sanitize_error(error: &rusqlite::Error) -> String {
+        use skreaver_core::sanitization::DatabaseErrorSanitizer;
+
+        // SQLite-specific errors that are safe to expose
         match error {
-            // Allow specific safe errors
             rusqlite::Error::QueryReturnedNoRows => "No rows returned".to_string(),
             rusqlite::Error::InvalidColumnIndex(_) => "Invalid column index".to_string(),
             rusqlite::Error::InvalidColumnName(_) => "Invalid column name".to_string(),
             rusqlite::Error::InvalidPath(_) => "Invalid database path".to_string(),
-
-            // Generic messages for potentially sensitive errors
-            rusqlite::Error::SqliteFailure(_, _) => "Database operation failed".to_string(),
-            rusqlite::Error::SqlInputError { .. } => "Invalid SQL input".to_string(),
-            rusqlite::Error::FromSqlConversionFailure { .. } => {
-                "Data conversion failed".to_string()
-            }
-            rusqlite::Error::IntegralValueOutOfRange(_, _) => "Value out of range".to_string(),
-            rusqlite::Error::Utf8Error(_) => "Invalid UTF-8 data".to_string(),
-            rusqlite::Error::NulError(_) => "Invalid null character".to_string(),
             rusqlite::Error::InvalidColumnType(_, _, _) => "Invalid column type".to_string(),
             rusqlite::Error::StatementChangedRows(_) => "Unexpected row count".to_string(),
+            rusqlite::Error::IntegralValueOutOfRange(_, _) => "Value out of range".to_string(),
 
-            // Catch-all for unknown errors
-            _ => "Database error occurred".to_string(),
+            // Use unified sanitizer for all other errors
+            _ => DatabaseErrorSanitizer::sanitize(error),
         }
     }
 

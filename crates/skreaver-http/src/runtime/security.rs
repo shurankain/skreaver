@@ -323,21 +323,20 @@ impl InputValidationConfig {
 
     /// Sanitize user input by removing or escaping dangerous content
     pub fn sanitize_string(&self, input: &str) -> String {
-        let mut sanitized = input.to_string();
+        use skreaver_core::sanitization::ContentSanitizer;
 
-        // Remove null bytes
-        sanitized = sanitized.replace('\0', "");
+        // Remove control characters (including null bytes) using unified sanitizer
+        let sanitized = ContentSanitizer::remove_control_chars(input);
 
         // Escape HTML entities
-        sanitized = html_escape::encode_text(&sanitized).to_string();
+        let sanitized = html_escape::encode_text(&sanitized).to_string();
 
         // Truncate if too long
         if sanitized.len() > self.max_string_length {
-            sanitized.truncate(self.max_string_length);
-            sanitized.push_str("...[truncated]");
+            format!("{}...[truncated]", &sanitized[..self.max_string_length])
+        } else {
+            sanitized
         }
-
-        sanitized
     }
 }
 

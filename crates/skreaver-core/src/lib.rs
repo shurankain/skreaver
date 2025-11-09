@@ -11,6 +11,7 @@ pub mod identifiers;
 pub mod in_memory;
 pub mod memory;
 pub mod metadata;
+pub mod sanitization;
 pub mod security;
 pub mod tool;
 pub mod validation;
@@ -22,6 +23,9 @@ pub use memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 pub use metadata::{Metadata, MetadataBuilder, MetadataKey, MetadataValue};
+pub use sanitization::{
+    ContentSanitizer, DatabaseErrorSanitizer, SanitizeError, SanitizeIdentifier, SecretRedactor,
+};
 pub use security::{
     DomainValidator, InputValidator, PathValidator, ResourceLimits, ResourceTracker,
     SecureFileSystem, SecurityConfig, SecurityContext, SecurityError, SecurityManager,

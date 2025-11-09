@@ -106,18 +106,8 @@ impl PostgresPool {
 
     /// Sanitize PostgreSQL errors for security
     fn sanitize_error(error: &PgError) -> String {
-        // Map specific PostgreSQL errors to safe messages
-        if error.as_db_error().is_some() {
-            "Database operation failed".to_string()
-        } else if error.to_string().contains("connection") {
-            "Connection failed".to_string()
-        } else if error.to_string().contains("authentication") {
-            "Authentication failed".to_string()
-        } else if error.to_string().contains("timeout") {
-            "Operation timed out".to_string()
-        } else {
-            "Database error occurred".to_string()
-        }
+        use skreaver_core::sanitization::DatabaseErrorSanitizer;
+        DatabaseErrorSanitizer::sanitize(error)
     }
 
     /// Validate connection health

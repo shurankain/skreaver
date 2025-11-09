@@ -163,22 +163,8 @@ impl RedisPoolUtils {
 
     /// Sanitize Redis errors for security (remove sensitive info)
     pub fn sanitize_error(error: &redis::RedisError) -> String {
-        let error_str = error.to_string();
-
-        // Remove potential sensitive information from error messages
-        if error_str.contains("password") || error_str.contains("auth") {
-            "Authentication failed".to_string()
-        } else if error_str.contains("connection") {
-            "Connection error".to_string()
-        } else {
-            // Keep generic error info but limit length
-            let sanitized = error_str.chars().take(100).collect::<String>();
-            if sanitized.len() < error_str.len() {
-                format!("{}...", sanitized)
-            } else {
-                sanitized
-            }
-        }
+        use skreaver_core::sanitization::DatabaseErrorSanitizer;
+        DatabaseErrorSanitizer::sanitize(error)
     }
 
     /// Perform comprehensive health check

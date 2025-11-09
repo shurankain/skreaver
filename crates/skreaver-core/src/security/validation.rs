@@ -85,26 +85,20 @@ impl InputValidator {
     }
 
     pub fn sanitize(&self, input: String) -> String {
-        let mut sanitized = input;
+        use crate::sanitization::{ContentSanitizer, SecretRedactor};
 
-        // Remove or mask potential secrets
-        for pattern in SECRET_PATTERNS.iter() {
-            sanitized = pattern.replace_all(&sanitized, "[REDACTED]").to_string();
-        }
+        // Redact secrets using unified redactor
+        let sanitized = SecretRedactor::redact_secrets(&input);
 
-        // Remove control characters
-        sanitized = sanitized
-            .chars()
-            .filter(|c| !c.is_control() || c.is_whitespace())
-            .collect();
+        // Remove control characters using unified sanitizer
+        let sanitized = ContentSanitizer::remove_control_chars(&sanitized);
 
         // Limit length
         if sanitized.len() > 10000 {
-            sanitized.truncate(10000);
-            sanitized.push_str("... [TRUNCATED]");
+            format!("{}... [TRUNCATED]", &sanitized[..10000])
+        } else {
+            sanitized
         }
-
-        sanitized
     }
 
     fn check_for_secrets(&self, input: &str) -> Result<(), SecurityError> {

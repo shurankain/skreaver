@@ -26,7 +26,9 @@
 use crate::validation::{IdentifierRules, ValidationError};
 
 /// Maximum length for all identifier types
-pub const MAX_ID_LENGTH: usize = 128;
+/// Note: Uses the same value as `crate::sanitization::MAX_IDENTIFIER_LENGTH`
+#[cfg(test)]
+const MAX_ID_LENGTH: usize = crate::sanitization::MAX_IDENTIFIER_LENGTH;
 
 /// Error type for identifier validation failures
 ///
@@ -178,29 +180,8 @@ impl IdValidator {
     /// assert_eq!(IdValidator::sanitize("  spaces  "), "spaces");
     /// ```
     pub fn sanitize(input: &str) -> String {
-        let trimmed = input.trim();
-        if trimmed.is_empty() {
-            return "unnamed".to_string();
-        }
-
-        let sanitized: String = trimmed
-            .chars()
-            .map(|c| {
-                // Valid characters for identifiers: alphanumeric, -, _, .
-                if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-
-        // Truncate to max length
-        if sanitized.len() > MAX_ID_LENGTH {
-            sanitized[..MAX_ID_LENGTH].to_string()
-        } else {
-            sanitized
-        }
+        use crate::sanitization::SanitizeIdentifier;
+        input.sanitize_identifier()
     }
 }
 

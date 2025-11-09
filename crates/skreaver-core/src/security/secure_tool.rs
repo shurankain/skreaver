@@ -138,8 +138,9 @@ pub trait SecureToolExt: Tool {
 
     /// Post-process output to ensure it's safe
     fn sanitize_output(&self, output: String) -> String {
-        // Default implementation - return as-is
-        output
+        use crate::sanitization::ContentSanitizer;
+        // Use unified sanitizer to remove control chars and ANSI escapes
+        ContentSanitizer::sanitize_output(&output)
     }
 }
 
