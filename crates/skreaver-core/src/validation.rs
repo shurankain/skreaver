@@ -14,6 +14,10 @@ pub struct IdentifierRules {
     pub allow_colons: bool,
     /// Whether to allow forward slashes (/) in the identifier
     pub allow_slashes: bool,
+    /// Whether to check for path traversal sequences (../ and ./)
+    pub check_path_traversal: bool,
+    /// Whether to trim whitespace before validation
+    pub trim_whitespace: bool,
 }
 
 impl IdentifierRules {
@@ -22,11 +26,14 @@ impl IdentifierRules {
     /// - Max length: 64 characters
     /// - Allows: alphanumeric, `_`, `-`
     /// - Disallows: `.`, `:`, `/`, spaces, and other special characters
+    /// - Checks for path traversal
     pub const TOOL_NAME: Self = Self {
         max_length: 64,
         allow_dots: false,
         allow_colons: false,
         allow_slashes: false,
+        check_path_traversal: true,
+        trim_whitespace: true,
     };
 
     /// Standard rules for memory keys
@@ -34,6 +41,7 @@ impl IdentifierRules {
     /// - Max length: 128 characters
     /// - Allows: alphanumeric, `_`, `-`, `.`, `:`
     /// - Disallows: `/`, spaces, and other special characters
+    /// - Checks for path traversal
     ///
     /// The additional characters (`.` and `:`) enable namespacing patterns like:
     /// - `user.settings`
@@ -43,6 +51,23 @@ impl IdentifierRules {
         allow_dots: true,
         allow_colons: true,
         allow_slashes: false,
+        check_path_traversal: true,
+        trim_whitespace: true,
+    };
+
+    /// Standard rules for general identifiers (AgentId, ToolId, SessionId)
+    ///
+    /// - Max length: 128 characters
+    /// - Allows: alphanumeric, `_`, `-`, `.`
+    /// - Disallows: `:`, `/`, spaces, and other special characters
+    /// - Checks for path traversal sequences
+    pub const IDENTIFIER: Self = Self {
+        max_length: 128,
+        allow_dots: true,
+        allow_colons: false,
+        allow_slashes: false,
+        check_path_traversal: true,
+        trim_whitespace: false, // Identifiers must not have whitespace at all
     };
 
     /// Validate a string against these rules
@@ -53,24 +78,45 @@ impl IdentifierRules {
     ///
     /// # Returns
     ///
-    /// * `Ok(String)` - The trimmed, validated string
+    /// * `Ok(String)` - The validated string (trimmed if trim_whitespace is true)
     /// * `Err(ValidationError)` - Description of validation failure
     pub fn validate(&self, input: &str) -> Result<String, ValidationError> {
-        let trimmed = input.trim();
+        let processed = if self.trim_whitespace {
+            input.trim()
+        } else {
+            input
+        };
 
-        if trimmed.is_empty() {
+        // Check for empty
+        if processed.is_empty() {
             return Err(ValidationError::Empty);
         }
 
-        if trimmed.len() > self.max_length {
+        // Check for whitespace-only (if trimming is disabled and original had whitespace)
+        if !self.trim_whitespace && input.trim().is_empty() {
+            return Err(ValidationError::WhitespaceOnly);
+        }
+
+        // Check for leading/trailing whitespace when trimming is disabled
+        if !self.trim_whitespace && input != input.trim() {
+            return Err(ValidationError::LeadingTrailingWhitespace);
+        }
+
+        // Check length
+        if processed.len() > self.max_length {
             return Err(ValidationError::TooLong {
-                length: trimmed.len(),
+                length: processed.len(),
                 max: self.max_length,
             });
         }
 
+        // Check for path traversal sequences
+        if self.check_path_traversal && (processed.contains("../") || processed.contains("./")) {
+            return Err(ValidationError::PathTraversal);
+        }
+
         // Check for invalid characters
-        for ch in trimmed.chars() {
+        for ch in processed.chars() {
             let is_valid = ch.is_alphanumeric()
                 || ch == '_'
                 || ch == '-'
@@ -81,20 +127,24 @@ impl IdentifierRules {
             if !is_valid {
                 return Err(ValidationError::InvalidChar {
                     char: ch,
-                    input: trimmed.to_string(),
+                    input: processed.to_string(),
                 });
             }
         }
 
-        Ok(trimmed.to_string())
+        Ok(processed.to_string())
     }
 }
 
 /// Errors that can occur during identifier validation
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
-    /// Identifier is empty or contains only whitespace
+    /// Identifier is empty
     Empty,
+    /// Identifier contains only whitespace
+    WhitespaceOnly,
+    /// Identifier has leading or trailing whitespace
+    LeadingTrailingWhitespace,
     /// Identifier exceeds maximum allowed length
     TooLong {
         /// Actual length
@@ -109,12 +159,18 @@ pub enum ValidationError {
         /// The full input string
         input: String,
     },
+    /// Identifier contains path traversal sequences
+    PathTraversal,
 }
 
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ValidationError::Empty => write!(f, "Identifier cannot be empty"),
+            ValidationError::WhitespaceOnly => write!(f, "Identifier cannot be whitespace-only"),
+            ValidationError::LeadingTrailingWhitespace => {
+                write!(f, "Identifier cannot have leading or trailing whitespace")
+            }
             ValidationError::TooLong { length, max } => {
                 write!(
                     f,
@@ -127,6 +183,12 @@ impl std::fmt::Display for ValidationError {
                     f,
                     "Identifier '{}' contains invalid character '{}'",
                     input, char
+                )
+            }
+            ValidationError::PathTraversal => {
+                write!(
+                    f,
+                    "Identifier cannot contain path traversal sequences (../)"
                 )
             }
         }
@@ -209,5 +271,61 @@ mod tests {
 
         let result = rules.validate("  tool_name  ").unwrap();
         assert_eq!(result, "tool_name");
+    }
+
+    #[test]
+    fn test_path_traversal_detection() {
+        let rules = IdentifierRules::MEMORY_KEY;
+
+        assert!(matches!(
+            rules.validate("../etc"),
+            Err(ValidationError::PathTraversal)
+        ));
+        assert!(matches!(
+            rules.validate("./file"),
+            Err(ValidationError::PathTraversal)
+        ));
+        assert!(matches!(
+            rules.validate("path/../other"),
+            Err(ValidationError::PathTraversal)
+        ));
+    }
+
+    #[test]
+    fn test_identifier_rules() {
+        let rules = IdentifierRules::IDENTIFIER;
+
+        // Valid identifiers
+        assert!(rules.validate("agent-1").is_ok());
+        assert!(rules.validate("my_agent").is_ok());
+        assert!(rules.validate("agent.123").is_ok());
+
+        // Invalid - leading/trailing whitespace (no trimming for IDENTIFIER)
+        assert!(matches!(
+            rules.validate(" agent"),
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
+        assert!(matches!(
+            rules.validate("agent "),
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
+
+        // Invalid - whitespace only
+        assert!(matches!(
+            rules.validate("   "),
+            Err(ValidationError::WhitespaceOnly)
+        ));
+
+        // Invalid - colons not allowed
+        assert!(matches!(
+            rules.validate("agent:123"),
+            Err(ValidationError::InvalidChar { char: ':', .. })
+        ));
+
+        // Invalid - path traversal
+        assert!(matches!(
+            rules.validate("../agent"),
+            Err(ValidationError::PathTraversal)
+        ));
     }
 }

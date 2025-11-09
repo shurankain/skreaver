@@ -68,11 +68,18 @@ impl MemoryKey {
             .validate(key)
             .map_err(|e| match e {
                 crate::validation::ValidationError::Empty => InvalidMemoryKey::Empty,
+                crate::validation::ValidationError::WhitespaceOnly => InvalidMemoryKey::Empty,
+                crate::validation::ValidationError::LeadingTrailingWhitespace => {
+                    InvalidMemoryKey::InvalidChars(key.to_string())
+                }
                 crate::validation::ValidationError::TooLong { length, .. } => {
                     InvalidMemoryKey::TooLong(length)
                 }
                 crate::validation::ValidationError::InvalidChar { input, .. } => {
                     InvalidMemoryKey::InvalidChars(input)
+                }
+                crate::validation::ValidationError::PathTraversal => {
+                    InvalidMemoryKey::InvalidChars(key.to_string())
                 }
             })?;
 
