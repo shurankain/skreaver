@@ -23,6 +23,8 @@
 //! assert!(PoolSize::new(101).is_none()); // Too large
 //! ```
 
+pub mod health;
+
 use serde::{Deserialize, Serialize};
 
 /// Connection pool size constrained to valid range (1-100)
@@ -453,7 +455,7 @@ mod tests {
         assert!(DatabaseName::new("-invalid").is_none());
         assert!(DatabaseName::new("has spaces").is_none());
         assert!(DatabaseName::new("has@symbol").is_none());
-        assert!(DatabaseName::new(&"a".repeat(64)).is_none());
+        assert!(DatabaseName::new("a".repeat(64)).is_none());
     }
 
     #[test]

@@ -24,7 +24,10 @@ pub use memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 pub use metadata::{Metadata, MetadataBuilder, MetadataKey, MetadataValue};
-pub use database::{DatabaseName, HostAddress, PoolSize};
+pub use database::{
+    health::{HealthCheck, HealthReport, HealthStatus, PerformanceMetrics, PoolStatistics},
+    DatabaseName, HostAddress, PoolSize,
+};
 pub use sanitization::{
     ContentSanitizer, DatabaseErrorSanitizer, SanitizeError, SanitizeIdentifier, SecretRedactor,
 };
