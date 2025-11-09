@@ -101,24 +101,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-/// Pool size constrained to valid range (1-100)
-#[derive(Debug, Clone, Copy)]
-pub struct PoolSize(u8);
-
-impl PoolSize {
-    /// Create a pool size (1-100)
-    pub const fn new(size: u8) -> Option<Self> {
-        if size == 0 || size > 100 {
-            None
-        } else {
-            Some(Self(size))
-        }
-    }
-
-    pub const fn get(self) -> usize {
-        self.0 as usize
-    }
-}
+// Re-export shared PoolSize type from skreaver-core
+pub use skreaver_core::database::PoolSize;
 
 /// Redis database number (0-15)
 #[derive(Debug, Clone, Copy)]

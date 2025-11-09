@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod auth;
 pub mod collections;
+pub mod database;
 pub mod error;
 pub mod identifiers;
 pub mod in_memory;
@@ -23,6 +24,7 @@ pub use memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
 pub use metadata::{Metadata, MetadataBuilder, MetadataKey, MetadataValue};
+pub use database::{DatabaseName, HostAddress, PoolSize};
 pub use sanitization::{
     ContentSanitizer, DatabaseErrorSanitizer, SanitizeError, SanitizeIdentifier, SecretRedactor,
 };

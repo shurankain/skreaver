@@ -70,10 +70,11 @@ impl PostgresPool {
         config.validate()?;
 
         let pg_config = config.build_pg_config();
-        let mut connections = Vec::with_capacity(config.pool_size);
+        let pool_size = config.pool_size.get();
+        let mut connections = Vec::with_capacity(pool_size);
 
         // Create initial pool of connections
-        for _ in 0..config.pool_size {
+        for _ in 0..pool_size {
             let (client, connection) =
                 pg_config
                     .connect(NoTls)

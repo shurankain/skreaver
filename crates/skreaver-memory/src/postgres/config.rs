@@ -2,6 +2,7 @@
 //!
 //! This module provides configuration structures and validation for PostgreSQL connections.
 
+use skreaver_core::database::{DatabaseName, HostAddress, PoolSize};
 use skreaver_core::error::MemoryError;
 use std::time::Duration;
 use tokio_postgres::{Config, Error as PgError};
@@ -21,8 +22,8 @@ pub struct PostgresConfig {
     pub password: Option<String>,
     /// Connection timeout in seconds
     pub connect_timeout: u64,
-    /// Connection pool size
-    pub pool_size: usize,
+    /// Connection pool size (validated 1-100)
+    pub pool_size: PoolSize,
     /// Application name for connection identification
     pub application_name: String,
 }
@@ -36,7 +37,7 @@ impl Default for PostgresConfig {
             user: "skreaver".to_string(),
             password: None,
             connect_timeout: 30,
-            pool_size: 10,
+            pool_size: PoolSize::default_size(),
             application_name: "skreaver-memory".to_string(),
         }
     }
@@ -70,7 +71,7 @@ impl PostgresConfig {
                 .get_password()
                 .map(|s| String::from_utf8_lossy(s).to_string()),
             connect_timeout: 30,
-            pool_size: 10,
+            pool_size: PoolSize::default_size(),
             application_name: config
                 .get_application_name()
                 .unwrap_or("skreaver-memory")
@@ -108,14 +109,7 @@ impl PostgresConfig {
             });
         }
 
-        if self.pool_size == 0 || self.pool_size > 100 {
-            return Err(MemoryError::ConnectionFailed {
-                backend: skreaver_core::error::MemoryBackend::Postgres,
-                kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
-                    validation_error: "Pool size must be between 1 and 100".to_string(),
-                },
-            });
-        }
+        // Pool size validation is now handled by the PoolSize type itself
 
         // Security validations
         if self.host.contains("..") || self.host.contains("//") {
