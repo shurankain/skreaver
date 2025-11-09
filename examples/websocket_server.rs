@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
             let info = ConnectionInfo::new(addr);
-            let conn_id = info.id;
+            let conn_id = info.id();
 
             info!("📡 Simulating connection from {}", addr);
 

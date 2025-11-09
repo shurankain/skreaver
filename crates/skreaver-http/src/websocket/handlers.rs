@@ -100,7 +100,7 @@ async fn handle_websocket_connection(
         conn_info.metadata.insert("version".to_string(), version);
     }
 
-    let conn_id = conn_info.id;
+    let conn_id = conn_info.id();
     info!(
         "WebSocket connection established: {} from {}",
         conn_id, addr

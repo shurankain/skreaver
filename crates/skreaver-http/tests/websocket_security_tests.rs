@@ -32,7 +32,7 @@ async fn test_message_size_limit() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
@@ -51,7 +51,7 @@ async fn test_subscription_limit_per_connection() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
     manager.test_set_authenticated(conn_id, "test_user").await;
@@ -89,7 +89,7 @@ async fn test_channel_subscriber_limit() {
     let mut conn_ids = Vec::new();
     for _ in 0..3 {
         let info = ConnectionInfo::new(addr);
-        let conn_id = info.id;
+        let conn_id = info.id();
         let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
         // Set authenticated
@@ -128,24 +128,24 @@ async fn test_ip_rate_limiting() {
 
     // First two connections should succeed
     let info1 = ConnectionInfo::new(addr);
-    let conn_id1 = info1.id;
+    let conn_id1 = info1.id();
     let result1 = manager.add_connection(conn_id1, info1).await;
     assert!(result1.is_ok());
 
     let info2 = ConnectionInfo::new(addr);
-    let conn_id2 = info2.id;
+    let conn_id2 = info2.id();
     let result2 = manager.add_connection(conn_id2, info2).await;
     assert!(result2.is_ok());
 
     // Third connection from same IP should fail
     let info3 = ConnectionInfo::new(addr);
-    let result3 = manager.add_connection(info3.id, info3).await;
+    let result3 = manager.add_connection(info3.id(), info3).await;
     assert!(matches!(result3, Err(WsError::RateLimitExceeded)));
 
     // After removing one connection, new connection should succeed
     manager.remove_connection(conn_id1).await;
     let info4 = ConnectionInfo::new(addr);
-    let result4 = manager.add_connection(info4.id, info4).await;
+    let result4 = manager.add_connection(info4.id(), info4).await;
     assert!(result4.is_ok());
 }
 
@@ -158,7 +158,7 @@ async fn test_concurrent_subscription_race_condition() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
@@ -191,7 +191,7 @@ async fn test_authentication_required_for_subscription() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
@@ -218,7 +218,7 @@ async fn test_permission_denied_for_private_channel() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
@@ -239,7 +239,7 @@ async fn test_connection_cleanup_on_error() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
@@ -269,7 +269,7 @@ async fn test_broadcast_without_deadlock() {
     // Add multiple connections
     for _ in 0..10 {
         let info = ConnectionInfo::new(addr);
-        let conn_id = info.id;
+        let conn_id = info.id();
         let _sender = manager.add_connection(conn_id, info).await.unwrap();
 
         // Set authenticated and subscribe
@@ -315,7 +315,7 @@ async fn test_expired_connections_cleanup() {
 
     let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
     let info = ConnectionInfo::new(addr);
-    let conn_id = info.id;
+    let conn_id = info.id();
 
     let _sender = manager.add_connection(conn_id, info).await.unwrap();
 

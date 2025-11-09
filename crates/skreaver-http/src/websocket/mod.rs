@@ -76,9 +76,24 @@ impl Default for WebSocketConfig {
     }
 }
 
-/// WebSocket connection information
+/// Typestate marker for unauthenticated connections
 #[derive(Debug, Clone)]
-pub struct ConnectionInfo {
+pub struct Unauthenticated;
+
+/// Typestate marker for authenticated connections
+#[derive(Debug, Clone)]
+pub struct Authenticated {
+    /// User ID from authentication
+    pub user_id: String,
+}
+
+/// WebSocket connection information with typestate pattern
+///
+/// This struct uses the typestate pattern to enforce authentication states at compile time.
+/// - `ConnectionInfo<Unauthenticated>`: New connections that haven't been authenticated
+/// - `ConnectionInfo<Authenticated>`: Authenticated connections with a user ID
+#[derive(Debug, Clone)]
+pub struct ConnectionInfo<State = Unauthenticated> {
     /// Unique connection ID
     pub id: Uuid,
     /// Client IP address
@@ -89,9 +104,46 @@ pub struct ConnectionInfo {
     pub last_activity: Instant,
     /// Connection metadata
     pub metadata: HashMap<String, String>,
+    /// Authentication state (phantom marker)
+    state: State,
 }
 
-impl ConnectionInfo {
+// Common methods available in all states
+impl<State> ConnectionInfo<State> {
+    /// Update last activity timestamp
+    pub fn update_activity(&mut self) {
+        self.last_activity = Instant::now();
+    }
+
+    /// Check if connection has expired
+    pub fn is_expired(&self, timeout: Duration) -> bool {
+        self.last_activity.elapsed() > timeout
+    }
+
+    /// Get connection ID
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Get connection address
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// Get connection age
+    pub fn age(&self) -> Duration {
+        self.connected_at.elapsed()
+    }
+
+    /// Get time since last activity
+    pub fn idle_time(&self) -> Duration {
+        self.last_activity.elapsed()
+    }
+}
+
+// Methods only available for unauthenticated connections
+impl ConnectionInfo<Unauthenticated> {
+    /// Create a new unauthenticated connection
     pub fn new(addr: SocketAddr) -> Self {
         let now = Instant::now();
         Self {
@@ -100,15 +152,33 @@ impl ConnectionInfo {
             connected_at: now,
             last_activity: now,
             metadata: HashMap::new(),
+            state: Unauthenticated,
         }
     }
 
-    pub fn update_activity(&mut self) {
-        self.last_activity = Instant::now();
+    /// Authenticate the connection, transitioning to authenticated state
+    pub fn authenticate(self, user_id: String) -> ConnectionInfo<Authenticated> {
+        ConnectionInfo {
+            id: self.id,
+            addr: self.addr,
+            connected_at: self.connected_at,
+            last_activity: self.last_activity,
+            metadata: self.metadata,
+            state: Authenticated { user_id },
+        }
+    }
+}
+
+// Methods only available for authenticated connections
+impl ConnectionInfo<Authenticated> {
+    /// Get the authenticated user ID
+    pub fn user_id(&self) -> &str {
+        &self.state.user_id
     }
 
-    pub fn is_expired(&self, timeout: Duration) -> bool {
-        self.last_activity.elapsed() > timeout
+    /// Check if this connection belongs to a specific user
+    pub fn is_user(&self, user_id: &str) -> bool {
+        self.state.user_id == user_id
     }
 }
 
@@ -269,7 +339,7 @@ pub async fn websocket_handler(
 /// Handle individual WebSocket connection
 async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSocketManager>) {
     let conn_info = ConnectionInfo::new(addr);
-    let conn_id = conn_info.id;
+    let conn_id = conn_info.id();
 
     info!(
         "WebSocket connection established: {} from {}",
@@ -277,7 +347,7 @@ async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSock
     );
 
     // Register connection with manager
-    if let Err(e) = manager.add_connection(conn_id, conn_info.clone()).await {
+    if let Err(e) = manager.add_connection(conn_id, conn_info).await {
         error!("Failed to register connection {}: {}", conn_id, e);
         return;
     }
@@ -426,11 +496,26 @@ mod tests {
         let addr = "127.0.0.1:8080".parse().unwrap();
         let mut conn_info = ConnectionInfo::new(addr);
 
-        assert_eq!(conn_info.addr, addr);
+        assert_eq!(conn_info.addr(), addr);
         assert!(!conn_info.is_expired(Duration::from_secs(1)));
 
         conn_info.update_activity();
         assert!(!conn_info.is_expired(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn test_connection_typestate() {
+        let addr = "127.0.0.1:8080".parse().unwrap();
+
+        // Create unauthenticated connection
+        let conn = ConnectionInfo::new(addr);
+        assert_eq!(conn.addr(), addr);
+
+        // Authenticate the connection
+        let authed_conn = conn.authenticate("user123".to_string());
+        assert_eq!(authed_conn.user_id(), "user123");
+        assert!(authed_conn.is_user("user123"));
+        assert!(!authed_conn.is_user("user456"));
     }
 
     #[test]
