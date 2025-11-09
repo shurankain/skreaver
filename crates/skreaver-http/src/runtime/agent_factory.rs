@@ -22,7 +22,7 @@ pub enum AgentFactoryError {
     /// Agent type not registered in factory
     UnknownAgentType(AgentType),
     /// Invalid agent ID format
-    InvalidAgentId(IdValidationError),
+    InvalidAgentId(skreaver_core::validation::ValidationError),
     /// Agent already exists with the same ID
     AgentAlreadyExists(String),
     /// Agent creation failed

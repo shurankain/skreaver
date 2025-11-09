@@ -86,7 +86,7 @@ impl AgentId {
     ///
     /// Returns an error if the string violates validation rules (empty,
     /// too long, contains invalid characters, etc.)
-    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, crate::validation::ValidationError> {
         IdValidator::validate(id.as_ref()).map(|s| Self(s.to_string()))
     }
 
@@ -122,7 +122,7 @@ impl fmt::Display for AgentId {
 }
 
 impl FromStr for AgentId {
-    type Err = IdValidationError;
+    type Err = crate::validation::ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -136,7 +136,7 @@ impl From<AgentId> for String {
 }
 
 impl TryFrom<String> for AgentId {
-    type Error = IdValidationError;
+    type Error = crate::validation::ValidationError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         Self::parse(s)
@@ -162,7 +162,7 @@ pub struct ToolId(String);
 
 impl ToolId {
     /// Parse and validate a tool ID from a string
-    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, crate::validation::ValidationError> {
         IdValidator::validate(id.as_ref()).map(|s| Self(s.to_string()))
     }
 
@@ -185,7 +185,7 @@ impl fmt::Display for ToolId {
 }
 
 impl FromStr for ToolId {
-    type Err = IdValidationError;
+    type Err = crate::validation::ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -199,7 +199,7 @@ impl From<ToolId> for String {
 }
 
 impl TryFrom<String> for ToolId {
-    type Error = IdValidationError;
+    type Error = crate::validation::ValidationError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         Self::parse(s)
@@ -225,7 +225,7 @@ pub struct SessionId(String);
 
 impl SessionId {
     /// Parse and validate a session ID from a string
-    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, crate::validation::ValidationError> {
         IdValidator::validate(id.as_ref()).map(|s| Self(s.to_string()))
     }
 
@@ -253,7 +253,7 @@ impl fmt::Display for SessionId {
 }
 
 impl FromStr for SessionId {
-    type Err = IdValidationError;
+    type Err = crate::validation::ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -267,7 +267,7 @@ impl From<SessionId> for String {
 }
 
 impl TryFrom<String> for SessionId {
-    type Error = IdValidationError;
+    type Error = crate::validation::ValidationError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         Self::parse(s)
@@ -298,7 +298,7 @@ pub struct RequestId(String);
 
 impl RequestId {
     /// Parse and validate a request ID from a string
-    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, crate::validation::ValidationError> {
         IdValidator::validate(id.as_ref()).map(|s| Self(s.to_string()))
     }
 
@@ -326,7 +326,7 @@ impl fmt::Display for RequestId {
 }
 
 impl FromStr for RequestId {
-    type Err = IdValidationError;
+    type Err = crate::validation::ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -340,7 +340,7 @@ impl From<RequestId> for String {
 }
 
 impl TryFrom<String> for RequestId {
-    type Error = IdValidationError;
+    type Error = crate::validation::ValidationError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         Self::parse(s)
@@ -409,29 +409,29 @@ impl PrincipalId {
     ///
     /// let principal = PrincipalId::parse("alice@example.com")?;
     /// assert_eq!(principal.as_str(), "alice@example.com");
-    /// # Ok::<(), skreaver_core::IdValidationError>(())
+    /// # Ok::<(), skreaver_core::ValidationError>(())
     /// ```
-    pub fn parse(id: impl AsRef<str>) -> Result<Self, IdValidationError> {
+    pub fn parse(id: impl AsRef<str>) -> Result<Self, crate::validation::ValidationError> {
         let id = id.as_ref();
 
         // Check for empty
         if id.is_empty() {
-            return Err(IdValidationError::Empty);
+            return Err(crate::validation::ValidationError::Empty);
         }
 
         // Check for whitespace only
         if id.trim().is_empty() {
-            return Err(IdValidationError::WhitespaceOnly);
+            return Err(crate::validation::ValidationError::WhitespaceOnly);
         }
 
         // Check for leading/trailing whitespace
         if id != id.trim() {
-            return Err(IdValidationError::LeadingTrailingWhitespace);
+            return Err(crate::validation::ValidationError::LeadingTrailingWhitespace);
         }
 
         // Check length
         if id.len() > Self::MAX_LENGTH {
-            return Err(IdValidationError::TooLong {
+            return Err(crate::validation::ValidationError::TooLong {
                 length: id.len(),
                 max: Self::MAX_LENGTH,
             });
@@ -439,28 +439,37 @@ impl PrincipalId {
 
         // Check for path traversal
         if id.contains("../") || id.contains("./") || id.contains("..\\") || id.contains(".\\") {
-            return Err(IdValidationError::PathTraversal);
+            return Err(crate::validation::ValidationError::PathTraversal);
         }
 
         // Check for SQL injection patterns
         if id.contains(';') || id.contains("--") || id.contains("/*") || id.contains("*/") {
-            return Err(IdValidationError::InvalidCharacters);
+            return Err(crate::validation::ValidationError::InvalidChar {
+                char: ';',
+                input: id.to_string(),
+            });
         }
 
         // Check for shell metacharacters
-        if id
+        if let Some(c) = id
             .chars()
-            .any(|c| matches!(c, '|' | '&' | '`' | '$' | '>' | '<' | '\\' | '\n' | '\r'))
+            .find(|c| matches!(c, '|' | '&' | '`' | '$' | '>' | '<' | '\\' | '\n' | '\r'))
         {
-            return Err(IdValidationError::InvalidCharacters);
+            return Err(crate::validation::ValidationError::InvalidChar {
+                char: c,
+                input: id.to_string(),
+            });
         }
 
         // Check valid characters: alphanumeric + @ . - _
-        if !id
+        if let Some(c) = id
             .chars()
-            .all(|c| c.is_alphanumeric() || matches!(c, '@' | '.' | '-' | '_'))
+            .find(|c| !c.is_alphanumeric() && !matches!(c, '@' | '.' | '-' | '_'))
         {
-            return Err(IdValidationError::InvalidCharacters);
+            return Err(crate::validation::ValidationError::InvalidChar {
+                char: c,
+                input: id.to_string(),
+            });
         }
 
         Ok(Self(id.to_string()))
@@ -492,7 +501,7 @@ impl fmt::Display for PrincipalId {
 }
 
 impl FromStr for PrincipalId {
-    type Err = IdValidationError;
+    type Err = crate::validation::ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -506,7 +515,7 @@ impl From<PrincipalId> for String {
 }
 
 impl TryFrom<String> for PrincipalId {
-    type Error = IdValidationError;
+    type Error = crate::validation::ValidationError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         Self::parse(s)

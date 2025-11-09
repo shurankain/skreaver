@@ -18,7 +18,9 @@
 //! use skreaver_core::validation::IdentifierRules;
 //!
 //! // Instead of IdValidator::validate(id)
+//! let id = "my-agent";
 //! let validated = IdentifierRules::IDENTIFIER.validate(id)?;
+//! # Ok::<(), skreaver_core::validation::ValidationError>(())
 //! ```
 //!
 //! Existing code using `IdValidator` will continue to work without changes.
@@ -32,8 +34,29 @@ const MAX_ID_LENGTH: usize = crate::sanitization::MAX_IDENTIFIER_LENGTH;
 
 /// Error type for identifier validation failures
 ///
-/// This is a wrapper around `ValidationError` with conversion support
-/// for backward compatibility.
+/// # Deprecation Notice
+///
+/// This type is deprecated in favor of [`crate::validation::ValidationError`].
+/// It is maintained for backward compatibility and will be removed in v0.6.0.
+///
+/// ## Migration Guide
+///
+/// ```rust,ignore
+/// // Old code:
+/// use skreaver_core::IdValidationError;
+/// fn validate(id: &str) -> Result<(), IdValidationError> { ... }
+///
+/// // New code:
+/// use skreaver_core::validation::ValidationError;
+/// fn validate(id: &str) -> Result<(), ValidationError> { ... }
+/// ```
+///
+/// All variants are identical between the two types, so migration is straightforward.
+/// Conversion traits are provided for interoperability during the transition period.
+#[deprecated(
+    since = "0.5.0",
+    note = "Use `crate::validation::ValidationError` instead. See type documentation for migration guide."
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdValidationError {
     /// The identifier string is empty
@@ -152,12 +175,25 @@ impl IdValidator {
     /// assert!(IdValidator::validate("../etc").is_err());
     /// assert!(IdValidator::validate("agent/path").is_err());
     /// ```
-    pub fn validate(id: &str) -> Result<&str, IdValidationError> {
+    pub fn validate(id: &str) -> Result<&str, ValidationError> {
         // Use shared validation infrastructure
         IdentifierRules::IDENTIFIER
             .validate(id)
             .map(|_| id) // Return original &str instead of String
-            .map_err(|e| e.into()) // Convert ValidationError to IdValidationError
+    }
+
+    /// Validate an identifier (deprecated version returning IdValidationError)
+    ///
+    /// # Deprecation Notice
+    ///
+    /// Use [`validate`](Self::validate) instead, which returns `ValidationError`.
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use `validate` which returns `ValidationError` instead"
+    )]
+    #[allow(deprecated)]
+    pub fn validate_legacy(id: &str) -> Result<&str, IdValidationError> {
+        Self::validate(id).map_err(|e| e.into())
     }
 
     /// Check if a character is valid in an identifier
@@ -200,18 +236,18 @@ mod tests {
 
     #[test]
     fn test_validate_empty() {
-        assert_eq!(IdValidator::validate(""), Err(IdValidationError::Empty));
+        assert_eq!(IdValidator::validate(""), Err(ValidationError::Empty));
     }
 
     #[test]
     fn test_validate_whitespace_only() {
         assert_eq!(
             IdValidator::validate("   "),
-            Err(IdValidationError::WhitespaceOnly)
+            Err(ValidationError::WhitespaceOnly)
         );
         assert_eq!(
             IdValidator::validate("\t\n"),
-            Err(IdValidationError::WhitespaceOnly)
+            Err(ValidationError::WhitespaceOnly)
         );
     }
 
@@ -219,47 +255,47 @@ mod tests {
     fn test_validate_leading_trailing_whitespace() {
         assert_eq!(
             IdValidator::validate(" agent"),
-            Err(IdValidationError::LeadingTrailingWhitespace)
+            Err(ValidationError::LeadingTrailingWhitespace)
         );
         assert_eq!(
             IdValidator::validate("agent "),
-            Err(IdValidationError::LeadingTrailingWhitespace)
+            Err(ValidationError::LeadingTrailingWhitespace)
         );
         assert_eq!(
             IdValidator::validate(" agent "),
-            Err(IdValidationError::LeadingTrailingWhitespace)
+            Err(ValidationError::LeadingTrailingWhitespace)
         );
     }
 
     #[test]
     fn test_validate_invalid_characters() {
-        assert_eq!(
+        assert!(matches!(
             IdValidator::validate("agent/path"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::InvalidChar { .. })
+        ));
+        assert!(matches!(
             IdValidator::validate("agent@host"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::InvalidChar { .. })
+        ));
+        assert!(matches!(
             IdValidator::validate("agent:port"),
-            Err(IdValidationError::InvalidCharacters)
-        );
+            Err(ValidationError::InvalidChar { .. })
+        ));
     }
 
     #[test]
     fn test_validate_path_traversal() {
         assert_eq!(
             IdValidator::validate("../etc"),
-            Err(IdValidationError::PathTraversal)
+            Err(ValidationError::PathTraversal)
         );
         assert_eq!(
             IdValidator::validate("./file"),
-            Err(IdValidationError::PathTraversal)
+            Err(ValidationError::PathTraversal)
         );
         assert_eq!(
             IdValidator::validate("path/../other"),
-            Err(IdValidationError::PathTraversal)
+            Err(ValidationError::PathTraversal)
         );
     }
 
@@ -267,7 +303,7 @@ mod tests {
     fn test_validate_too_long() {
         let long_id = "a".repeat(129);
         match IdValidator::validate(&long_id) {
-            Err(IdValidationError::TooLong { length, max }) => {
+            Err(ValidationError::TooLong { length, max }) => {
                 assert_eq!(length, 129);
                 assert_eq!(max, MAX_ID_LENGTH);
             }

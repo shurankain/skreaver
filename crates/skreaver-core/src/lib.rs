@@ -39,7 +39,14 @@ pub use collections::{
 };
 
 // Re-export identifier types
-pub use identifiers::{AgentId, IdValidationError, PrincipalId, RequestId, SessionId, ToolId};
+pub use identifiers::{AgentId, PrincipalId, RequestId, SessionId, ToolId};
+
+// Re-export validation types
+pub use validation::ValidationError;
+
+// Deprecated: Use ValidationError instead
+#[allow(deprecated)]
+pub use identifiers::IdValidationError;
 
 // Re-export auth types
 pub use auth::{

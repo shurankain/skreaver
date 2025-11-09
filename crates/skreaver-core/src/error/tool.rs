@@ -48,10 +48,15 @@ pub enum ToolError {
     RegistryFull,
 
     /// Tool ID validation failed during dispatch.
+    ///
+    /// Note: `validation_error` uses the deprecated `IdValidationError` type
+    /// for backward compatibility. It will be updated to use `ValidationError`
+    /// in v0.6.0.
     InvalidToolId {
         /// The invalid tool ID that was provided
         attempted_name: String,
         /// Validation error details
+        #[allow(deprecated)]
         validation_error: crate::IdValidationError,
     },
 }

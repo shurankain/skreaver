@@ -86,6 +86,19 @@ impl From<crate::memory::InvalidMemoryKey> for TransactionError {
 }
 
 // Conversions to ToolError
+impl From<crate::validation::ValidationError> for ToolError {
+    fn from(err: crate::validation::ValidationError) -> Self {
+        // Convert to IdValidationError for backward compatibility
+        #[allow(deprecated)]
+        let legacy_err: crate::IdValidationError = err.into();
+        ToolError::InvalidToolId {
+            attempted_name: "unknown".to_string(),
+            validation_error: legacy_err,
+        }
+    }
+}
+
+#[allow(deprecated)]
 impl From<crate::IdValidationError> for ToolError {
     fn from(err: crate::IdValidationError) -> Self {
         ToolError::InvalidToolId {
