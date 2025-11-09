@@ -75,10 +75,8 @@ pub mod connection_limits;
 pub mod coordinator;
 /// API documentation endpoints.
 pub mod docs;
-/// Runtime error handling with request tracing.
+/// Unified runtime error handling with request tracing.
 pub mod error;
-/// Unified error handling system.
-pub mod errors;
 /// HTTP request handlers organized by functionality.
 pub mod handlers;
 /// HTTP runtime for serving agents over REST API.

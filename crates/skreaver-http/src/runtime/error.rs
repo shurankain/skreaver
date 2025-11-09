@@ -1,4 +1,7 @@
 //! Unified error handling system for HTTP runtime
+//!
+//! This module provides comprehensive error handling with proper HTTP status code mapping,
+//! request tracing, and structured error responses.
 
 use axum::{
     extract::Request,
@@ -11,26 +14,37 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use utoipa::ToSchema;
-
-use crate::runtime::{
-    agent_instance::AgentExecutionError, auth_token::AuthTokenError, rate_limit::RateLimitError,
-};
-use skreaver_core::IdValidationError;
 
 // Re-export unified RequestId from skreaver-core
 pub use skreaver_core::RequestId;
 
-/// Extension for storing RequestId in request context
-#[derive(Clone, Debug)]
+/// Extension for storing RequestId in Axum request extensions
+///
+/// This allows request handlers and error responses to access the request ID
+/// that was generated or extracted by the middleware.
+#[derive(Debug, Clone)]
 pub struct RequestIdExtension(pub RequestId);
 
-/// Middleware for request ID generation and propagation
+/// Middleware that generates or extracts request IDs for distributed tracing
 ///
-/// Extracts X-Request-ID header or generates new UUID, stores in extensions,
-/// and adds to response headers for distributed tracing.
+/// This middleware:
+/// - Tries to extract request ID from the `X-Request-ID` header
+/// - Generates a new UUID if no header is present
+/// - Stores the ID in request extensions for handlers and error responses
+/// - Adds the ID to the response `X-Request-ID` header
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use axum::{Router, routing::get, middleware};
+/// use skreaver_http::runtime::error::request_id_middleware;
+///
+/// let app = Router::new()
+///     .route("/", get(handler))
+///     .layer(middleware::from_fn(request_id_middleware));
+/// ```
 pub async fn request_id_middleware(mut request: Request, next: Next) -> Response {
-    // Extract or generate request ID
+    // Try to extract request ID from X-Request-ID header
     let request_id = request
         .headers()
         .get("x-request-id")
@@ -38,7 +52,7 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
         .map(|s| RequestId::new_unchecked(s.to_string()))
         .unwrap_or_else(RequestId::generate);
 
-    // Store in extensions
+    // Store in extensions for handlers and error responses
     request
         .extensions_mut()
         .insert(RequestIdExtension(request_id.clone()));
@@ -46,661 +60,490 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     // Process request
     let mut response = next.run(request).await;
 
-    // Add to response headers
-    if let Ok(value) = HeaderValue::from_str(request_id.as_str()) {
-        response
-            .headers_mut()
-            .insert(header::HeaderName::from_static("x-request-id"), value);
+    // Add request ID to response header
+    if let Ok(header_value) = HeaderValue::from_str(request_id.as_str()) {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("x-request-id"),
+            header_value,
+        );
     }
 
     response
 }
 
-/// Comprehensive error system for HTTP runtime
-#[derive(Debug)]
-pub enum RuntimeError {
-    /// Agent-related errors
-    Agent(AgentError),
-    /// Authentication/authorization errors
-    Auth(AuthError),
-    /// Rate limiting errors
-    RateLimit(RateLimitError),
-    /// Configuration errors
-    Config(ConfigError),
-    /// Internal server errors
-    Internal(InternalError),
-    /// Validation errors
-    Validation(ValidationError),
-}
-
-/// Agent-specific errors
-#[derive(Debug, Clone)]
-pub enum AgentError {
-    /// Agent not found
-    NotFound(String),
-    /// Agent ID validation failed
-    InvalidId(IdValidationError),
-    /// Agent execution failed
-    ExecutionFailed(AgentExecutionError),
-    /// Agent is in wrong state for operation
-    InvalidState {
-        agent_id: String,
-        current_state: String,
-        required_state: String,
-    },
-    /// Agent creation failed
-    CreationFailed(String),
-}
-
-/// Authentication/authorization errors
-#[derive(Debug, Clone)]
-pub enum AuthError {
-    /// No authentication provided
-    Missing,
-    /// Invalid token format or content
-    InvalidToken(AuthTokenError),
-    /// Token has expired
-    Expired,
-    /// Insufficient permissions for operation
-    Forbidden {
-        required_permissions: Vec<String>,
-        user_permissions: Vec<String>,
-    },
-    /// User not found
-    UserNotFound(String),
-}
-
-/// Configuration errors
-#[derive(Debug, Clone)]
-pub enum ConfigError {
-    /// Invalid rate limit configuration
-    InvalidRateLimit(String),
-    /// Invalid timeout configuration
-    InvalidTimeout(u64),
-    /// Missing required configuration
-    MissingConfig(String),
-}
-
-/// Internal server errors with context preservation
-#[derive(Debug, Clone)]
-pub enum InternalError {
-    /// Database connection failed
-    DatabaseError {
-        message: String,
-        #[allow(dead_code)]
-        context: Option<String>,
-    },
-    /// Serialization/deserialization failed
-    SerializationError {
-        message: String,
-        #[allow(dead_code)]
-        context: Option<String>,
-    },
-    /// Concurrent access error
-    ConcurrencyError {
-        message: String,
-        #[allow(dead_code)]
-        context: Option<String>,
-    },
-    /// Unexpected system error
-    Unexpected {
-        message: String,
-        #[allow(dead_code)]
-        context: Option<String>,
-    },
-}
-
-impl InternalError {
-    /// Create a database error with context
-    pub fn database<S: Into<String>>(message: S) -> Self {
-        Self::DatabaseError {
-            message: message.into(),
-            context: None,
-        }
-    }
-
-    /// Create a database error with source error context
-    pub fn database_with_source<S: Into<String>, E: std::error::Error>(
-        message: S,
-        source: &E,
-    ) -> Self {
-        Self::DatabaseError {
-            message: message.into(),
-            context: Some(format!("Caused by: {}", source)),
-        }
-    }
-
-    /// Create a serialization error with context
-    pub fn serialization<S: Into<String>>(message: S) -> Self {
-        Self::SerializationError {
-            message: message.into(),
-            context: None,
-        }
-    }
-
-    /// Create a serialization error with source error context
-    pub fn serialization_with_source<S: Into<String>, E: std::error::Error>(
-        message: S,
-        source: &E,
-    ) -> Self {
-        Self::SerializationError {
-            message: message.into(),
-            context: Some(format!("Caused by: {}", source)),
-        }
-    }
-
-    /// Create a concurrency error with context
-    pub fn concurrency<S: Into<String>>(message: S) -> Self {
-        Self::ConcurrencyError {
-            message: message.into(),
-            context: None,
-        }
-    }
-
-    /// Create an unexpected error with context
-    pub fn unexpected<S: Into<String>>(message: S) -> Self {
-        Self::Unexpected {
-            message: message.into(),
-            context: None,
-        }
-    }
-
-    /// Create an unexpected error with source error context
-    pub fn unexpected_with_source<S: Into<String>, E: std::error::Error>(
-        message: S,
-        source: &E,
-    ) -> Self {
-        Self::Unexpected {
-            message: message.into(),
-            context: Some(format!("Caused by: {}", source)),
-        }
-    }
-}
-
-/// Input validation errors
-#[derive(Debug, Clone)]
-pub enum ValidationError {
-    /// Required field missing
-    MissingField(String),
-    /// Field value invalid
-    InvalidField {
-        field: String,
-        value: String,
-        reason: String,
-    },
-    /// Request body too large
-    RequestTooLarge,
-    /// Invalid JSON structure with context
-    InvalidJson {
-        message: String,
-        #[allow(dead_code)]
-        context: Option<String>,
-    },
-}
-
-impl ValidationError {
-    /// Create an invalid JSON error with source context
-    pub fn invalid_json_with_source<S: Into<String>, E: std::error::Error>(
-        message: S,
-        source: &E,
-    ) -> Self {
-        Self::InvalidJson {
-            message: message.into(),
-            context: Some(format!("Caused by: {}", source)),
-        }
-    }
-}
-
-/// Structured error response for HTTP API
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+/// Structured error response for HTTP APIs
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     /// Machine-readable error code
-    #[schema(example = "agent_not_found")]
-    pub code: String,
+    pub error: String,
     /// Human-readable error message
-    #[schema(example = "Agent with ID 'agent-123' was not found")]
     pub message: String,
-    /// Additional error details
+    /// Optional additional context or details
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<HashMap<String, serde_json::Value>>,
-    /// Request ID for tracing
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_id: Option<String>,
+    pub details: Option<serde_json::Value>,
+    /// Request ID for tracking and debugging
+    pub request_id: RequestId,
     /// Timestamp when error occurred
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Additional metadata for debugging
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, String>,
+}
+
+impl ErrorResponse {
+    /// Create a new error response
+    pub fn new(error: &str, message: &str, request_id: RequestId) -> Self {
+        Self {
+            error: error.to_string(),
+            message: message.to_string(),
+            details: None,
+            request_id,
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        }
+    }
+
+    /// Add additional details to the error
+    pub fn with_details<T: serde::Serialize>(mut self, details: T) -> Self {
+        self.details = Some(serde_json::to_value(details).unwrap_or_default());
+        self
+    }
+
+    /// Add metadata for debugging
+    pub fn with_metadata<K: Into<String>, V: Into<String>>(mut self, key: K, value: V) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Add multiple metadata entries
+    pub fn with_metadata_map(mut self, metadata: HashMap<String, String>) -> Self {
+        self.metadata.extend(metadata);
+        self
+    }
+}
+
+/// Runtime error types with proper categorization
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeError {
+    // Agent-related errors
+    #[error("Agent not found: {agent_id}")]
+    AgentNotFound {
+        agent_id: String,
+        request_id: RequestId,
+    },
+
+    #[error("Agent creation failed: {reason}")]
+    AgentCreationFailed {
+        reason: String,
+        agent_type: Option<String>,
+        request_id: RequestId,
+    },
+
+    #[error("Agent operation failed: {operation} on {agent_id}")]
+    AgentOperationFailed {
+        agent_id: String,
+        operation: String,
+        reason: String,
+        request_id: RequestId,
+    },
+
+    // Authentication errors
+    #[error("Authentication required")]
+    AuthenticationRequired { request_id: RequestId },
+
+    #[error("Invalid authentication: {reason}")]
+    InvalidAuthentication {
+        reason: String,
+        auth_method: Option<String>,
+        request_id: RequestId,
+    },
+
+    #[error("Insufficient permissions: required {required:?}")]
+    InsufficientPermissions {
+        required: Vec<String>,
+        provided: Vec<String>,
+        request_id: RequestId,
+    },
+
+    #[error("Token creation failed: {reason}")]
+    TokenCreationFailed {
+        reason: String,
+        request_id: RequestId,
+    },
+
+    // Rate limiting errors
+    #[error("Rate limit exceeded: {limit_type}")]
+    RateLimitExceeded {
+        limit_type: String,
+        retry_after: u64,
+        current_usage: u32,
+        limit: u32,
+        request_id: RequestId,
+    },
+
+    // Input validation errors
+    #[error("Invalid input: {field}")]
+    InvalidInput {
+        field: String,
+        reason: String,
+        provided_value: Option<String>,
+        request_id: RequestId,
+    },
+
+    #[error("Missing required field: {field}")]
+    MissingRequiredField {
+        field: String,
+        request_id: RequestId,
+    },
+
+    #[error("Invalid JSON: {reason}")]
+    InvalidJson {
+        reason: String,
+        request_id: RequestId,
+    },
+
+    // System errors
+    #[error("Internal server error: {reason}")]
+    InternalError {
+        reason: String,
+        request_id: RequestId,
+    },
+
+    #[error("Service unavailable: {service}")]
+    ServiceUnavailable {
+        service: String,
+        request_id: RequestId,
+    },
+
+    #[error("Timeout occurred: {operation}")]
+    Timeout {
+        operation: String,
+        duration_ms: u64,
+        request_id: RequestId,
+    },
+
+    // Memory/Storage errors
+    #[error("Memory operation failed: {operation}")]
+    MemoryError {
+        operation: String,
+        reason: String,
+        request_id: RequestId,
+    },
+
+    // Tool execution errors
+    #[error("Tool execution failed: {tool_name}")]
+    ToolExecutionFailed {
+        tool_name: String,
+        reason: String,
+        request_id: RequestId,
+    },
+
+    // Configuration errors
+    #[error("Configuration error: {setting}")]
+    ConfigurationError {
+        setting: String,
+        reason: String,
+        request_id: RequestId,
+    },
 }
 
 impl RuntimeError {
+    /// Get the request ID associated with this error
+    pub fn request_id(&self) -> &RequestId {
+        match self {
+            RuntimeError::AgentNotFound { request_id, .. } => request_id,
+            RuntimeError::AgentCreationFailed { request_id, .. } => request_id,
+            RuntimeError::AgentOperationFailed { request_id, .. } => request_id,
+            RuntimeError::AuthenticationRequired { request_id } => request_id,
+            RuntimeError::InvalidAuthentication { request_id, .. } => request_id,
+            RuntimeError::InsufficientPermissions { request_id, .. } => request_id,
+            RuntimeError::TokenCreationFailed { request_id, .. } => request_id,
+            RuntimeError::RateLimitExceeded { request_id, .. } => request_id,
+            RuntimeError::InvalidInput { request_id, .. } => request_id,
+            RuntimeError::MissingRequiredField { request_id, .. } => request_id,
+            RuntimeError::InvalidJson { request_id, .. } => request_id,
+            RuntimeError::InternalError { request_id, .. } => request_id,
+            RuntimeError::ServiceUnavailable { request_id, .. } => request_id,
+            RuntimeError::Timeout { request_id, .. } => request_id,
+            RuntimeError::MemoryError { request_id, .. } => request_id,
+            RuntimeError::ToolExecutionFailed { request_id, .. } => request_id,
+            RuntimeError::ConfigurationError { request_id, .. } => request_id,
+        }
+    }
+
     /// Get the appropriate HTTP status code for this error
     pub fn status_code(&self) -> StatusCode {
         match self {
-            Self::Agent(err) => match err {
-                AgentError::NotFound(_) => StatusCode::NOT_FOUND,
-                AgentError::InvalidId(_) => StatusCode::BAD_REQUEST,
-                AgentError::ExecutionFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-                AgentError::InvalidState { .. } => StatusCode::CONFLICT,
-                AgentError::CreationFailed(_) => StatusCode::BAD_REQUEST,
-            },
-            Self::Auth(err) => match err {
-                AuthError::Missing => StatusCode::UNAUTHORIZED,
-                AuthError::InvalidToken(_) => StatusCode::UNAUTHORIZED,
-                AuthError::Expired => StatusCode::UNAUTHORIZED,
-                AuthError::Forbidden { .. } => StatusCode::FORBIDDEN,
-                AuthError::UserNotFound(_) => StatusCode::UNAUTHORIZED,
-            },
-            Self::RateLimit(_) => StatusCode::TOO_MANY_REQUESTS,
-            Self::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Validation(err) => match err {
-                ValidationError::RequestTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-                _ => StatusCode::BAD_REQUEST,
-            },
+            RuntimeError::AgentNotFound { .. } => StatusCode::NOT_FOUND,
+            RuntimeError::AgentCreationFailed { .. } => StatusCode::BAD_REQUEST,
+            RuntimeError::AgentOperationFailed { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+            RuntimeError::AuthenticationRequired { .. } => StatusCode::UNAUTHORIZED,
+            RuntimeError::InvalidAuthentication { .. } => StatusCode::UNAUTHORIZED,
+            RuntimeError::InsufficientPermissions { .. } => StatusCode::FORBIDDEN,
+            RuntimeError::TokenCreationFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            RuntimeError::RateLimitExceeded { .. } => StatusCode::TOO_MANY_REQUESTS,
+            RuntimeError::InvalidInput { .. } => StatusCode::BAD_REQUEST,
+            RuntimeError::MissingRequiredField { .. } => StatusCode::BAD_REQUEST,
+            RuntimeError::InvalidJson { .. } => StatusCode::BAD_REQUEST,
+            RuntimeError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            RuntimeError::ServiceUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            RuntimeError::Timeout { .. } => StatusCode::REQUEST_TIMEOUT,
+            RuntimeError::MemoryError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            RuntimeError::ToolExecutionFailed { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+            RuntimeError::ConfigurationError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
-    /// Get the error code for API responses
+    /// Get the error code for this error type
     pub fn error_code(&self) -> &'static str {
         match self {
-            Self::Agent(err) => match err {
-                AgentError::NotFound(_) => "agent_not_found",
-                AgentError::InvalidId(_) => "invalid_agent_id",
-                AgentError::ExecutionFailed(_) => "agent_execution_failed",
-                AgentError::InvalidState { .. } => "agent_invalid_state",
-                AgentError::CreationFailed(_) => "agent_creation_failed",
-            },
-            Self::Auth(err) => match err {
-                AuthError::Missing => "authentication_required",
-                AuthError::InvalidToken(_) => "invalid_token",
-                AuthError::Expired => "token_expired",
-                AuthError::Forbidden { .. } => "insufficient_permissions",
-                AuthError::UserNotFound(_) => "user_not_found",
-            },
-            Self::RateLimit(_) => "rate_limit_exceeded",
-            Self::Config(_) => "configuration_error",
-            Self::Internal(_) => "internal_server_error",
-            Self::Validation(err) => match err {
-                ValidationError::MissingField(_) => "missing_field",
-                ValidationError::InvalidField { .. } => "invalid_field",
-                ValidationError::RequestTooLarge => "request_too_large",
-                ValidationError::InvalidJson { .. } => "invalid_json",
-            },
+            RuntimeError::AgentNotFound { .. } => "agent_not_found",
+            RuntimeError::AgentCreationFailed { .. } => "agent_creation_failed",
+            RuntimeError::AgentOperationFailed { .. } => "agent_operation_failed",
+            RuntimeError::AuthenticationRequired { .. } => "authentication_required",
+            RuntimeError::InvalidAuthentication { .. } => "invalid_authentication",
+            RuntimeError::InsufficientPermissions { .. } => "insufficient_permissions",
+            RuntimeError::TokenCreationFailed { .. } => "token_creation_failed",
+            RuntimeError::RateLimitExceeded { .. } => "rate_limit_exceeded",
+            RuntimeError::InvalidInput { .. } => "invalid_input",
+            RuntimeError::MissingRequiredField { .. } => "missing_required_field",
+            RuntimeError::InvalidJson { .. } => "invalid_json",
+            RuntimeError::InternalError { .. } => "internal_error",
+            RuntimeError::ServiceUnavailable { .. } => "service_unavailable",
+            RuntimeError::Timeout { .. } => "timeout",
+            RuntimeError::MemoryError { .. } => "memory_error",
+            RuntimeError::ToolExecutionFailed { .. } => "tool_execution_failed",
+            RuntimeError::ConfigurationError { .. } => "configuration_error",
         }
     }
 
-    /// Create error response with optional details
-    pub fn to_response(&self, request_id: Option<String>) -> ErrorResponse {
-        let mut details = HashMap::new();
+    /// Convert this error into a structured error response
+    pub fn to_error_response(&self) -> ErrorResponse {
+        let mut response = ErrorResponse::new(
+            self.error_code(),
+            &self.to_string(),
+            self.request_id().clone(),
+        );
 
-        // Add error-specific details
+        // Add specific details based on error type
         match self {
-            Self::Agent(AgentError::InvalidState {
-                agent_id,
-                current_state,
-                required_state,
-            }) => {
-                details.insert(
-                    "agent_id".to_string(),
-                    serde_json::Value::String(agent_id.clone()),
-                );
-                details.insert(
-                    "current_state".to_string(),
-                    serde_json::Value::String(current_state.clone()),
-                );
-                details.insert(
-                    "required_state".to_string(),
-                    serde_json::Value::String(required_state.clone()),
-                );
+            RuntimeError::AgentNotFound { agent_id, .. } => {
+                response = response.with_details(serde_json::json!({
+                    "agent_id": agent_id
+                }));
             }
-            Self::Auth(AuthError::Forbidden {
-                required_permissions,
-                user_permissions,
-            }) => {
-                details.insert(
-                    "required_permissions".to_string(),
-                    serde_json::Value::Array(
-                        required_permissions
-                            .iter()
-                            .map(|p| serde_json::Value::String(p.clone()))
-                            .collect(),
-                    ),
-                );
-                details.insert(
-                    "user_permissions".to_string(),
-                    serde_json::Value::Array(
-                        user_permissions
-                            .iter()
-                            .map(|p| serde_json::Value::String(p.clone()))
-                            .collect(),
-                    ),
-                );
-            }
-            Self::RateLimit(rate_error) => {
-                details.insert(
-                    "retry_after".to_string(),
-                    serde_json::Value::Number(rate_error.retry_after.into()),
-                );
-            }
-            Self::Validation(ValidationError::InvalidField {
-                field,
-                value,
-                reason,
-            }) => {
-                details.insert(
-                    "field".to_string(),
-                    serde_json::Value::String(field.clone()),
-                );
-                details.insert(
-                    "value".to_string(),
-                    serde_json::Value::String(value.clone()),
-                );
-                details.insert(
-                    "reason".to_string(),
-                    serde_json::Value::String(reason.clone()),
-                );
-            }
-            _ => {}
-        }
-
-        ErrorResponse {
-            code: self.error_code().to_string(),
-            message: self.to_string(),
-            details: if details.is_empty() {
-                None
-            } else {
-                Some(details)
-            },
-            request_id,
-            timestamp: chrono::Utc::now(),
-        }
-    }
-}
-
-impl std::fmt::Display for RuntimeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Agent(err) => write!(f, "{}", err),
-            Self::Auth(err) => write!(f, "{}", err),
-            Self::RateLimit(err) => write!(f, "Rate limit exceeded: {:?}", err),
-            Self::Config(err) => write!(f, "{}", err),
-            Self::Internal(err) => write!(f, "{}", err),
-            Self::Validation(err) => write!(f, "{}", err),
-        }
-    }
-}
-
-impl std::error::Error for RuntimeError {}
-
-impl std::fmt::Display for AgentError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotFound(id) => write!(f, "Agent with ID '{}' not found", id),
-            Self::InvalidId(err) => write!(f, "Invalid agent ID: {}", err),
-            Self::ExecutionFailed(err) => write!(f, "Agent execution failed: {}", err),
-            Self::InvalidState {
-                agent_id,
-                current_state,
-                required_state,
+            RuntimeError::AgentCreationFailed {
+                agent_type, reason, ..
             } => {
-                write!(
-                    f,
-                    "Agent '{}' is in state '{}' but operation requires '{}'",
-                    agent_id, current_state, required_state
-                )
+                response = response.with_details(serde_json::json!({
+                    "agent_type": agent_type,
+                    "reason": reason
+                }));
             }
-            Self::CreationFailed(reason) => write!(f, "Failed to create agent: {}", reason),
-        }
-    }
-}
-
-impl std::fmt::Display for AuthError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Missing => write!(f, "Authentication is required"),
-            Self::InvalidToken(err) => write!(f, "Invalid authentication token: {}", err),
-            Self::Expired => write!(f, "Authentication token has expired"),
-            Self::Forbidden {
-                required_permissions,
+            RuntimeError::AgentOperationFailed {
+                agent_id,
+                operation,
+                reason,
                 ..
             } => {
-                write!(
-                    f,
-                    "Insufficient permissions. Required: {}",
-                    required_permissions.join(", ")
-                )
+                response = response.with_details(serde_json::json!({
+                    "agent_id": agent_id,
+                    "operation": operation,
+                    "reason": reason
+                }));
             }
-            Self::UserNotFound(user) => write!(f, "User '{}' not found", user),
-        }
-    }
-}
-
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidRateLimit(msg) => write!(f, "Invalid rate limit configuration: {}", msg),
-            Self::InvalidTimeout(timeout) => {
-                write!(f, "Invalid timeout configuration: {}s", timeout)
-            }
-            Self::MissingConfig(key) => write!(f, "Missing required configuration: {}", key),
-        }
-    }
-}
-
-impl std::fmt::Display for InternalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DatabaseError { message, context } => {
-                write!(f, "Database error: {}", message)?;
-                if let Some(ctx) = context {
-                    write!(f, " ({})", ctx)?;
-                }
-                Ok(())
-            }
-            Self::SerializationError { message, context } => {
-                write!(f, "Serialization error: {}", message)?;
-                if let Some(ctx) = context {
-                    write!(f, " ({})", ctx)?;
-                }
-                Ok(())
-            }
-            Self::ConcurrencyError { message, context } => {
-                write!(f, "Concurrency error: {}", message)?;
-                if let Some(ctx) = context {
-                    write!(f, " ({})", ctx)?;
-                }
-                Ok(())
-            }
-            Self::Unexpected { message, context } => {
-                write!(f, "Unexpected error: {}", message)?;
-                if let Some(ctx) = context {
-                    write!(f, " ({})", ctx)?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::MissingField(field) => write!(f, "Missing required field: {}", field),
-            Self::InvalidField {
-                field,
-                value,
+            RuntimeError::InvalidAuthentication {
                 reason,
+                auth_method,
+                ..
             } => {
-                write!(
-                    f,
-                    "Invalid field '{}' with value '{}': {}",
-                    field, value, reason
-                )
+                response = response.with_details(serde_json::json!({
+                    "reason": reason,
+                    "auth_method": auth_method
+                }));
             }
-            Self::RequestTooLarge => write!(f, "Request body is too large"),
-            Self::InvalidJson { message, context } => {
-                write!(f, "Invalid JSON: {}", message)?;
-                if let Some(ctx) = context {
-                    write!(f, " ({})", ctx)?;
-                }
-                Ok(())
+            RuntimeError::InsufficientPermissions {
+                required, provided, ..
+            } => {
+                response = response.with_details(serde_json::json!({
+                    "required_permissions": required,
+                    "provided_permissions": provided
+                }));
             }
+            RuntimeError::RateLimitExceeded {
+                limit_type,
+                retry_after,
+                current_usage,
+                limit,
+                ..
+            } => {
+                response = response.with_details(serde_json::json!({
+                    "limit_type": limit_type,
+                    "retry_after_seconds": retry_after,
+                    "current_usage": current_usage,
+                    "limit": limit
+                }));
+            }
+            RuntimeError::InvalidInput {
+                field,
+                reason,
+                provided_value,
+                ..
+            } => {
+                response = response.with_details(serde_json::json!({
+                    "field": field,
+                    "reason": reason,
+                    "provided_value": provided_value
+                }));
+            }
+            RuntimeError::MissingRequiredField { field, .. } => {
+                response = response.with_details(serde_json::json!({
+                    "field": field
+                }));
+            }
+            RuntimeError::Timeout {
+                operation,
+                duration_ms,
+                ..
+            } => {
+                response = response.with_details(serde_json::json!({
+                    "operation": operation,
+                    "duration_ms": duration_ms
+                }));
+            }
+            _ => {} // Other errors don't need special details
         }
+
+        response
     }
 }
 
-// Conversion implementations for error types
-impl From<AgentError> for RuntimeError {
-    fn from(err: AgentError) -> Self {
-        Self::Agent(err)
-    }
-}
-
-impl From<AuthError> for RuntimeError {
-    fn from(err: AuthError) -> Self {
-        Self::Auth(err)
-    }
-}
-
-impl From<RateLimitError> for RuntimeError {
-    fn from(err: RateLimitError) -> Self {
-        Self::RateLimit(err)
-    }
-}
-
-impl From<IdValidationError> for RuntimeError {
-    fn from(err: IdValidationError) -> Self {
-        Self::Agent(AgentError::InvalidId(err))
-    }
-}
-
-impl From<AgentExecutionError> for RuntimeError {
-    fn from(err: AgentExecutionError) -> Self {
-        Self::Agent(AgentError::ExecutionFailed(err))
-    }
-}
-
-impl From<AuthTokenError> for RuntimeError {
-    fn from(err: AuthTokenError) -> Self {
-        Self::Auth(AuthError::InvalidToken(err))
-    }
-}
-
-// Axum response implementation
+/// Implement IntoResponse for RuntimeError to integrate with Axum
 impl IntoResponse for RuntimeError {
     fn into_response(self) -> Response {
-        let status = self.status_code();
-        // Note: Request ID is now added by request_id_middleware to response headers
-        // The middleware ensures X-Request-ID header is present on all responses
-        let response = self.to_response(None);
-        (status, Json(response)).into_response()
+        let status_code = self.status_code();
+        let error_response = self.to_error_response();
+
+        // Log the error for monitoring
+        tracing::error!(
+            error_code = self.error_code(),
+            request_id = %self.request_id(),
+            status_code = %status_code,
+            error_message = %self,
+            "HTTP runtime error occurred"
+        );
+
+        // Create HTTP response
+        let mut response = (status_code, Json(error_response)).into_response();
+
+        // Add error-specific headers
+        if let RuntimeError::RateLimitExceeded { retry_after, .. } = self {
+            response
+                .headers_mut()
+                .insert("Retry-After", retry_after.to_string().parse().unwrap());
+        }
+
+        response
     }
 }
 
-/// Result type for HTTP runtime operations
+/// Result type alias for HTTP runtime operations
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
+
+/// Helper trait for converting other error types to RuntimeError
+pub trait IntoRuntimeError<T> {
+    fn into_runtime_error(self, request_id: RequestId) -> RuntimeResult<T>;
+}
+
+impl<T> IntoRuntimeError<T> for Result<T, skreaver_core::SkreverError> {
+    fn into_runtime_error(self, request_id: RequestId) -> RuntimeResult<T> {
+        self.map_err(|e| RuntimeError::MemoryError {
+            operation: "memory_operation".to_string(),
+            reason: e.to_string(),
+            request_id,
+        })
+    }
+}
+
+impl<T> IntoRuntimeError<T> for Result<T, serde_json::Error> {
+    fn into_runtime_error(self, request_id: RequestId) -> RuntimeResult<T> {
+        self.map_err(|e| RuntimeError::InvalidJson {
+            reason: e.to_string(),
+            request_id,
+        })
+    }
+}
+
+impl<T> IntoRuntimeError<T> for Result<T, jsonwebtoken::errors::Error> {
+    fn into_runtime_error(self, request_id: RequestId) -> RuntimeResult<T> {
+        self.map_err(|e| RuntimeError::TokenCreationFailed {
+            reason: e.to_string(),
+            request_id,
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_agent_not_found_error() {
-        let error = RuntimeError::Agent(AgentError::NotFound("test-agent".to_string()));
+    fn test_request_id_creation() {
+        let id1 = RequestId::generate();
+        let id2 = RequestId::generate();
+
+        assert_ne!(id1, id2);
+        assert!(!id1.as_str().is_empty());
+    }
+
+    #[test]
+    fn test_error_response_creation() {
+        let request_id = RequestId::generate();
+        let error = RuntimeError::AgentNotFound {
+            agent_id: "test-agent".to_string(),
+            request_id: request_id.clone(),
+        };
+
+        let response = error.to_error_response();
+
+        assert_eq!(response.error, "agent_not_found");
+        assert_eq!(response.request_id, request_id);
+        assert!(response.details.is_some());
+    }
+
+    #[test]
+    fn test_status_code_mapping() {
+        let request_id = RequestId::generate();
+
+        let error = RuntimeError::AgentNotFound {
+            agent_id: "test".to_string(),
+            request_id: request_id.clone(),
+        };
         assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
+
+        let error = RuntimeError::AuthenticationRequired {
+            request_id: request_id.clone(),
+        };
+        assert_eq!(error.status_code(), StatusCode::UNAUTHORIZED);
+
+        let error = RuntimeError::RateLimitExceeded {
+            limit_type: "global".to_string(),
+            retry_after: 60,
+            current_usage: 100,
+            limit: 100,
+            request_id,
+        };
+        assert_eq!(error.status_code(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[test]
+    fn test_error_code() {
+        let request_id = RequestId::generate();
+
+        let error = RuntimeError::AgentNotFound {
+            agent_id: "test".to_string(),
+            request_id,
+        };
         assert_eq!(error.error_code(), "agent_not_found");
-    }
-
-    #[test]
-    fn test_auth_forbidden_error() {
-        let error = RuntimeError::Auth(AuthError::Forbidden {
-            required_permissions: vec!["write".to_string()],
-            user_permissions: vec!["read".to_string()],
-        });
-        assert_eq!(error.status_code(), StatusCode::FORBIDDEN);
-        assert_eq!(error.error_code(), "insufficient_permissions");
-    }
-
-    #[test]
-    fn test_error_response_serialization() {
-        let error = RuntimeError::Validation(ValidationError::MissingField("name".to_string()));
-        let response = error.to_response(Some("req-123".to_string()));
-
-        assert_eq!(response.code, "missing_field");
-        assert!(response.message.contains("name"));
-        assert_eq!(response.request_id, Some("req-123".to_string()));
-    }
-
-    #[test]
-    fn test_internal_error_with_context() {
-        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let error = InternalError::database_with_source("Failed to load configuration", &io_error);
-
-        let message = format!("{}", error);
-        assert!(message.contains("Database error: Failed to load configuration"));
-        assert!(message.contains("Caused by:"));
-        assert!(message.contains("file not found"));
-    }
-
-    #[test]
-    fn test_serialization_error_with_context() {
-        // Simulate a JSON parsing error
-        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
-        let error = InternalError::serialization_with_source("Failed to parse response", &json_err);
-
-        let message = format!("{}", error);
-        assert!(message.contains("Serialization error: Failed to parse response"));
-        assert!(message.contains("Caused by:"));
-    }
-
-    #[test]
-    fn test_validation_error_with_json_context() {
-        let json_err = serde_json::from_str::<serde_json::Value>("{invalid}").unwrap_err();
-        let error =
-            ValidationError::invalid_json_with_source("Request body is malformed", &json_err);
-
-        let message = format!("{}", error);
-        assert!(message.contains("Invalid JSON: Request body is malformed"));
-        assert!(message.contains("Caused by:"));
-    }
-
-    #[test]
-    fn test_unexpected_error_with_source() {
-        use std::fmt;
-
-        #[derive(Debug)]
-        struct CustomError;
-        impl fmt::Display for CustomError {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "custom operation failed")
-            }
-        }
-        impl std::error::Error for CustomError {}
-
-        let custom_err = CustomError;
-        let error = InternalError::unexpected_with_source("System check failed", &custom_err);
-
-        let message = format!("{}", error);
-        assert!(message.contains("Unexpected error: System check failed"));
-        assert!(message.contains("Caused by: custom operation failed"));
-    }
-
-    #[test]
-    fn test_error_without_context() {
-        // Test that errors without context still work
-        let error = InternalError::database("Connection timeout");
-        let message = format!("{}", error);
-        assert_eq!(message, "Database error: Connection timeout");
-        assert!(!message.contains("Caused by"));
-    }
-
-    #[test]
-    fn test_error_context_in_runtime_error() {
-        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
-        let internal_err =
-            InternalError::database_with_source("Database connection failed", &io_error);
-        let runtime_err = RuntimeError::Internal(internal_err);
-
-        let message = format!("{}", runtime_err);
-        assert!(message.contains("Database error: Database connection failed"));
-        assert!(message.contains("Caused by: access denied"));
     }
 }
