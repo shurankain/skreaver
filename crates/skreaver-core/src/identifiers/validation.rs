@@ -1,11 +1,37 @@
 //! Identifier validation rules and utilities
+//!
+//! This module provides identifier validation that builds on the shared
+//! validation infrastructure in `crate::validation`.
+//!
+//! # Consolidation Status
+//!
+//! This module has been consolidated with `crate::validation` to reduce duplication:
+//! - `IdValidator` now uses `IdentifierRules::IDENTIFIER` internally
+//! - `IdValidationError` is compatible with `ValidationError` via `From` traits
+//! - New code should prefer `IdentifierRules` directly for more flexibility
+//!
+//! # Migration Path
+//!
+//! For new code, prefer using `IdentifierRules` directly:
+//!
+//! ```rust
+//! use skreaver_core::validation::IdentifierRules;
+//!
+//! // Instead of IdValidator::validate(id)
+//! let validated = IdentifierRules::IDENTIFIER.validate(id)?;
+//! ```
+//!
+//! Existing code using `IdValidator` will continue to work without changes.
 
-use std::fmt;
+use crate::validation::{IdentifierRules, ValidationError};
 
 /// Maximum length for all identifier types
 pub const MAX_ID_LENGTH: usize = 128;
 
 /// Error type for identifier validation failures
+///
+/// This is a wrapper around `ValidationError` with conversion support
+/// for backward compatibility.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdValidationError {
     /// The identifier string is empty
@@ -22,8 +48,8 @@ pub enum IdValidationError {
     PathTraversal,
 }
 
-impl fmt::Display for IdValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for IdValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Empty => write!(f, "Identifier cannot be empty"),
             Self::WhitespaceOnly => write!(f, "Identifier cannot be whitespace-only"),
@@ -49,7 +75,45 @@ impl fmt::Display for IdValidationError {
 
 impl std::error::Error for IdValidationError {}
 
+/// Convert ValidationError to IdValidationError for backward compatibility
+impl From<ValidationError> for IdValidationError {
+    fn from(err: ValidationError) -> Self {
+        match err {
+            ValidationError::Empty => IdValidationError::Empty,
+            ValidationError::WhitespaceOnly => IdValidationError::WhitespaceOnly,
+            ValidationError::LeadingTrailingWhitespace => {
+                IdValidationError::LeadingTrailingWhitespace
+            }
+            ValidationError::TooLong { length, max } => IdValidationError::TooLong { length, max },
+            ValidationError::InvalidChar { .. } => IdValidationError::InvalidCharacters,
+            ValidationError::PathTraversal => IdValidationError::PathTraversal,
+        }
+    }
+}
+
+/// Convert IdValidationError to ValidationError
+impl From<IdValidationError> for ValidationError {
+    fn from(err: IdValidationError) -> Self {
+        match err {
+            IdValidationError::Empty => ValidationError::Empty,
+            IdValidationError::WhitespaceOnly => ValidationError::WhitespaceOnly,
+            IdValidationError::LeadingTrailingWhitespace => {
+                ValidationError::LeadingTrailingWhitespace
+            }
+            IdValidationError::TooLong { length, max } => ValidationError::TooLong { length, max },
+            IdValidationError::InvalidCharacters => ValidationError::InvalidChar {
+                char: ' ',
+                input: String::new(),
+            },
+            IdValidationError::PathTraversal => ValidationError::PathTraversal,
+        }
+    }
+}
+
 /// Validator for identifier strings
+///
+/// This validator now uses the shared `IdentifierRules` infrastructure
+/// for consistency across the codebase.
 pub struct IdValidator;
 
 impl IdValidator {
@@ -87,44 +151,11 @@ impl IdValidator {
     /// assert!(IdValidator::validate("agent/path").is_err());
     /// ```
     pub fn validate(id: &str) -> Result<&str, IdValidationError> {
-        // Check for empty string
-        if id.is_empty() {
-            return Err(IdValidationError::Empty);
-        }
-
-        // Check for whitespace-only
-        if id.trim().is_empty() {
-            return Err(IdValidationError::WhitespaceOnly);
-        }
-
-        // Check for leading/trailing whitespace
-        if id != id.trim() {
-            return Err(IdValidationError::LeadingTrailingWhitespace);
-        }
-
-        // Check length
-        if id.len() > MAX_ID_LENGTH {
-            return Err(IdValidationError::TooLong {
-                length: id.len(),
-                max: MAX_ID_LENGTH,
-            });
-        }
-
-        // Check for path traversal sequences
-        if id.contains("../") || id.contains("./") {
-            return Err(IdValidationError::PathTraversal);
-        }
-
-        // Validate characters (alphanumeric, hyphen, underscore, dot)
-        // Note: Dots are allowed but path traversal sequences are rejected above
-        if !id
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
-        {
-            return Err(IdValidationError::InvalidCharacters);
-        }
-
-        Ok(id)
+        // Use shared validation infrastructure
+        IdentifierRules::IDENTIFIER
+            .validate(id)
+            .map(|_| id) // Return original &str instead of String
+            .map_err(|e| e.into()) // Convert ValidationError to IdValidationError
     }
 
     /// Check if a character is valid in an identifier
@@ -154,7 +185,14 @@ impl IdValidator {
 
         let sanitized: String = trimmed
             .chars()
-            .map(|c| if Self::is_valid_char(c) { c } else { '_' })
+            .map(|c| {
+                // Valid characters for identifiers: alphanumeric, -, _, .
+                if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
 
         // Truncate to max length
