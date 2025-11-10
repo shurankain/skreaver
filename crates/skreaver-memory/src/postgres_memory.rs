@@ -142,27 +142,27 @@ impl PostgresMemory {
         let namespaced_key = self.namespaced_key(&update.key);
 
         conn.execute(
-                r#"
+            r#"
                 INSERT INTO memory_entries (key, value, namespace, updated_at)
                 VALUES ($1, $2, $3, NOW())
                 ON CONFLICT (key) DO UPDATE SET
                     value = EXCLUDED.value,
                     updated_at = NOW()
                 "#,
-                &[
-                    &namespaced_key,
-                    &update.value,
-                    &self.namespace.as_deref().unwrap_or("").to_string(),
-                ],
-            )
-            .await
-            .map_err(|e| MemoryError::StoreFailed {
-                key: update.key.clone(),
-                backend: skreaver_core::error::MemoryBackend::Postgres,
-                kind: skreaver_core::error::MemoryErrorKind::IoError {
-                    details: format!("Database error: {}", e),
-                },
-            })?;
+            &[
+                &namespaced_key,
+                &update.value,
+                &self.namespace.as_deref().unwrap_or("").to_string(),
+            ],
+        )
+        .await
+        .map_err(|e| MemoryError::StoreFailed {
+            key: update.key.clone(),
+            backend: skreaver_core::error::MemoryBackend::Postgres,
+            kind: skreaver_core::error::MemoryErrorKind::IoError {
+                details: format!("Database error: {}", e),
+            },
+        })?;
 
         Ok(())
     }
@@ -465,16 +465,16 @@ impl MemoryAdmin for PostgresMemory {
                             .unwrap_or(serde_json::Value::String(value));
 
                         conn.execute(
-                                "INSERT INTO memory_entries (key, value) VALUES ($1, $2)",
-                                &[&key, &value_json],
-                            )
-                            .await
-                            .map_err(|e| MemoryError::RestoreFailed {
-                                backend: skreaver_core::error::MemoryBackend::Postgres,
-                                kind: skreaver_core::error::MemoryErrorKind::IoError {
-                                    details: format!("Failed to insert key {}: {}", key, e),
-                                },
-                            })?;
+                            "INSERT INTO memory_entries (key, value) VALUES ($1, $2)",
+                            &[&key, &value_json],
+                        )
+                        .await
+                        .map_err(|e| MemoryError::RestoreFailed {
+                            backend: skreaver_core::error::MemoryBackend::Postgres,
+                            kind: skreaver_core::error::MemoryErrorKind::IoError {
+                                details: format!("Failed to insert key {}: {}", key, e),
+                            },
+                        })?;
                     }
 
                     Ok(())

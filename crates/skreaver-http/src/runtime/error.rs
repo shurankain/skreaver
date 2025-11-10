@@ -443,10 +443,7 @@ impl IntoResponse for RuntimeError {
             if let Ok(header_value) = retry_after.to_string().parse() {
                 response.headers_mut().insert("Retry-After", header_value);
             } else {
-                tracing::warn!(
-                    retry_after,
-                    "Failed to parse Retry-After header value"
-                );
+                tracing::warn!(retry_after, "Failed to parse Retry-After header value");
             }
         }
 

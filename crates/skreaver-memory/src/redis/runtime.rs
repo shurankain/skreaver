@@ -3,9 +3,9 @@
 //! This module provides thread-local runtime management for synchronous
 //! wrapper functions around async Redis operations.
 
-use std::sync::OnceLock;
 use skreaver_core::error::MemoryError;
 use skreaver_core::memory::MemoryKey;
+use std::sync::OnceLock;
 
 /// Fallback memory key for runtime initialization
 static RUNTIME_KEY: OnceLock<MemoryKey> = OnceLock::new();

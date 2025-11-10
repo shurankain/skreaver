@@ -12,9 +12,8 @@ use super::SqliteMemory;
 static BATCH_KEY: OnceLock<MemoryKey> = OnceLock::new();
 
 fn batch_key() -> &'static MemoryKey {
-    BATCH_KEY.get_or_init(|| {
-        MemoryKey::new("batch").expect("BUG: 'batch' should be a valid memory key")
-    })
+    BATCH_KEY
+        .get_or_init(|| MemoryKey::new("batch").expect("BUG: 'batch' should be a valid memory key"))
 }
 
 impl MemoryWriter for SqliteMemory {

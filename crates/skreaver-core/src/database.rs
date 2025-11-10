@@ -171,7 +171,11 @@ impl std::fmt::Display for PoolSize {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PoolSizeError {
     /// Pool size is out of the valid range (1-100)
-    #[error("Pool size {size} is out of range (must be {}-{})", PoolSize::MIN, PoolSize::MAX)]
+    #[error(
+        "Pool size {size} is out of range (must be {}-{})",
+        PoolSize::MIN,
+        PoolSize::MAX
+    )]
     OutOfRange { size: usize },
 }
 

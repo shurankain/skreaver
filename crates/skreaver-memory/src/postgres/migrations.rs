@@ -101,13 +101,13 @@ impl PostgresMigrationEngine {
         // Start transaction
         let tx = conn
             .transaction()
-                .await
-                .map_err(|e| MemoryError::ConnectionFailed {
-                    backend: skreaver_core::error::MemoryBackend::Postgres,
-                    kind: skreaver_core::error::MemoryErrorKind::InternalError {
-                        backend_error: format!("Failed to start migration transaction: {}", e),
-                    },
-                })?;
+            .await
+            .map_err(|e| MemoryError::ConnectionFailed {
+                backend: skreaver_core::error::MemoryBackend::Postgres,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to start migration transaction: {}", e),
+                },
+            })?;
 
         // Execute migration
         tx.batch_execute(&migration.up_sql)

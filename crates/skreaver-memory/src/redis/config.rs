@@ -358,15 +358,17 @@ impl RedisConfigBuilder {
 impl ValidRedisConfig {
     /// Get the deployment (guaranteed to be Some by build())
     pub fn deployment(&self) -> &RedisDeploymentV2 {
-        self.deployment
-            .as_ref()
-            .expect("BUG: ValidRedisConfig deployment is None (only build() creates ValidRedisConfig)")
+        self.deployment.as_ref().expect(
+            "BUG: ValidRedisConfig deployment is None (only build() creates ValidRedisConfig)",
+        )
     }
 
     /// Get the pool size (guaranteed to be valid by build())
     pub fn pool_size(&self) -> usize {
         self.pool_size
-            .expect("BUG: ValidRedisConfig pool_size is None (only build() creates ValidRedisConfig)")
+            .expect(
+                "BUG: ValidRedisConfig pool_size is None (only build() creates ValidRedisConfig)",
+            )
             .get()
     }
 

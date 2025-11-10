@@ -177,9 +177,7 @@ impl IdValidator {
     /// ```
     pub fn validate(id: &str) -> Result<&str, ValidationError> {
         // Use shared validation infrastructure
-        IdentifierRules::IDENTIFIER
-            .validate(id)
-            .map(|_| id) // Return original &str instead of String
+        IdentifierRules::IDENTIFIER.validate(id).map(|_| id) // Return original &str instead of String
     }
 
     /// Validate an identifier (deprecated version returning IdValidationError)

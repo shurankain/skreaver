@@ -29,9 +29,8 @@ fn redis_operation_key() -> &'static MemoryKey {
 static PING_KEY: OnceLock<MemoryKey> = OnceLock::new();
 
 fn ping_key() -> &'static MemoryKey {
-    PING_KEY.get_or_init(|| {
-        MemoryKey::new("ping").expect("BUG: 'ping' should be a valid memory key")
-    })
+    PING_KEY
+        .get_or_init(|| MemoryKey::new("ping").expect("BUG: 'ping' should be a valid memory key"))
 }
 
 // === Connection State Phantom Types ===
@@ -136,9 +135,9 @@ impl RedisConnection<Disconnected> {
 impl RedisConnection<Connected> {
     /// Get the underlying connection (guaranteed to be available)
     pub fn connection(&mut self) -> &mut PooledConnection {
-        self.connection
-            .as_mut()
-            .expect("BUG: RedisConnection<Connected> has None connection (typestate invariant violated)")
+        self.connection.as_mut().expect(
+            "BUG: RedisConnection<Connected> has None connection (typestate invariant violated)",
+        )
     }
 
     /// Get connection duration

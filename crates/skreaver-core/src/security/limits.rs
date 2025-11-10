@@ -505,9 +505,12 @@ impl RateLimiter {
     }
 
     pub fn check_rate_limit(&self, key: &str) -> Result<(), SecurityError> {
-        let mut requests_map = self.requests.lock().map_err(|_| SecurityError::ConfigError {
-            message: "Rate limiter mutex poisoned".to_string(),
-        })?;
+        let mut requests_map = self
+            .requests
+            .lock()
+            .map_err(|_| SecurityError::ConfigError {
+                message: "Rate limiter mutex poisoned".to_string(),
+            })?;
         let now = Instant::now();
 
         // Get or create request history for this key

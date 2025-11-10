@@ -17,8 +17,7 @@ static PATH_TRAVERSAL_PATTERN: OnceLock<Regex> = OnceLock::new();
 
 fn agent_id_pattern() -> &'static Regex {
     AGENT_ID_PATTERN.get_or_init(|| {
-        Regex::new(r"^[a-zA-Z0-9_-]{1,64}$")
-            .expect("BUG: Agent ID regex pattern is invalid")
+        Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").expect("BUG: Agent ID regex pattern is invalid")
     })
 }
 
@@ -38,8 +37,7 @@ fn script_injection_pattern() -> &'static Regex {
 
 fn path_traversal_pattern() -> &'static Regex {
     PATH_TRAVERSAL_PATTERN.get_or_init(|| {
-        Regex::new(r"\.\./|\.\.\\\|%2e%2e")
-            .expect("BUG: Path traversal regex pattern is invalid")
+        Regex::new(r"\.\./|\.\.\\\|%2e%2e").expect("BUG: Path traversal regex pattern is invalid")
     })
 }
 

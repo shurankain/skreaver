@@ -12,9 +12,8 @@ use super::SqliteMemory;
 static BATCH_KEY: OnceLock<MemoryKey> = OnceLock::new();
 
 fn batch_key() -> &'static MemoryKey {
-    BATCH_KEY.get_or_init(|| {
-        MemoryKey::new("batch").expect("BUG: 'batch' should be a valid memory key")
-    })
+    BATCH_KEY
+        .get_or_init(|| MemoryKey::new("batch").expect("BUG: 'batch' should be a valid memory key"))
 }
 
 impl MemoryReader for SqliteMemory {
@@ -51,15 +50,13 @@ impl MemoryReader for SqliteMemory {
             placeholders
         );
 
-        let mut stmt =
-            conn.prepare(&query)
-                .map_err(|e| MemoryError::LoadFailed {
-                    key: batch_key().clone(),
-                    backend: MemoryBackend::Sqlite,
-                    kind: MemoryErrorKind::IoError {
-                        details: e.to_string(),
-                    },
-                })?;
+        let mut stmt = conn.prepare(&query).map_err(|e| MemoryError::LoadFailed {
+            key: batch_key().clone(),
+            backend: MemoryBackend::Sqlite,
+            kind: MemoryErrorKind::IoError {
+                details: e.to_string(),
+            },
+        })?;
 
         let mut results = std::collections::HashMap::new();
         let params: Vec<&dyn rusqlite::ToSql> = namespaced_keys
