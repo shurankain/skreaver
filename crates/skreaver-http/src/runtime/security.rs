@@ -4,9 +4,44 @@
 //! and security headers for the HTTP runtime.
 
 use base64::Engine;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
+
+// Compile regex patterns once at initialization
+static AGENT_ID_PATTERN: OnceLock<Regex> = OnceLock::new();
+static SQL_INJECTION_PATTERN: OnceLock<Regex> = OnceLock::new();
+static SCRIPT_INJECTION_PATTERN: OnceLock<Regex> = OnceLock::new();
+static PATH_TRAVERSAL_PATTERN: OnceLock<Regex> = OnceLock::new();
+
+fn agent_id_pattern() -> &'static Regex {
+    AGENT_ID_PATTERN.get_or_init(|| {
+        Regex::new(r"^[a-zA-Z0-9_-]{1,64}$")
+            .expect("BUG: Agent ID regex pattern is invalid")
+    })
+}
+
+fn sql_injection_pattern() -> &'static Regex {
+    SQL_INJECTION_PATTERN.get_or_init(|| {
+        Regex::new(r"(?i)(union|select|insert|update|delete|drop|exec|script)")
+            .expect("BUG: SQL injection regex pattern is invalid")
+    })
+}
+
+fn script_injection_pattern() -> &'static Regex {
+    SCRIPT_INJECTION_PATTERN.get_or_init(|| {
+        Regex::new(r"(?i)<script|javascript:|on\w+\s*=")
+            .expect("BUG: Script injection regex pattern is invalid")
+    })
+}
+
+fn path_traversal_pattern() -> &'static Regex {
+    PATH_TRAVERSAL_PATTERN.get_or_init(|| {
+        Regex::new(r"\.\./|\.\.\\\|%2e%2e")
+            .expect("BUG: Path traversal regex pattern is invalid")
+    })
+}
 
 /// Security configuration for the HTTP runtime
 #[derive(Debug, Clone)]
@@ -273,15 +308,11 @@ impl Default for InputValidationConfig {
             max_string_length: 10_000,
             max_array_length: 100,
             max_object_depth: 10,
-            agent_id_pattern: regex::Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").unwrap(),
+            agent_id_pattern: agent_id_pattern().clone(),
             forbidden_patterns: vec![
-                // SQL injection patterns
-                regex::Regex::new(r"(?i)(union|select|insert|update|delete|drop|exec|script)")
-                    .unwrap(),
-                // Script injection patterns
-                regex::Regex::new(r"(?i)<script|javascript:|on\w+\s*=").unwrap(),
-                // Path traversal patterns
-                regex::Regex::new(r"\.\./|\.\.\\\|%2e%2e").unwrap(),
+                sql_injection_pattern().clone(),
+                script_injection_pattern().clone(),
+                path_traversal_pattern().clone(),
             ],
         }
     }

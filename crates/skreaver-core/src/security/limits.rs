@@ -246,7 +246,9 @@ impl ResourceTracker {
     }
 
     pub fn check_limits(&self, context: &super::SecurityContext) -> Result<(), SecurityError> {
-        let mut usage_map = self.usage.lock().unwrap();
+        let mut usage_map = self.usage.lock().map_err(|_| SecurityError::ConfigError {
+            message: "Resource usage tracker mutex poisoned".to_string(),
+        })?;
         let usage = usage_map.entry(context.agent_id.to_string()).or_default();
 
         // Check concurrent operations limit
@@ -291,10 +293,12 @@ impl ResourceTracker {
     }
 
     pub fn start_operation(&self, agent_id: &str) -> OperationGuard {
-        let mut usage_map = self.usage.lock().unwrap();
-        let usage = usage_map.entry(agent_id.to_string()).or_default();
-
-        usage.active_operations += 1;
+        if let Ok(mut usage_map) = self.usage.lock() {
+            let usage = usage_map.entry(agent_id.to_string()).or_default();
+            usage.active_operations += 1;
+        } else {
+            tracing::warn!("Usage tracker mutex poisoned, operation tracking may be inaccurate");
+        }
 
         OperationGuard {
             agent_id: agent_id.to_string(),
@@ -304,15 +308,19 @@ impl ResourceTracker {
     }
 
     pub fn get_usage(&self, agent_id: &str) -> Option<ResourceUsage> {
-        let usage_map = self.usage.lock().unwrap();
-        usage_map.get(agent_id).cloned()
+        self.usage
+            .lock()
+            .ok()
+            .and_then(|usage_map| usage_map.get(agent_id).cloned())
     }
 
     pub fn cleanup_stale_agents(&self, max_age: Duration) {
-        let mut usage_map = self.usage.lock().unwrap();
-        let now = Instant::now();
-
-        usage_map.retain(|_, usage| now.duration_since(usage.start_time) < max_age);
+        if let Ok(mut usage_map) = self.usage.lock() {
+            let now = Instant::now();
+            usage_map.retain(|_, usage| now.duration_since(usage.start_time) < max_age);
+        } else {
+            tracing::warn!("Usage tracker mutex poisoned, skipping stale agent cleanup");
+        }
     }
 }
 
@@ -325,9 +333,12 @@ pub struct OperationGuard {
 
 impl Drop for OperationGuard {
     fn drop(&mut self) {
-        let mut usage_map = self.usage.lock().unwrap();
-        if let Some(usage) = usage_map.get_mut(&self.agent_id) {
-            usage.active_operations = usage.active_operations.saturating_sub(1);
+        if let Ok(mut usage_map) = self.usage.lock() {
+            if let Some(usage) = usage_map.get_mut(&self.agent_id) {
+                usage.active_operations = usage.active_operations.saturating_sub(1);
+            }
+        } else {
+            tracing::error!("Usage tracker mutex poisoned during operation cleanup");
         }
 
         // Log operation duration for monitoring
@@ -383,7 +394,9 @@ impl ProcessMonitor {
     fn get_current_usage(&self) -> Result<ResourceUsage, SecurityError> {
         use sysinfo::{ProcessRefreshKind, RefreshKind};
 
-        let mut system = self.system.lock().unwrap();
+        let mut system = self.system.lock().map_err(|_| SecurityError::ConfigError {
+            message: "Process monitor mutex poisoned".to_string(),
+        })?;
 
         // Refresh CPU and memory for our process
         let refresh_kind =
@@ -492,7 +505,9 @@ impl RateLimiter {
     }
 
     pub fn check_rate_limit(&self, key: &str) -> Result<(), SecurityError> {
-        let mut requests_map = self.requests.lock().unwrap();
+        let mut requests_map = self.requests.lock().map_err(|_| SecurityError::ConfigError {
+            message: "Rate limiter mutex poisoned".to_string(),
+        })?;
         let now = Instant::now();
 
         // Get or create request history for this key
@@ -516,13 +531,16 @@ impl RateLimiter {
     }
 
     pub fn cleanup_stale_entries(&self) {
-        let mut requests_map = self.requests.lock().unwrap();
-        let now = Instant::now();
+        if let Ok(mut requests_map) = self.requests.lock() {
+            let now = Instant::now();
 
-        requests_map.retain(|_, requests| {
-            requests.retain(|&timestamp| now.duration_since(timestamp) < self.window);
-            !requests.is_empty()
-        });
+            requests_map.retain(|_, requests| {
+                requests.retain(|&timestamp| now.duration_since(timestamp) < self.window);
+                !requests.is_empty()
+            });
+        } else {
+            tracing::warn!("Rate limiter mutex poisoned, skipping cleanup");
+        }
     }
 }
 

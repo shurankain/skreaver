@@ -195,7 +195,7 @@ impl HttpRuntimeConfigBuilder {
                 "reject" => MissingConnectInfoBehavior::Reject,
                 "disable_per_ip" => MissingConnectInfoBehavior::DisablePerIpLimits,
                 fallback_ip if fallback_ip.starts_with("fallback:") => {
-                    let ip_str = fallback_ip.strip_prefix("fallback:").unwrap();
+                    let ip_str = &fallback_ip["fallback:".len()..];
                     let ip = ip_str.parse().map_err(|e| ConfigError::InvalidEnvVar {
                         key: "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR".to_string(),
                         message: format!("Invalid IP address '{}': {}", ip_str, e),

@@ -215,8 +215,11 @@ impl AuditLogger {
 
         // Track violations for pattern detection
         if let SecurityEvent::PolicyViolation { violation, .. } = &event {
-            let mut tracker = self.violation_tracker.lock().unwrap();
-            tracker.record_violation(violation.clone());
+            if let Ok(mut tracker) = self.violation_tracker.lock() {
+                tracker.record_violation(violation.clone());
+            } else {
+                tracing::warn!("Violation tracker mutex poisoned, skipping violation recording");
+            }
         }
 
         // Log the event
@@ -431,9 +434,13 @@ impl AuditLogger {
                 }
             }
             LogFormat::Text => {
+                let timestamp_str = audit_log
+                    .timestamp
+                    .format(&Rfc3339)
+                    .unwrap_or_else(|_| "<invalid timestamp>".to_string());
                 let message = format!(
                     "[{}] {} - Agent: {} Tool: {} - {:?}",
-                    audit_log.timestamp.format(&Rfc3339).unwrap(),
+                    timestamp_str,
                     match audit_log.severity {
                         LogSeverity::Critical => "CRITICAL",
                         LogSeverity::Error => "ERROR",
@@ -460,9 +467,13 @@ impl AuditLogger {
                 }
             }
             LogFormat::Compact => {
+                let timestamp_str = audit_log
+                    .timestamp
+                    .format(&Rfc3339)
+                    .unwrap_or_else(|_| "<invalid timestamp>".to_string());
                 let message = format!(
                     "{} {} {}:{} {:?}",
-                    audit_log.timestamp.format(&Rfc3339).unwrap(),
+                    timestamp_str,
                     match audit_log.severity {
                         LogSeverity::Critical => "CRIT",
                         LogSeverity::Error => "ERR",

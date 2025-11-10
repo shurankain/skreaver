@@ -4,7 +4,7 @@
 //! for Kubernetes deployments and production environments.
 
 use tokio::signal;
-use tracing::info;
+use tracing::{error, info};
 
 /// Create a future that completes when a shutdown signal is received
 ///
@@ -38,17 +38,28 @@ use tracing::info;
 /// ```
 pub async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        match signal::ctrl_c().await {
+            Ok(()) => (),
+            Err(e) => {
+                error!("Failed to install Ctrl+C handler: {}", e);
+                // Wait indefinitely if we can't install the handler
+                std::future::pending::<()>().await
+            }
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                error!("Failed to install SIGTERM handler: {}", e);
+                // Wait indefinitely if we can't install the handler
+                std::future::pending::<()>().await
+            }
+        }
     };
 
     #[cfg(not(unix))]
