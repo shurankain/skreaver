@@ -4,6 +4,7 @@
 //! health monitoring, and connection validation.
 
 use skreaver_core::error::MemoryError;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio_postgres::{Client, Error as PgError, NoTls};
@@ -26,15 +27,28 @@ impl PooledConnection {
             pool_size,
         }
     }
+}
 
-    /// Get reference to the underlying client
-    pub fn client(&self) -> &Client {
-        self.client.as_ref().expect("Client should be available")
+// Implement Deref to transparently access the Client
+// This is safe because:
+// 1. Client is always Some until Drop is called
+// 2. Drop consumes self, so no references can exist during Drop
+// 3. If somehow client is None (which shouldn't happen), we use a panic with clear message
+impl Deref for PooledConnection {
+    type Target = Client;
+
+    fn deref(&self) -> &Self::Target {
+        self.client
+            .as_ref()
+            .expect("BUG: PooledConnection client is None (this should never happen)")
     }
+}
 
-    /// Get mutable reference to the underlying client
-    pub fn client_mut(&mut self) -> &mut Client {
-        self.client.as_mut().expect("Client should be available")
+impl DerefMut for PooledConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.client
+            .as_mut()
+            .expect("BUG: PooledConnection client is None (this should never happen)")
     }
 }
 
@@ -215,8 +229,7 @@ impl PostgresPool {
 
         // Get server version for health info
         let server_version = if let Ok(conn) = self.acquire().await {
-            conn.client()
-                .query_one("SELECT version()", &[])
+            conn.query_one("SELECT version()", &[])
                 .await
                 .map(|row| row.get::<_, String>(0))
                 .unwrap_or_else(|_| "Unknown".to_string())

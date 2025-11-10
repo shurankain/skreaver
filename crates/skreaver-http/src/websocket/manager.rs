@@ -105,10 +105,14 @@ impl ConnectionState {
     /// Authenticate the connection
     fn authenticate(&mut self, user_id: String) {
         // Take ownership of the current state to transition
+        // Create a placeholder address - this is safe as it's a temporary value
+        // that will never be used (the actual info is moved from old_state)
+        let placeholder_addr = std::net::SocketAddr::from(([0, 0, 0, 0], 0));
+
         let old_state = std::mem::replace(
             self,
             Self::Unauthenticated {
-                info: super::ConnectionInfo::new("0.0.0.0:0".parse().unwrap()),
+                info: super::ConnectionInfo::new(placeholder_addr),
                 sender: mpsc::channel(1).0,
                 channels: Vec::new(),
             },

@@ -150,7 +150,11 @@ impl RedisTransactionExecutor {
                         }
                     })?);
                 }
-                Ok(rt_ref.as_ref().unwrap().handle().clone())
+                Ok(rt_ref
+                    .as_ref()
+                    .expect("BUG: Runtime should be Some after initialization")
+                    .handle()
+                    .clone())
             })
             .map_err(|e: TransactionError| e)?;
 

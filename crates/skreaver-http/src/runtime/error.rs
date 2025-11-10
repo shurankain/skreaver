@@ -105,7 +105,8 @@ impl ErrorResponse {
 
     /// Add additional details to the error
     pub fn with_details<T: serde::Serialize>(mut self, details: T) -> Self {
-        self.details = Some(serde_json::to_value(details).unwrap_or_default());
+        // Use ok() instead of unwrap_or_default to avoid silently discarding valid data
+        self.details = serde_json::to_value(details).ok();
         self
     }
 
@@ -438,9 +439,15 @@ impl IntoResponse for RuntimeError {
 
         // Add error-specific headers
         if let RuntimeError::RateLimitExceeded { retry_after, .. } = self {
-            response
-                .headers_mut()
-                .insert("Retry-After", retry_after.to_string().parse().unwrap());
+            // Only insert header if parsing succeeds
+            if let Ok(header_value) = retry_after.to_string().parse() {
+                response.headers_mut().insert("Retry-After", header_value);
+            } else {
+                tracing::warn!(
+                    retry_after,
+                    "Failed to parse Retry-After header value"
+                );
+            }
         }
 
         response

@@ -68,7 +68,6 @@ impl PostgresMigrationEngine {
 
         // Get current version
         let current_version: i32 = conn
-            .client()
             .query_one(
                 "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
                 &[],
@@ -100,9 +99,8 @@ impl PostgresMigrationEngine {
         let mut conn = pool.acquire().await?;
 
         // Start transaction
-        let tx =
-            conn.client_mut()
-                .transaction()
+        let tx = conn
+            .transaction()
                 .await
                 .map_err(|e| MemoryError::ConnectionFailed {
                     backend: skreaver_core::error::MemoryBackend::Postgres,

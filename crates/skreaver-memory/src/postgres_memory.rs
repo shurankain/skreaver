@@ -141,8 +141,7 @@ impl PostgresMemory {
         let conn = self.pool.acquire().await?;
         let namespaced_key = self.namespaced_key(&update.key);
 
-        conn.client()
-            .execute(
+        conn.execute(
                 r#"
                 INSERT INTO memory_entries (key, value, namespace, updated_at)
                 VALUES ($1, $2, $3, NOW())
@@ -222,8 +221,7 @@ impl PostgresMemory {
 
         let query = format!("DELETE FROM memory_entries {}", namespace_filter);
 
-        conn.client()
-            .execute(&query, &[])
+        conn.execute(&query, &[])
             .await
             .map_err(|e| MemoryError::StoreFailed {
                 key: MemoryKey::new("clear_all").unwrap(),
@@ -450,11 +448,9 @@ impl MemoryAdmin for PostgresMemory {
                         })?;
 
                     let conn = self.pool.acquire().await?;
-                    let client = conn.client();
 
                     // Clear existing data (without transaction for simplicity)
-                    client
-                        .execute("DELETE FROM memory_entries", &[])
+                    conn.execute("DELETE FROM memory_entries", &[])
                         .await
                         .map_err(|e| MemoryError::RestoreFailed {
                             backend: skreaver_core::error::MemoryBackend::Postgres,
@@ -468,8 +464,7 @@ impl MemoryAdmin for PostgresMemory {
                         let value_json: serde_json::Value = serde_json::from_str(&value)
                             .unwrap_or(serde_json::Value::String(value));
 
-                        client
-                            .execute(
+                        conn.execute(
                                 "INSERT INTO memory_entries (key, value) VALUES ($1, $2)",
                                 &[&key, &value_json],
                             )

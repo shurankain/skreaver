@@ -4,12 +4,35 @@
 //! management, making it impossible to use disconnected connections.
 
 use std::marker::PhantomData;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "redis")]
 use deadpool_redis::{Connection as PooledConnection, Pool};
 
 use skreaver_core::error::MemoryError;
+use skreaver_core::memory::MemoryKey;
+
+// === Constants ===
+
+/// Fallback memory key for Redis operations
+static REDIS_OPERATION_KEY: OnceLock<MemoryKey> = OnceLock::new();
+
+fn redis_operation_key() -> &'static MemoryKey {
+    REDIS_OPERATION_KEY.get_or_init(|| {
+        MemoryKey::new("redis_operation")
+            .expect("BUG: 'redis_operation' should be a valid memory key")
+    })
+}
+
+/// Fallback memory key for ping operations
+static PING_KEY: OnceLock<MemoryKey> = OnceLock::new();
+
+fn ping_key() -> &'static MemoryKey {
+    PING_KEY.get_or_init(|| {
+        MemoryKey::new("ping").expect("BUG: 'ping' should be a valid memory key")
+    })
+}
 
 // === Connection State Phantom Types ===
 
@@ -115,7 +138,7 @@ impl RedisConnection<Connected> {
     pub fn connection(&mut self) -> &mut PooledConnection {
         self.connection
             .as_mut()
-            .expect("Connected Redis connection must have underlying connection")
+            .expect("BUG: RedisConnection<Connected> has None connection (typestate invariant violated)")
     }
 
     /// Get connection duration
@@ -146,7 +169,7 @@ impl RedisConnection<Connected> {
     {
         let conn = self.connection();
         let result = f(conn).await.map_err(|e| MemoryError::LoadFailed {
-            key: skreaver_core::memory::MemoryKey::new("redis_operation").unwrap(),
+            key: redis_operation_key().clone(),
             backend: skreaver_core::error::MemoryBackend::Redis,
             kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                 details: format!("Redis operation failed: {}", e),
@@ -169,7 +192,7 @@ impl RedisConnection<Connected> {
             }
             Err(redis_error) => {
                 let error = MemoryError::LoadFailed {
-                    key: skreaver_core::memory::MemoryKey::new("ping").unwrap(),
+                    key: ping_key().clone(),
                     backend: skreaver_core::error::MemoryBackend::Redis,
                     kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                         details: format!("Ping failed: {}", redis_error),

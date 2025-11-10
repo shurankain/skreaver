@@ -1,11 +1,21 @@
 //! MemoryWriter implementation for SqliteMemory
 
 use rusqlite::params;
+use std::sync::OnceLock;
 
 use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
 use skreaver_core::memory::{MemoryKey, MemoryUpdate, MemoryWriter};
 
 use super::SqliteMemory;
+
+/// Fallback memory key for batch operations
+static BATCH_KEY: OnceLock<MemoryKey> = OnceLock::new();
+
+fn batch_key() -> &'static MemoryKey {
+    BATCH_KEY.get_or_init(|| {
+        MemoryKey::new("batch").expect("BUG: 'batch' should be a valid memory key")
+    })
+}
 
 impl MemoryWriter for SqliteMemory {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
@@ -57,7 +67,7 @@ impl MemoryWriter for SqliteMemory {
                     updated_at = strftime('%s', 'now')",
                 )
                 .map_err(|e| MemoryError::StoreFailed {
-                    key: MemoryKey::new("batch").unwrap(),
+                    key: batch_key().clone(),
                     backend: MemoryBackend::Sqlite,
                     kind: MemoryErrorKind::IoError {
                         details: e.to_string(),

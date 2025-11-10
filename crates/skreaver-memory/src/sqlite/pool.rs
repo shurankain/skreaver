@@ -1,6 +1,7 @@
 //! Connection pool for SQLite with thread-safe resource management
 
 use rusqlite::Connection;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -364,19 +365,24 @@ impl PooledConnection {
             active_connections,
         }
     }
+}
 
-    /// Get reference to the underlying connection
-    pub fn get_connection(&self) -> &Connection {
+// Implement Deref to transparently access the Connection
+impl Deref for PooledConnection {
+    type Target = Connection;
+
+    fn deref(&self) -> &Self::Target {
         self.connection
             .as_ref()
-            .expect("Connection should be available")
+            .expect("BUG: PooledConnection has None connection (this should never happen)")
     }
+}
 
-    /// Get mutable reference to the underlying connection
-    pub fn get_connection_mut(&mut self) -> &mut Connection {
+impl DerefMut for PooledConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         self.connection
             .as_mut()
-            .expect("Connection should be available")
+            .expect("BUG: PooledConnection has None connection (this should never happen)")
     }
 }
 

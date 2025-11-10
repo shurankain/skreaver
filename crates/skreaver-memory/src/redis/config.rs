@@ -114,6 +114,11 @@ impl DatabaseId {
         if db > 15 { None } else { Some(Self(db)) }
     }
 
+    /// Default database (0) - guaranteed valid
+    pub const fn default() -> Self {
+        Self(0)
+    }
+
     pub const fn get(self) -> u8 {
         self.0
     }
@@ -197,7 +202,7 @@ impl Default for RedisConfigBuilder {
             username: None,
             password: None,
             tls: false,
-            database: DatabaseId::new(0).unwrap(), // Always valid
+            database: DatabaseId::default(),
             key_prefix: None,
             _state: PhantomData,
         }
@@ -330,7 +335,7 @@ impl RedisConfigBuilder {
                 },
             })?;
 
-        let pool_size = self.pool_size.unwrap_or_else(|| PoolSize::new(10).unwrap());
+        let pool_size = self.pool_size.unwrap_or_else(PoolSize::default_size);
 
         // If we get here, all validation passed!
         Ok(ValidRedisConfig {
@@ -351,14 +356,18 @@ impl RedisConfigBuilder {
 }
 
 impl ValidRedisConfig {
-    /// Get the deployment (guaranteed to be Some)
+    /// Get the deployment (guaranteed to be Some by build())
     pub fn deployment(&self) -> &RedisDeploymentV2 {
-        self.deployment.as_ref().unwrap()
+        self.deployment
+            .as_ref()
+            .expect("BUG: ValidRedisConfig deployment is None (only build() creates ValidRedisConfig)")
     }
 
-    /// Get the pool size (guaranteed to be valid)
+    /// Get the pool size (guaranteed to be valid by build())
     pub fn pool_size(&self) -> usize {
-        self.pool_size.unwrap().get()
+        self.pool_size
+            .expect("BUG: ValidRedisConfig pool_size is None (only build() creates ValidRedisConfig)")
+            .get()
     }
 
     /// Get database ID
