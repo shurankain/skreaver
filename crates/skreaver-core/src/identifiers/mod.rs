@@ -54,6 +54,7 @@
 
 mod validation;
 
+#[allow(deprecated)]
 pub use validation::{IdValidationError, IdValidator};
 
 use serde::{Deserialize, Serialize};

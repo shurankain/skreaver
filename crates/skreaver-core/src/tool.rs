@@ -118,6 +118,7 @@ pub enum ToolDispatch {
 
 impl ToolDispatch {
     /// Create a dispatch method from a tool name string.
+    #[allow(deprecated)]
     pub fn from_name(name: &str) -> Result<Self, crate::IdValidationError> {
         if let Some(standard_tool) = StandardTool::from_name(name) {
             Ok(ToolDispatch::Standard(standard_tool))
@@ -172,6 +173,7 @@ impl ToolCall {
     /// # Returns
     ///
     /// `Ok(ToolCall)` if the name is valid, `Err(IdValidationError)` otherwise
+    #[allow(deprecated)]
     pub fn new(name: &str, input: &str) -> Result<Self, crate::IdValidationError> {
         Ok(Self {
             dispatch: ToolDispatch::from_name(name)?,
@@ -227,6 +229,7 @@ impl ToolCall {
     /// # Returns
     ///
     /// `Ok(ToolCall)` if the name is valid, `Err(IdValidationError)` otherwise
+    #[allow(deprecated)]
     pub fn from_owned(name: String, input: String) -> Result<Self, crate::IdValidationError> {
         Ok(Self {
             dispatch: ToolDispatch::from_name(&name)?,
@@ -302,6 +305,7 @@ impl ToolCallBuilder {
 
 /// Errors that can occur when building a ToolCall.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(deprecated)]
 pub enum ToolCallBuildError {
     /// No tool name was provided.
     MissingName,
@@ -309,6 +313,7 @@ pub enum ToolCallBuildError {
     InvalidName(crate::IdValidationError),
 }
 
+#[allow(deprecated)]
 impl std::fmt::Display for ToolCallBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -318,6 +323,7 @@ impl std::fmt::Display for ToolCallBuildError {
     }
 }
 
+#[allow(deprecated)]
 impl std::error::Error for ToolCallBuildError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {

@@ -73,6 +73,7 @@ pub enum IdValidationError {
     PathTraversal,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Display for IdValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -98,9 +99,11 @@ impl std::fmt::Display for IdValidationError {
     }
 }
 
+#[allow(deprecated)]
 impl std::error::Error for IdValidationError {}
 
 /// Convert ValidationError to IdValidationError for backward compatibility
+#[allow(deprecated)]
 impl From<ValidationError> for IdValidationError {
     fn from(err: ValidationError) -> Self {
         match err {
@@ -117,6 +120,7 @@ impl From<ValidationError> for IdValidationError {
 }
 
 /// Convert IdValidationError to ValidationError
+#[allow(deprecated)]
 impl From<IdValidationError> for ValidationError {
     fn from(err: IdValidationError) -> Self {
         match err {
@@ -351,6 +355,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_error_display() {
         assert_eq!(
             IdValidationError::Empty.to_string(),

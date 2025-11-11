@@ -14,7 +14,6 @@ use crate::runtime::{
     agent_status::AgentStatusEnum,
     api_types::{AgentEndpoints, AgentSpec, AgentType, CreateAgentResponse},
 };
-use skreaver_core::IdValidationError;
 
 /// Factory error types
 #[derive(Debug, Clone)]
