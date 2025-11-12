@@ -257,7 +257,7 @@ impl SqlitePool {
                 //     eprintln!("Connection validation failed, discarding: {}", e);
                 //     drop(conn);
                 // } else {
-                // Decrement active connection count when taking from pool
+                // Increment active connection count when acquiring from pool
                 let mut active_count =
                     self.active_connections
                         .lock()
@@ -270,7 +270,7 @@ impl SqlitePool {
                                 ),
                             },
                         })?;
-                *active_count -= 1;
+                *active_count += 1; // FIX: Increment when taking (activating) connection
 
                 return Ok(PooledConnection::new(
                     conn,
@@ -396,21 +396,18 @@ impl Drop for PooledConnection {
                 // Check against actual pool_size, not Vec capacity
                 if available.len() < self.pool_size {
                     available.push(conn);
-                    *active_count += 1; // Increment when returning to pool
+                    *active_count -= 1; // FIX: Decrement when returning (deactivating) connection
                 } else {
                     // Pool is legitimately full - this shouldn't happen but log if it does
-                    eprintln!(
-                        "Warning: Pool is full when returning connection. Available: {}, Pool size: {}",
+                    tracing::warn!(
+                        "Pool is full when returning connection. Available: {}, Pool size: {}",
                         available.len(),
                         self.pool_size
                     );
                 }
             } else {
                 // Critical: If we can't return the connection, we have a resource leak
-                eprintln!(
-                    "Critical: Failed to lock pool for connection return - resource leak possible"
-                );
-                // In production, this should be logged with proper error handling
+                tracing::error!("Failed to lock pool for connection return - resource leak possible");
             }
         }
     }
