@@ -411,34 +411,26 @@ impl WebSocketManager {
     /// Handle channel subscription
     #[doc(hidden)] // Public for testing only
     pub async fn handle_subscribe(&self, conn_id: Uuid, channels: Vec<String>) -> WsResult<()> {
-        // Use write lock from the start to prevent TOCTOU race condition
-        let mut guards = self.locks.level3_write().await;
+        // Phase 1: Check permissions outside critical section (read-only snapshot)
+        // This prevents race conditions by doing async operations before acquiring write lock
+        let user_id_opt = {
+            let guard = self.locks.level1_read().await;
+            let state = guard
+                .connections
+                .get(&conn_id)
+                .ok_or(WsError::ConnectionClosed)?;
 
-        let state = guards
-            .connections
-            .get_mut(&conn_id)
-            .ok_or(WsError::ConnectionClosed)?;
+            // Check authentication
+            if self.auth_handler.is_some() && !state.is_authenticated() {
+                return Err(WsError::AuthenticationFailed(
+                    "Authentication required".to_string(),
+                ));
+            }
 
-        // Check authentication if auth handler is present
-        if self.auth_handler.is_some() && !state.is_authenticated() {
-            return Err(WsError::AuthenticationFailed(
-                "Authentication required".to_string(),
-            ));
-        }
+            state.user_id().map(|s| s.to_string())
+        };
 
-        // Check subscription limit per connection
-        let new_subscription_count = state.channels().len() + channels.len();
-        if new_subscription_count > self.config.max_subscriptions_per_connection {
-            return Err(WsError::SubscriptionLimitExceeded {
-                current: new_subscription_count,
-                max: self.config.max_subscriptions_per_connection,
-            });
-        }
-
-        // Check permissions (release write locks temporarily for async operation)
-        let user_id_opt = state.user_id().map(|s| s.to_string());
-        drop(guards);
-
+        // Perform async permission checks outside locks
         if let (Some(auth_handler), Some(user_id)) = (&self.auth_handler, &user_id_opt) {
             for channel in &channels {
                 if !auth_handler.check_permission(user_id, channel).await {
@@ -447,26 +439,28 @@ impl WebSocketManager {
             }
         }
 
-        // Re-acquire locks and perform subscription
+        // Phase 2: Perform subscription atomically with write lock
         let mut guards = self.locks.level3_write().await;
 
-        // Re-check authentication after re-acquiring locks
         let state = guards
             .connections
             .get_mut(&conn_id)
             .ok_or(WsError::ConnectionClosed)?;
+
+        // Re-check authentication (connection state may have changed)
         if self.auth_handler.is_some() && !state.is_authenticated() {
             return Err(WsError::AuthenticationFailed(
                 "Authentication required".to_string(),
             ));
         }
 
-        // Re-check subscription limit per connection (state may have changed)
-        let new_subscription_count = state.channels().len()
-            + channels
-                .iter()
-                .filter(|ch| !state.channels().contains(ch))
-                .count();
+        // Check subscription limit per connection (only counting new subscriptions)
+        let new_channels: Vec<_> = channels
+            .iter()
+            .filter(|ch| !state.channels().contains(ch))
+            .collect();
+
+        let new_subscription_count = state.channels().len() + new_channels.len();
         if new_subscription_count > self.config.max_subscriptions_per_connection {
             return Err(WsError::SubscriptionLimitExceeded {
                 current: new_subscription_count,
@@ -474,32 +468,30 @@ impl WebSocketManager {
             });
         }
 
-        // Add subscriptions
-        for channel in channels {
-            if !state.channels().contains(&channel) {
-                // Check channel subscriber limit
-                let current_subscribers = guards
-                    .subscriptions
-                    .get(&channel)
-                    .map(|subs| subs.len())
-                    .unwrap_or(0);
+        // Add subscriptions atomically
+        for channel in new_channels {
+            // Check channel subscriber limit
+            let current_subscribers = guards
+                .subscriptions
+                .get(channel)
+                .map(|subs| subs.len())
+                .unwrap_or(0);
 
-                if current_subscribers >= self.config.max_subscribers_per_channel {
-                    return Err(WsError::ChannelSubscriberLimitExceeded {
-                        current: current_subscribers + 1,
-                        max: self.config.max_subscribers_per_channel,
-                    });
-                }
-
-                state.channels_mut().push(channel.clone());
-                guards
-                    .subscriptions
-                    .entry(channel.clone())
-                    .or_insert_with(Vec::new)
-                    .push(conn_id);
-
-                debug!("Connection {} subscribed to channel {}", conn_id, channel);
+            if current_subscribers >= self.config.max_subscribers_per_channel {
+                return Err(WsError::ChannelSubscriberLimitExceeded {
+                    current: current_subscribers + 1,
+                    max: self.config.max_subscribers_per_channel,
+                });
             }
+
+            state.channels_mut().push(channel.clone());
+            guards
+                .subscriptions
+                .entry(channel.clone())
+                .or_insert_with(Vec::new)
+                .push(conn_id);
+
+            debug!("Connection {} subscribed to channel {}", conn_id, channel);
         }
 
         drop(guards);
