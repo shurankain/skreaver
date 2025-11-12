@@ -546,8 +546,14 @@ impl WebSocketManager {
     pub async fn send_to_connection(&self, conn_id: Uuid, message: WsMessage) -> WsResult<()> {
         let guard = self.locks.level1_read().await;
         if let Some(state) = guard.connections.get(&conn_id) {
-            // Ignore send errors - receiver may be closed (e.g. in tests)
-            let _ = state.sender().send(message).await;
+            // Try to send, log error if channel is closed
+            if let Err(e) = state.sender().send(message).await {
+                tracing::warn!(
+                    connection_id = %conn_id,
+                    error = %e,
+                    "Failed to send message to connection (channel may be closed)"
+                );
+            }
         }
         Ok(())
     }

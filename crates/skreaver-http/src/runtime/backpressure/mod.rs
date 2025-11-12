@@ -261,9 +261,14 @@ impl BackpressureManager {
 
         // Check if request has timed out while in queue
         if request.queued_at.elapsed() > request.timeout {
-            let _ = tx.send(Err(BackpressureError::QueueTimeout {
-                timeout_ms: request.timeout.as_millis() as u64,
-            }));
+            if tx
+                .send(Err(BackpressureError::QueueTimeout {
+                    timeout_ms: request.timeout.as_millis() as u64,
+                }))
+                .is_err()
+            {
+                tracing::debug!(agent_id = %request.agent_id, "Client disconnected before timeout response");
+            }
 
             // Update metrics
             self.record_timeout(&request.agent_id).await;
@@ -278,9 +283,14 @@ impl BackpressureManager {
                 Arc::clone(&queue.active_requests)
             } else {
                 // Agent was removed while processing - rare race condition
-                let _ = tx.send(Err(BackpressureError::AgentNotFound {
-                    agent_id: request.agent_id.clone(),
-                }));
+                if tx
+                    .send(Err(BackpressureError::AgentNotFound {
+                        agent_id: request.agent_id.clone(),
+                    }))
+                    .is_err()
+                {
+                    tracing::debug!(agent_id = %request.agent_id, "Client disconnected before agent not found response");
+                }
                 return Some(());
             }
         };
@@ -307,7 +317,9 @@ impl BackpressureManager {
                 }),
             };
 
-            let _ = tx.send(response);
+            if tx.send(response).is_err() {
+                tracing::debug!(agent_id = %agent_id_clone, "Client disconnected before response could be sent");
+            }
 
             // Update metrics - use atomic counter and batch queue updates
             active_requests_clone.fetch_sub(1, Ordering::Relaxed);
@@ -380,9 +392,14 @@ impl BackpressureManager {
 
         // Check if request has timed out while in queue
         if request.queued_at.elapsed() > request.timeout {
-            let _ = tx.send(Err(BackpressureError::QueueTimeout {
-                timeout_ms: request.timeout.as_millis() as u64,
-            }));
+            if tx
+                .send(Err(BackpressureError::QueueTimeout {
+                    timeout_ms: request.timeout.as_millis() as u64,
+                }))
+                .is_err()
+            {
+                tracing::debug!(agent_id = %request.agent_id, "Client disconnected before timeout response");
+            }
 
             // Update metrics
             self.record_timeout(&request.agent_id).await;
@@ -397,9 +414,14 @@ impl BackpressureManager {
                 Arc::clone(&queue.active_requests)
             } else {
                 // Agent was removed while processing - rare race condition
-                let _ = tx.send(Err(BackpressureError::AgentNotFound {
-                    agent_id: request.agent_id.clone(),
-                }));
+                if tx
+                    .send(Err(BackpressureError::AgentNotFound {
+                        agent_id: request.agent_id.clone(),
+                    }))
+                    .is_err()
+                {
+                    tracing::debug!(agent_id = %request.agent_id, "Client disconnected before agent not found response");
+                }
                 return Some(());
             }
         };
@@ -426,7 +448,9 @@ impl BackpressureManager {
                 }),
             };
 
-            let _ = tx.send(response);
+            if tx.send(response).is_err() {
+                tracing::debug!(agent_id = %agent_id_clone, "Client disconnected before response could be sent");
+            }
 
             // Update metrics - use atomic counter and batch queue updates
             active_requests_clone.fetch_sub(1, Ordering::Relaxed);
@@ -534,9 +558,14 @@ impl BackpressureManager {
             while let Some((request, _)) = queue.queue.front() {
                 if now.duration_since(request.queued_at) > config.queue_timeout {
                     if let Some((_, tx)) = queue.queue.pop_front() {
-                        let _ = tx.send(Err(BackpressureError::QueueTimeout {
-                            timeout_ms: config.queue_timeout.as_millis() as u64,
-                        }));
+                        if tx
+                            .send(Err(BackpressureError::QueueTimeout {
+                                timeout_ms: config.queue_timeout.as_millis() as u64,
+                            }))
+                            .is_err()
+                        {
+                            tracing::debug!(agent_id = %agent_id, "Client disconnected before expired timeout response");
+                        }
                         expired_count += 1;
                         queue.total_timeouts += 1;
                     }
@@ -561,6 +590,7 @@ impl Drop for BackpressureManager {
         if let Ok(mut shutdown_tx_guard) = self.shutdown_tx.try_write()
             && let Some(shutdown_tx) = shutdown_tx_guard.take()
         {
+            // Ignore send error - cleanup task may already be completed
             let _ = shutdown_tx.send(());
         }
     }

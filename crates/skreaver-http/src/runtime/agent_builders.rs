@@ -66,7 +66,9 @@ impl Agent for EchoAgent {
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
         if let Ok(update) = MemoryUpdate::new("last_input", &input) {
-            let _ = self.memory_writer().store(update);
+            if let Err(e) = self.memory_writer().store(update) {
+                tracing::warn!(error = %e, "Failed to store last_input to memory");
+            }
         }
     }
 
@@ -86,13 +88,18 @@ impl Agent for EchoAgent {
         // Echo agent can optionally modify output based on tool results
         if result.is_success() {
             if let Ok(update) = MemoryUpdate::new("last_tool_result", result.output()) {
-                let _ = self.memory_writer().store(update);
+                if let Err(e) = self.memory_writer().store(update) {
+                    tracing::warn!(error = %e, "Failed to store last_tool_result to memory");
+                }
             }
         }
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        let _ = self.memory_writer().store(update);
+        let key = update.key.clone();
+        if let Err(e) = self.memory_writer().store(update) {
+            tracing::warn!(error = %e, key = %key, "Failed to store context update to memory");
+        }
     }
 
     fn memory_reader(&self) -> &dyn MemoryReader {
@@ -149,7 +156,9 @@ impl Agent for AdvancedAgent {
     fn observe(&mut self, input: Self::Observation) {
         self.context = input.clone();
         if let Ok(update) = MemoryUpdate::new("context", &input) {
-            let _ = self.memory_writer().store(update);
+            if let Err(e) = self.memory_writer().store(update) {
+                tracing::warn!(error = %e, "Failed to store context to memory");
+            }
         }
     }
 
@@ -199,13 +208,18 @@ impl Agent for AdvancedAgent {
             self.context
                 .push_str(&format!(" [Tool result: {}]", result.output()));
             if let Ok(update) = MemoryUpdate::new("enriched_context", &self.context) {
-                let _ = self.memory_writer().store(update);
+                if let Err(e) = self.memory_writer().store(update) {
+                    tracing::warn!(error = %e, "Failed to store enriched_context to memory");
+                }
             }
         }
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        let _ = self.memory_writer().store(update);
+        let key = update.key.clone();
+        if let Err(e) = self.memory_writer().store(update) {
+            tracing::warn!(error = %e, key = %key, "Failed to store context update to memory");
+        }
     }
 
     fn memory_reader(&self) -> &dyn MemoryReader {
@@ -255,7 +269,9 @@ impl Agent for AnalyticsAgent {
     fn observe(&mut self, input: Self::Observation) {
         self.data.push(input.clone());
         if let Ok(update) = MemoryUpdate::new("latest_data", &input) {
-            let _ = self.memory_writer().store(update);
+            if let Err(e) = self.memory_writer().store(update) {
+                tracing::warn!(error = %e, "Failed to store latest_data to memory");
+            }
         }
     }
 
@@ -329,13 +345,18 @@ impl Agent for AnalyticsAgent {
     fn handle_result(&mut self, result: ExecutionResult) {
         if result.is_success() {
             if let Ok(update) = MemoryUpdate::new("analysis_results", result.output()) {
-                let _ = self.memory_writer().store(update);
+                if let Err(e) = self.memory_writer().store(update) {
+                    tracing::warn!(error = %e, "Failed to store analysis_results to memory");
+                }
             }
         }
     }
 
     fn update_context(&mut self, update: MemoryUpdate) {
-        let _ = self.memory_writer().store(update);
+        let key = update.key.clone();
+        if let Err(e) = self.memory_writer().store(update) {
+            tracing::warn!(error = %e, key = %key, "Failed to store context update to memory");
+        }
     }
 
     fn memory_reader(&self) -> &dyn MemoryReader {
