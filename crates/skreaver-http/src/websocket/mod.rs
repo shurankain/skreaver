@@ -76,6 +76,280 @@ impl Default for WebSocketConfig {
     }
 }
 
+/// Validated builder for `WebSocketConfig`
+///
+/// Ensures configuration validity with proper validation and sensible defaults.
+#[derive(Debug, Clone)]
+pub struct WebSocketConfigBuilder {
+    max_connections: Option<usize>,
+    connection_timeout: Option<Duration>,
+    ping_interval: Option<Duration>,
+    pong_timeout: Option<Duration>,
+    max_message_size: Option<usize>,
+    enable_compression: bool,
+    buffer_size: Option<usize>,
+    max_subscriptions_per_connection: Option<usize>,
+    max_subscribers_per_channel: Option<usize>,
+    max_connections_per_ip: Option<usize>,
+    broadcast_buffer_size: Option<usize>,
+}
+
+/// Errors that can occur when building a `WebSocketConfig`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebSocketConfigError {
+    /// Invalid timeout value
+    InvalidTimeout(String),
+    /// Invalid buffer/size value
+    InvalidSize(String),
+    /// Invalid limit value
+    InvalidLimit(String),
+}
+
+impl std::fmt::Display for WebSocketConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidTimeout(reason) => write!(f, "Invalid timeout: {}", reason),
+            Self::InvalidSize(reason) => write!(f, "Invalid size: {}", reason),
+            Self::InvalidLimit(reason) => write!(f, "Invalid limit: {}", reason),
+        }
+    }
+}
+
+impl std::error::Error for WebSocketConfigError {}
+
+impl Default for WebSocketConfigBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WebSocketConfigBuilder {
+    /// Create a new builder with all fields unset (will use defaults on build)
+    pub fn new() -> Self {
+        Self {
+            max_connections: None,
+            connection_timeout: None,
+            ping_interval: None,
+            pong_timeout: None,
+            max_message_size: None,
+            enable_compression: true,
+            buffer_size: None,
+            max_subscriptions_per_connection: None,
+            max_subscribers_per_channel: None,
+            max_connections_per_ip: None,
+            broadcast_buffer_size: None,
+        }
+    }
+
+    /// Set maximum concurrent connections (must be > 0 and <= 100,000)
+    pub fn max_connections(mut self, max: usize) -> Result<Self, WebSocketConfigError> {
+        if max == 0 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_connections must be greater than 0".to_string(),
+            ));
+        }
+        if max > 100_000 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_connections cannot exceed 100,000".to_string(),
+            ));
+        }
+        self.max_connections = Some(max);
+        Ok(self)
+    }
+
+    /// Set connection timeout (must be between 1s and 300s)
+    pub fn connection_timeout(mut self, timeout: Duration) -> Result<Self, WebSocketConfigError> {
+        if timeout.as_secs() == 0 {
+            return Err(WebSocketConfigError::InvalidTimeout(
+                "connection_timeout must be at least 1 second".to_string(),
+            ));
+        }
+        if timeout.as_secs() > 300 {
+            return Err(WebSocketConfigError::InvalidTimeout(
+                "connection_timeout cannot exceed 300 seconds (5 minutes)".to_string(),
+            ));
+        }
+        self.connection_timeout = Some(timeout);
+        Ok(self)
+    }
+
+    /// Set ping interval (must be between 5s and 120s)
+    pub fn ping_interval(mut self, interval: Duration) -> Result<Self, WebSocketConfigError> {
+        if interval.as_secs() < 5 {
+            return Err(WebSocketConfigError::InvalidTimeout(
+                "ping_interval must be at least 5 seconds".to_string(),
+            ));
+        }
+        if interval.as_secs() > 120 {
+            return Err(WebSocketConfigError::InvalidTimeout(
+                "ping_interval cannot exceed 120 seconds".to_string(),
+            ));
+        }
+        self.ping_interval = Some(interval);
+        Ok(self)
+    }
+
+    /// Set pong timeout (must be between 1s and 60s)
+    pub fn pong_timeout(mut self, timeout: Duration) -> Result<Self, WebSocketConfigError> {
+        if timeout.as_secs() == 0 {
+            return Err(WebSocketConfigError::InvalidTimeout(
+                "pong_timeout must be at least 1 second".to_string(),
+            ));
+        }
+        if timeout.as_secs() > 60 {
+            return Err(WebSocketConfigError::InvalidTimeout(
+                "pong_timeout cannot exceed 60 seconds".to_string(),
+            ));
+        }
+        self.pong_timeout = Some(timeout);
+        Ok(self)
+    }
+
+    /// Set maximum message size (must be between 1KB and 16MB)
+    pub fn max_message_size(mut self, size: usize) -> Result<Self, WebSocketConfigError> {
+        if size < 1024 {
+            return Err(WebSocketConfigError::InvalidSize(
+                "max_message_size must be at least 1KB (1024 bytes)".to_string(),
+            ));
+        }
+        if size > 16 * 1024 * 1024 {
+            return Err(WebSocketConfigError::InvalidSize(
+                "max_message_size cannot exceed 16MB (16,777,216 bytes)".to_string(),
+            ));
+        }
+        self.max_message_size = Some(size);
+        Ok(self)
+    }
+
+    /// Enable or disable compression
+    pub fn enable_compression(mut self, enable: bool) -> Self {
+        self.enable_compression = enable;
+        self
+    }
+
+    /// Set buffer size for incoming messages (must be between 10 and 10,000)
+    pub fn buffer_size(mut self, size: usize) -> Result<Self, WebSocketConfigError> {
+        if size < 10 {
+            return Err(WebSocketConfigError::InvalidSize(
+                "buffer_size must be at least 10".to_string(),
+            ));
+        }
+        if size > 10_000 {
+            return Err(WebSocketConfigError::InvalidSize(
+                "buffer_size cannot exceed 10,000".to_string(),
+            ));
+        }
+        self.buffer_size = Some(size);
+        Ok(self)
+    }
+
+    /// Set maximum subscriptions per connection (must be between 1 and 1,000)
+    pub fn max_subscriptions_per_connection(
+        mut self,
+        max: usize,
+    ) -> Result<Self, WebSocketConfigError> {
+        if max == 0 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_subscriptions_per_connection must be at least 1".to_string(),
+            ));
+        }
+        if max > 1000 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_subscriptions_per_connection cannot exceed 1,000".to_string(),
+            ));
+        }
+        self.max_subscriptions_per_connection = Some(max);
+        Ok(self)
+    }
+
+    /// Set maximum subscribers per channel (must be between 1 and 100,000)
+    pub fn max_subscribers_per_channel(
+        mut self,
+        max: usize,
+    ) -> Result<Self, WebSocketConfigError> {
+        if max == 0 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_subscribers_per_channel must be at least 1".to_string(),
+            ));
+        }
+        if max > 100_000 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_subscribers_per_channel cannot exceed 100,000".to_string(),
+            ));
+        }
+        self.max_subscribers_per_channel = Some(max);
+        Ok(self)
+    }
+
+    /// Set maximum connections per IP address (must be between 1 and 1,000)
+    pub fn max_connections_per_ip(mut self, max: usize) -> Result<Self, WebSocketConfigError> {
+        if max == 0 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_connections_per_ip must be at least 1".to_string(),
+            ));
+        }
+        if max > 1000 {
+            return Err(WebSocketConfigError::InvalidLimit(
+                "max_connections_per_ip cannot exceed 1,000".to_string(),
+            ));
+        }
+        self.max_connections_per_ip = Some(max);
+        Ok(self)
+    }
+
+    /// Set broadcast channel buffer size (must be between 10 and 100,000)
+    pub fn broadcast_buffer_size(mut self, size: usize) -> Result<Self, WebSocketConfigError> {
+        if size < 10 {
+            return Err(WebSocketConfigError::InvalidSize(
+                "broadcast_buffer_size must be at least 10".to_string(),
+            ));
+        }
+        if size > 100_000 {
+            return Err(WebSocketConfigError::InvalidSize(
+                "broadcast_buffer_size cannot exceed 100,000".to_string(),
+            ));
+        }
+        self.broadcast_buffer_size = Some(size);
+        Ok(self)
+    }
+
+    /// Build the `WebSocketConfig` (uses defaults for unset fields)
+    pub fn build(self) -> WebSocketConfig {
+        let defaults = WebSocketConfig::default();
+
+        WebSocketConfig {
+            max_connections: self.max_connections.unwrap_or(defaults.max_connections),
+            connection_timeout: self
+                .connection_timeout
+                .unwrap_or(defaults.connection_timeout),
+            ping_interval: self.ping_interval.unwrap_or(defaults.ping_interval),
+            pong_timeout: self.pong_timeout.unwrap_or(defaults.pong_timeout),
+            max_message_size: self.max_message_size.unwrap_or(defaults.max_message_size),
+            enable_compression: self.enable_compression,
+            buffer_size: self.buffer_size.unwrap_or(defaults.buffer_size),
+            max_subscriptions_per_connection: self
+                .max_subscriptions_per_connection
+                .unwrap_or(defaults.max_subscriptions_per_connection),
+            max_subscribers_per_channel: self
+                .max_subscribers_per_channel
+                .unwrap_or(defaults.max_subscribers_per_channel),
+            max_connections_per_ip: self
+                .max_connections_per_ip
+                .unwrap_or(defaults.max_connections_per_ip),
+            broadcast_buffer_size: self
+                .broadcast_buffer_size
+                .unwrap_or(defaults.broadcast_buffer_size),
+        }
+    }
+}
+
+impl WebSocketConfig {
+    /// Create a builder for constructing a validated `WebSocketConfig`
+    pub fn builder() -> WebSocketConfigBuilder {
+        WebSocketConfigBuilder::new()
+    }
+}
+
 /// Typestate marker for unauthenticated connections
 #[derive(Debug, Clone)]
 pub struct Unauthenticated;

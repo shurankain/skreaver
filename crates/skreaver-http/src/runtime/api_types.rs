@@ -347,6 +347,169 @@ impl Default for AgentLimits {
     }
 }
 
+/// Validated builder for `AgentSpec`
+///
+/// Ensures configuration validity at compile-time and runtime with proper validation.
+#[derive(Debug, Clone, Default)]
+pub struct AgentSpecBuilder {
+    agent_type: Option<AgentType>,
+    name: Option<String>,
+    config: HashMap<String, serde_json::Value>,
+    limits: Option<AgentLimits>,
+}
+
+/// Errors that can occur when building an `AgentSpec`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentSpecError {
+    /// Agent type not specified
+    MissingAgentType,
+    /// Invalid agent name
+    InvalidName(String),
+    /// Invalid resource limits
+    InvalidLimits(String),
+}
+
+impl std::fmt::Display for AgentSpecError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingAgentType => write!(f, "Agent type must be specified"),
+            Self::InvalidName(reason) => write!(f, "Invalid agent name: {}", reason),
+            Self::InvalidLimits(reason) => write!(f, "Invalid resource limits: {}", reason),
+        }
+    }
+}
+
+impl std::error::Error for AgentSpecError {}
+
+impl AgentSpecBuilder {
+    /// Create a new builder
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the agent type (required)
+    pub fn agent_type(mut self, agent_type: AgentType) -> Self {
+        self.agent_type = Some(agent_type);
+        self
+    }
+
+    /// Set the agent name with validation
+    pub fn name(mut self, name: impl Into<String>) -> Result<Self, AgentSpecError> {
+        let name = name.into();
+
+        // Validate name
+        if name.is_empty() {
+            return Err(AgentSpecError::InvalidName("Name cannot be empty".to_string()));
+        }
+
+        if name.len() > 64 {
+            return Err(AgentSpecError::InvalidName(format!(
+                "Name too long ({} chars, max 64)",
+                name.len()
+            )));
+        }
+
+        // Only allow alphanumeric, hyphens, and underscores
+        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return Err(AgentSpecError::InvalidName(
+                "Name can only contain alphanumeric characters, hyphens, and underscores".to_string(),
+            ));
+        }
+
+        self.name = Some(name);
+        Ok(self)
+    }
+
+    /// Add a configuration parameter
+    pub fn config_value(
+        mut self,
+        key: impl Into<String>,
+        value: impl Serialize,
+    ) -> Result<Self, AgentSpecError> {
+        let value_json = serde_json::to_value(value).map_err(|e| {
+            AgentSpecError::InvalidLimits(format!("Failed to serialize config value: {}", e))
+        })?;
+        self.config.insert(key.into(), value_json);
+        Ok(self)
+    }
+
+    /// Set resource limits with validation
+    pub fn limits(mut self, limits: AgentLimits) -> Result<Self, AgentSpecError> {
+        // Validate limits
+        if limits.max_memory_mb == 0 {
+            return Err(AgentSpecError::InvalidLimits(
+                "max_memory_mb must be greater than 0".to_string(),
+            ));
+        }
+
+        if limits.max_memory_mb > 8192 {
+            return Err(AgentSpecError::InvalidLimits(
+                "max_memory_mb cannot exceed 8192 MB (8 GB)".to_string(),
+            ));
+        }
+
+        if limits.max_observation_size_kb == 0 {
+            return Err(AgentSpecError::InvalidLimits(
+                "max_observation_size_kb must be greater than 0".to_string(),
+            ));
+        }
+
+        if limits.max_observation_size_kb > 10240 {
+            return Err(AgentSpecError::InvalidLimits(
+                "max_observation_size_kb cannot exceed 10240 KB (10 MB)".to_string(),
+            ));
+        }
+
+        if limits.max_concurrent_tools == 0 {
+            return Err(AgentSpecError::InvalidLimits(
+                "max_concurrent_tools must be greater than 0".to_string(),
+            ));
+        }
+
+        if limits.max_concurrent_tools > 100 {
+            return Err(AgentSpecError::InvalidLimits(
+                "max_concurrent_tools cannot exceed 100".to_string(),
+            ));
+        }
+
+        if limits.execution_timeout_secs == 0 {
+            return Err(AgentSpecError::InvalidLimits(
+                "execution_timeout_secs must be greater than 0".to_string(),
+            ));
+        }
+
+        if limits.execution_timeout_secs > 3600 {
+            return Err(AgentSpecError::InvalidLimits(
+                "execution_timeout_secs cannot exceed 3600 seconds (1 hour)".to_string(),
+            ));
+        }
+
+        self.limits = Some(limits);
+        Ok(self)
+    }
+
+    /// Build the `AgentSpec` with validation
+    pub fn build(self) -> Result<AgentSpec, AgentSpecError> {
+        let agent_type = self.agent_type.ok_or(AgentSpecError::MissingAgentType)?;
+
+        let limits = self.limits.unwrap_or_else(|| agent_type.default_limits());
+
+        Ok(AgentSpec {
+            agent_type,
+            name: self.name,
+            config: self.config,
+            limits,
+        })
+    }
+}
+
+impl AgentSpec {
+    /// Create a builder for constructing a validated `AgentSpec`
+    pub fn builder() -> AgentSpecBuilder {
+        AgentSpecBuilder::new()
+    }
+}
+
 /// Comprehensive agent status with detailed information
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentStatusResponse {
