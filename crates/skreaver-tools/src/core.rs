@@ -10,5 +10,5 @@ pub use skreaver_core::tool::{
 
 // Type aliases for backward compatibility
 // ToolName has been deprecated in favor of ToolId which provides the same validation
-pub use skreaver_core::IdValidationError as InvalidToolName;
 pub use skreaver_core::ToolId as ToolName;
+pub use skreaver_core::ValidationError as InvalidToolName;

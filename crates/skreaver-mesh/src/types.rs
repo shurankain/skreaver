@@ -5,7 +5,15 @@ use std::fmt;
 use std::str::FromStr;
 
 // Re-export unified types from skreaver-core
-pub use skreaver_core::{AgentId, IdValidationError};
+pub use skreaver_core::{AgentId, ValidationError};
+
+// Keep deprecated alias for backward compatibility during transition period
+#[deprecated(
+    since = "0.6.0",
+    note = "Use ValidationError instead. See skreaver_core::ValidationError for migration guide."
+)]
+#[allow(deprecated)]
+pub use skreaver_core::IdValidationError;
 
 /// Legacy AgentId type alias for backward compatibility
 ///
@@ -52,30 +60,37 @@ impl Topic {
     /// assert!(Topic::parse(" topic").is_err());     // Leading whitespace
     /// assert!(Topic::parse("topic/sub").is_err());  // Invalid char
     /// ```
-    pub fn parse(topic: impl AsRef<str>) -> Result<Self, IdValidationError> {
+    pub fn parse(topic: impl AsRef<str>) -> Result<Self, ValidationError> {
         let s = topic.as_ref();
 
         // Check for empty string
         if s.is_empty() {
-            return Err(IdValidationError::Empty);
+            return Err(ValidationError::Empty);
         }
 
         // Check for whitespace-only
         if s.trim().is_empty() {
-            return Err(IdValidationError::WhitespaceOnly);
+            return Err(ValidationError::WhitespaceOnly);
         }
 
         // Check for leading/trailing whitespace
         if s != s.trim() {
-            return Err(IdValidationError::LeadingTrailingWhitespace);
+            return Err(ValidationError::LeadingTrailingWhitespace);
+        }
+
+        // Check for path traversal
+        if s.contains("../") || s.contains("/..") {
+            return Err(ValidationError::PathTraversal);
         }
 
         // Validate characters (alphanumeric, hyphen, underscore, dot)
-        if !s
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
-        {
-            return Err(IdValidationError::InvalidCharacters);
+        for ch in s.chars() {
+            if !ch.is_alphanumeric() && ch != '-' && ch != '_' && ch != '.' {
+                return Err(ValidationError::InvalidChar {
+                    char: ch,
+                    input: s.to_string(),
+                });
+            }
         }
 
         Ok(Self(s.to_string()))
@@ -88,7 +103,7 @@ impl Topic {
 }
 
 impl FromStr for Topic {
-    type Err = IdValidationError;
+    type Err = ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
@@ -179,60 +194,66 @@ mod tests {
     fn test_agent_id_parse_empty() {
         let result = AgentId::parse("");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), IdValidationError::Empty);
+        assert!(matches!(result.unwrap_err(), ValidationError::Empty));
     }
 
     #[test]
     fn test_agent_id_parse_whitespace_only() {
-        assert_eq!(
+        assert!(matches!(
             AgentId::parse("   "),
-            Err(IdValidationError::WhitespaceOnly)
-        );
-        assert_eq!(
+            Err(ValidationError::WhitespaceOnly)
+        ));
+        assert!(matches!(
             AgentId::parse("\t\n"),
-            Err(IdValidationError::WhitespaceOnly)
-        );
+            Err(ValidationError::WhitespaceOnly)
+        ));
     }
 
     #[test]
     fn test_agent_id_parse_leading_trailing_whitespace() {
-        assert_eq!(
+        assert!(matches!(
             AgentId::parse(" agent"),
-            Err(IdValidationError::LeadingTrailingWhitespace)
-        );
-        assert_eq!(
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
+        assert!(matches!(
             AgentId::parse("agent "),
-            Err(IdValidationError::LeadingTrailingWhitespace)
-        );
-        assert_eq!(
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
+        assert!(matches!(
             AgentId::parse(" agent "),
-            Err(IdValidationError::LeadingTrailingWhitespace)
-        );
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
     }
 
     #[test]
     fn test_agent_id_parse_invalid_characters() {
         // Path traversal attempts - unified AgentId detects these specifically
-        assert!(AgentId::parse("../agent").is_err());
-        assert!(AgentId::parse("agent/../../etc/passwd").is_err());
+        assert!(matches!(
+            AgentId::parse("../agent"),
+            Err(ValidationError::PathTraversal)
+        ));
+        assert!(matches!(
+            AgentId::parse("agent/../../etc/passwd"),
+            Err(ValidationError::PathTraversal)
+        ));
 
         // Other invalid characters
-        assert_eq!(
+        assert!(matches!(
             AgentId::parse("agent@host"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::InvalidChar { char: '@', .. })
+        ));
+        assert!(matches!(
             AgentId::parse("agent:port"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::InvalidChar { char: ':', .. })
+        ));
+        assert!(matches!(
             AgentId::parse("agent$var"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::InvalidChar { char: '$', .. })
+        ));
+        assert!(matches!(
             AgentId::parse("agent space"),
-            Err(IdValidationError::InvalidCharacters)
-        );
+            Err(ValidationError::InvalidChar { char: ' ', .. })
+        ));
     }
 
     #[test]
@@ -260,47 +281,50 @@ mod tests {
     fn test_topic_parse_empty() {
         let result = Topic::parse("");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), IdValidationError::Empty);
+        assert!(matches!(result.unwrap_err(), ValidationError::Empty));
     }
 
     #[test]
     fn test_topic_parse_whitespace_only() {
-        assert_eq!(Topic::parse("   "), Err(IdValidationError::WhitespaceOnly));
+        assert!(matches!(
+            Topic::parse("   "),
+            Err(ValidationError::WhitespaceOnly)
+        ));
     }
 
     #[test]
     fn test_topic_parse_leading_trailing_whitespace() {
-        assert_eq!(
+        assert!(matches!(
             Topic::parse(" topic"),
-            Err(IdValidationError::LeadingTrailingWhitespace)
-        );
-        assert_eq!(
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
+        assert!(matches!(
             Topic::parse("topic "),
-            Err(IdValidationError::LeadingTrailingWhitespace)
-        );
+            Err(ValidationError::LeadingTrailingWhitespace)
+        ));
     }
 
     #[test]
     fn test_topic_parse_invalid_characters() {
         // Path traversal attempts
-        assert_eq!(
+        assert!(matches!(
             Topic::parse("../topic"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::PathTraversal)
+        ));
+        assert!(matches!(
             Topic::parse("topic/sub"),
-            Err(IdValidationError::InvalidCharacters)
-        );
+            Err(ValidationError::InvalidChar { char: '/', .. })
+        ));
 
         // Other invalid characters
-        assert_eq!(
+        assert!(matches!(
             Topic::parse("topic@host"),
-            Err(IdValidationError::InvalidCharacters)
-        );
-        assert_eq!(
+            Err(ValidationError::InvalidChar { char: '@', .. })
+        ));
+        assert!(matches!(
             Topic::parse("topic space"),
-            Err(IdValidationError::InvalidCharacters)
-        );
+            Err(ValidationError::InvalidChar { char: ' ', .. })
+        ));
     }
 
     #[test]
@@ -315,23 +339,33 @@ mod tests {
     }
 
     #[test]
-    fn test_id_validation_error_display() {
+    fn test_validation_error_display() {
         // Updated to match unified error messages from skreaver-core
         assert_eq!(
-            IdValidationError::Empty.to_string(),
+            ValidationError::Empty.to_string(),
             "Identifier cannot be empty"
         );
         assert_eq!(
-            IdValidationError::WhitespaceOnly.to_string(),
+            ValidationError::WhitespaceOnly.to_string(),
             "Identifier cannot be whitespace-only"
         );
         assert_eq!(
-            IdValidationError::LeadingTrailingWhitespace.to_string(),
+            ValidationError::LeadingTrailingWhitespace.to_string(),
             "Identifier cannot have leading or trailing whitespace"
         );
         assert_eq!(
-            IdValidationError::InvalidCharacters.to_string(),
-            "Identifier can only contain alphanumeric characters, hyphens, underscores, and dots"
+            ValidationError::PathTraversal.to_string(),
+            "Identifier cannot contain path traversal sequences (../)"
+        );
+
+        // Test InvalidChar variant
+        let err = ValidationError::InvalidChar {
+            char: '@',
+            input: "test@value".to_string(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "Identifier 'test@value' contains invalid character '@'"
         );
     }
 }
