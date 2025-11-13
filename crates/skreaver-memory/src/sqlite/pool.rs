@@ -223,7 +223,6 @@ impl SqlitePool {
     }
 
     /// Validate connection health before returning it
-    #[allow(dead_code)]
     fn validate_connection(conn: &Connection) -> Result<(), MemoryError> {
         // Simple connectivity test - just check if SQLite responds
         conn.execute("SELECT 1", [])
@@ -252,16 +251,16 @@ impl SqlitePool {
                     })?;
 
             if let Some(conn) = available.pop() {
-                // Skip validation for now to fix tests - in production this would validate
-                // if let Err(e) = Self::validate_connection(&conn) {
-                //     eprintln!("Connection validation failed, discarding: {}", e);
-                //     drop(conn);
-                // } else {
-                // Increment active connection count when acquiring from pool
-                let mut active_count =
-                    self.active_connections
-                        .lock()
-                        .map_err(|e| MemoryError::ConnectionFailed {
+                // Validate connection health before returning
+                if let Err(e) = Self::validate_connection(&conn) {
+                    tracing::warn!(error = %e, "Connection validation failed, discarding stale connection");
+                    drop(conn);
+                    // Try to get another connection from pool or create new one
+                    // Fall through to the creation logic below
+                } else {
+                    // Increment active connection count when acquiring from pool
+                    let mut active_count = self.active_connections.lock().map_err(|e| {
+                        MemoryError::ConnectionFailed {
                             backend: MemoryBackend::Sqlite,
                             kind: MemoryErrorKind::InternalError {
                                 backend_error: format!(
@@ -269,16 +268,17 @@ impl SqlitePool {
                                     e
                                 ),
                             },
-                        })?;
-                *active_count += 1; // FIX: Increment when taking (activating) connection
+                        }
+                    })?;
+                    *active_count += 1; // Increment when taking (activating) connection
 
-                return Ok(PooledConnection::new(
-                    conn,
-                    Arc::clone(&self.available_connections),
-                    self.pool_size,
-                    Arc::clone(&self.active_connections),
-                ));
-                // }
+                    return Ok(PooledConnection::new(
+                        conn,
+                        Arc::clone(&self.available_connections),
+                        self.pool_size,
+                        Arc::clone(&self.active_connections),
+                    ));
+                }
             }
         }
 
@@ -306,9 +306,9 @@ impl SqlitePool {
             });
         }
 
-        // Create new connection (skip validation for tests)
+        // Create and validate new connection
         let conn = Self::create_connection(&self.path, &self.config)?;
-        // Self::validate_connection(&conn)?;  // Skip for now
+        Self::validate_connection(&conn)?;
         *active_count += 1;
 
         Ok(PooledConnection::new(
@@ -319,8 +319,7 @@ impl SqlitePool {
         ))
     }
 
-    /// Check pool health
-    #[allow(dead_code)]
+    /// Check pool health - returns statistics about active and available connections
     pub fn health_check(&self) -> Result<PoolHealth, MemoryError> {
         let available_count = {
             let available =
