@@ -263,10 +263,7 @@ impl WebSocketConfigBuilder {
     }
 
     /// Set maximum subscribers per channel (must be between 1 and 100,000)
-    pub fn max_subscribers_per_channel(
-        mut self,
-        max: usize,
-    ) -> Result<Self, WebSocketConfigError> {
+    pub fn max_subscribers_per_channel(mut self, max: usize) -> Result<Self, WebSocketConfigError> {
         if max == 0 {
             return Err(WebSocketConfigError::InvalidLimit(
                 "max_subscribers_per_channel must be at least 1".to_string(),

@@ -407,7 +407,9 @@ impl Drop for PooledConnection {
                 }
             } else {
                 // Critical: If we can't return the connection, we have a resource leak
-                tracing::error!("Failed to lock pool for connection return - resource leak possible");
+                tracing::error!(
+                    "Failed to lock pool for connection return - resource leak possible"
+                );
             }
         }
     }

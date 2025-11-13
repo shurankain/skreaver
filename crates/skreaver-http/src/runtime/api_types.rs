@@ -399,7 +399,9 @@ impl AgentSpecBuilder {
 
         // Validate name
         if name.is_empty() {
-            return Err(AgentSpecError::InvalidName("Name cannot be empty".to_string()));
+            return Err(AgentSpecError::InvalidName(
+                "Name cannot be empty".to_string(),
+            ));
         }
 
         if name.len() > 64 {
@@ -410,9 +412,13 @@ impl AgentSpecBuilder {
         }
 
         // Only allow alphanumeric, hyphens, and underscores
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(AgentSpecError::InvalidName(
-                "Name can only contain alphanumeric characters, hyphens, and underscores".to_string(),
+                "Name can only contain alphanumeric characters, hyphens, and underscores"
+                    .to_string(),
             ));
         }
 
