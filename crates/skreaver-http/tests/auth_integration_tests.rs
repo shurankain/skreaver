@@ -216,7 +216,7 @@ async fn test_protected_endpoints_accept_valid_api_key() {
             Request::builder()
                 .method("GET")
                 .uri("/agents")
-                .header(AUTHORIZATION, format!("Bearer {}", api_key.key))
+                .header(AUTHORIZATION, format!("Bearer {}", api_key.expose_key()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -235,7 +235,7 @@ async fn test_protected_endpoints_accept_valid_api_key() {
             Request::builder()
                 .method("GET")
                 .uri("/agents")
-                .header("X-API-Key", &api_key.key)
+                .header("X-API-Key", api_key.expose_key())
                 .body(Body::empty())
                 .unwrap(),
         )

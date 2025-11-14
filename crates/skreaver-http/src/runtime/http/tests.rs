@@ -777,7 +777,7 @@ async fn test_api_key_authentication() {
     // Try with generated API key
     let request = Request::builder()
         .uri("/agents")
-        .header("Authorization", format!("Bearer {}", api_key.key))
+        .header("Authorization", format!("Bearer {}", api_key.expose_key()))
         .body(Body::empty())
         .unwrap();
 
@@ -802,7 +802,7 @@ async fn test_x_api_key_header_authentication() {
     // Try with X-API-Key header
     let request = Request::builder()
         .uri("/agents")
-        .header("X-API-Key", api_key.key.as_str())
+        .header("X-API-Key", api_key.expose_key())
         .body(Body::empty())
         .unwrap();
 

@@ -11,6 +11,7 @@ pub mod errors;
 pub mod fs;
 pub mod limits;
 pub mod policy;
+pub mod secret;
 #[cfg(feature = "security-basic")]
 pub mod secure_tool;
 #[cfg(feature = "security-basic")]
@@ -34,6 +35,8 @@ pub use policy::{
     RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds,
     ToolSecurityPolicy,
 };
+// Re-export secret types - note: config::Secret is a different type (config marker)
+pub use secret::{Secret as SecretValue, SecretBytes, SecretString};
 #[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
 #[cfg(feature = "security-basic")]

@@ -53,10 +53,16 @@ pub struct Expired;
 pub struct Revoked;
 
 /// Type-safe API Key with state encoded in type system
+///
+/// # Security
+///
+/// The key value is stored in a [`SecretString`] which prevents it from being
+/// accidentally logged or serialized. Use [`expose_key()`](Key::expose_key) to
+/// access the actual key value.
 #[derive(Debug, Clone)]
 pub struct Key<S> {
-    /// The actual key value (shown only once)
-    pub key: String,
+    /// The actual key value - PROTECTED from logging/serialization
+    key: crate::security::SecretString,
     /// Key identifier (for management)
     pub id: String,
     /// Key name/description
@@ -78,9 +84,30 @@ pub struct Key<S> {
 }
 
 impl<S> Key<S> {
-    /// Get the key value
+    /// Expose the secret key value for authentication
+    ///
+    /// # Security
+    ///
+    /// This is the ONLY way to access the secret key value. The method name is
+    /// intentionally verbose to make secret access obvious during code review.
+    ///
+    /// The exposed value should:
+    /// - NEVER be logged
+    /// - NEVER be included in error messages
+    /// - NEVER be stored in non-secret data structures
+    /// - Be used immediately for authentication and not stored
+    pub fn expose_key(&self) -> &str {
+        self.key.expose_as_str()
+    }
+
+    /// Get the key value (deprecated - use expose_key)
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`expose_key()`](Key::expose_key) instead for explicit secret access.
+    #[deprecated(since = "0.6.0", note = "Use expose_key() for explicit secret access")]
     pub fn key(&self) -> &str {
-        &self.key
+        self.expose_key()
     }
 
     /// Get the key ID
@@ -135,7 +162,7 @@ impl Key<Active> {
         expires_at: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
-            key,
+            key: crate::security::SecretString::from_string(key),
             id,
             name,
             principal_id,
@@ -270,8 +297,8 @@ impl Key<Revoked> {
 /// Backward-compatible API Key metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKey {
-    /// The actual key value (shown only once)
-    pub key: String,
+    /// The actual key value - PROTECTED from logging/serialization
+    key: crate::security::SecretString,
     /// Key identifier (for management)
     pub id: String,
     /// Key name/description
@@ -374,6 +401,15 @@ impl TryFrom<ApiKey> for Key<Active> {
 }
 
 impl ApiKey {
+    /// Expose the secret key value for authentication
+    ///
+    /// # Security
+    ///
+    /// This is the ONLY way to access the secret key value.
+    pub fn expose_key(&self) -> &str {
+        self.key.expose_as_str()
+    }
+
     /// Check if the key is expired
     pub fn is_expired(&self) -> bool {
         if let Some(expires_at) = self.expires_at {
@@ -640,8 +676,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(key.key.starts_with("sk_"));
-        assert!(key.key.len() >= 32);
+        let key_str = key.expose_key();
+        assert!(key_str.starts_with("sk_"));
+        assert!(key_str.len() >= 32);
         assert_eq!(key.name, "Test Key");
         assert!(key.is_valid());
     }
@@ -654,7 +691,7 @@ mod tests {
             .await
             .unwrap();
 
-        let principal = manager.authenticate(&key.key).await.unwrap();
+        let principal = manager.authenticate(key.expose_key()).await.unwrap();
         assert_eq!(principal.name, "Test Key");
         assert!(principal.has_role(&Role::Agent));
     }
@@ -668,12 +705,12 @@ mod tests {
             .unwrap();
 
         // Key should work before revocation
-        assert!(manager.authenticate(&key.key).await.is_ok());
+        assert!(manager.authenticate(key.expose_key()).await.is_ok());
 
         // Revoke the key
-        manager.revoke(&key.key).await.unwrap();
+        manager.revoke(key.expose_key()).await.unwrap();
 
         // Key should not work after revocation
-        assert!(manager.authenticate(&key.key).await.is_err());
+        assert!(manager.authenticate(key.expose_key()).await.is_err());
     }
 }

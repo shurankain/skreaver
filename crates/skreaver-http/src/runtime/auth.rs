@@ -60,9 +60,11 @@ pub fn create_api_key_manager() -> Arc<ApiKeyManager> {
                 .await
             {
                 Ok(key) => {
+                    // SECURITY: Never log actual API keys, even partial ones
                     tracing::info!(
-                        "🔑 Debug API key generated: {} (first 16 chars shown for security)",
-                        &key.key[..std::cmp::min(16, key.key.len())]
+                        "🔑 Debug API key generated: [REDACTED] (id: {}, name: {})",
+                        key.id,
+                        key.name
                     );
                 }
                 Err(e) => {
@@ -447,7 +449,7 @@ mod tests {
             .unwrap();
 
         let mut headers = HeaderMap::new();
-        headers.insert("X-API-Key", HeaderValue::from_str(&key.key).unwrap());
+        headers.insert("X-API-Key", HeaderValue::from_str(key.expose_key()).unwrap());
 
         let auth_context = extract_auth_context(&headers, &manager).await.unwrap();
         assert!(!auth_context.user_id.is_empty());
