@@ -15,6 +15,8 @@ pub mod secret;
 #[cfg(feature = "security-basic")]
 pub mod secure_tool;
 #[cfg(feature = "security-basic")]
+pub mod validated_url;
+#[cfg(feature = "security-basic")]
 pub mod validation;
 
 #[cfg(feature = "security-audit")]
@@ -31,14 +33,16 @@ pub use errors::{SecurityError, SecurityViolation};
 pub use fs::{SecureFileSystem, ValidatedPath};
 pub use limits::{CpuPercent, ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
-    FileCountLimit, FileSizeLimit, FileSystemAccess, FileSystemPolicy, HttpAccess, NetworkPort,
-    RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds,
-    ToolSecurityPolicy,
+    FileCountLimit, FileSizeLimit, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy,
+    NetworkPort, RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior,
+    TimeoutSeconds, ToolSecurityPolicy,
 };
 // Re-export secret types - note: config::Secret is a different type (config marker)
 pub use secret::{Secret as SecretValue, SecretBytes, SecretString};
 #[cfg(feature = "security-basic")]
 pub use secure_tool::{SecureTool, SecureToolExt, SecureToolFactory};
+#[cfg(feature = "security-basic")]
+pub use validated_url::ValidatedUrl;
 #[cfg(feature = "security-basic")]
 pub use validation::{DomainValidator, InputValidator, PathValidator};
 

@@ -2,6 +2,7 @@
 
 use super::errors::SecurityError;
 use super::policy::{FileSystemPolicy, HttpPolicy, SecurityPolicy};
+use super::validated_url::ValidatedUrl;
 #[cfg(feature = "security-basic")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "security-basic")]
@@ -236,7 +237,52 @@ impl DomainValidator {
         }
     }
 
-    pub fn validate_url(&self, url_str: &str) -> Result<Url, SecurityError> {
+    /// Validate a URL for security and return a ValidatedUrl that can be safely used.
+    ///
+    /// This is the ONLY way to create a ValidatedUrl, ensuring compile-time enforcement
+    /// of URL validation for all HTTP requests.
+    ///
+    /// # Security
+    ///
+    /// This method checks:
+    /// - URL scheme (only http/https allowed)
+    /// - Domain allowlist/blocklist
+    /// - Private IP ranges (RFC1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    /// - Localhost (127.0.0.1, ::1)
+    /// - Link-local addresses (169.254.0.0/16 - AWS/GCP metadata endpoints)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use skreaver_core::security::{
+    ///     DomainValidator, HttpPolicy, HttpAccess, TimeoutSeconds,
+    ///     ResponseSizeLimit, RedirectLimit
+    /// };
+    ///
+    /// let policy = HttpPolicy {
+    ///     access: HttpAccess::InternetAccess {
+    ///         allow_domains: vec!["example.com".to_string()],
+    ///         deny_domains: vec![],
+    ///         allow_local: false,
+    ///         timeout: TimeoutSeconds::default(),
+    ///         max_response_size: ResponseSizeLimit::default(),
+    ///         max_redirects: RedirectLimit::default(),
+    ///         user_agent: "test".to_string(),
+    ///     },
+    ///     allow_methods: vec!["GET".to_string()],
+    ///     default_headers: vec![],
+    /// };
+    ///
+    /// let validator = DomainValidator::new(&policy);
+    ///
+    /// // Safe URL - passes validation
+    /// let url = validator.validate_url("https://example.com/api").unwrap();
+    ///
+    /// // SSRF attempt - blocked
+    /// let ssrf = validator.validate_url("http://169.254.169.254/metadata");
+    /// assert!(ssrf.is_err());
+    /// ```
+    pub fn validate_url(&self, url_str: &str) -> Result<ValidatedUrl, SecurityError> {
         // Parse URL
         let url = Url::parse(url_str).map_err(|e| SecurityError::ValidationFailed {
             reason: format!("Invalid URL: {}", e),
@@ -279,7 +325,8 @@ impl DomainValidator {
             self.check_for_private_ip(host)?;
         }
 
-        Ok(url)
+        // Return validated URL - this is the only way to create a ValidatedUrl
+        Ok(ValidatedUrl::new_unchecked(url))
     }
 
     pub fn validate_method(&self, method: &str) -> Result<(), SecurityError> {
@@ -292,8 +339,8 @@ impl DomainValidator {
     }
 
     fn check_for_private_ip(&self, host: &str) -> Result<(), SecurityError> {
-        // Check for localhost
-        if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+        // Check for localhost (including IPv6 loopback)
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
             return Err(SecurityError::DomainNotAllowed {
                 domain: host.to_string(),
             });
@@ -481,5 +528,200 @@ mod tests {
         let result = scanner.scan_content(secret_content).unwrap();
         assert!(!result.is_safe);
         assert!(!result.issues.is_empty());
+    }
+
+    // ===== SSRF Protection Tests =====
+
+    #[test]
+    fn test_ssrf_aws_metadata_endpoint_blocked() {
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["*".to_string()], // Allow all domains
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // AWS metadata endpoint - critical SSRF target
+        let result = validator.validate_url("http://169.254.169.254/latest/meta-data/");
+        assert!(result.is_err(), "Should block AWS metadata endpoint");
+    }
+
+    #[test]
+    fn test_ssrf_private_ip_ranges_blocked() {
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["*".to_string()],
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // RFC1918 private ranges
+        assert!(
+            validator.validate_url("http://10.0.0.1/").is_err(),
+            "Should block 10.0.0.0/8"
+        );
+        assert!(
+            validator.validate_url("http://172.16.0.1/").is_err(),
+            "Should block 172.16.0.0/12"
+        );
+        assert!(
+            validator.validate_url("http://192.168.1.1/").is_err(),
+            "Should block 192.168.0.0/16"
+        );
+    }
+
+    #[test]
+    fn test_ssrf_localhost_variants_blocked() {
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["*".to_string()],
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // Localhost variants
+        let localhost_result = validator.validate_url("http://localhost/");
+        assert!(localhost_result.is_err(), "Should block localhost: {:?}", localhost_result);
+
+        let ipv4_result = validator.validate_url("http://127.0.0.1/");
+        assert!(ipv4_result.is_err(), "Should block 127.0.0.1: {:?}", ipv4_result);
+
+        let ipv6_result = validator.validate_url("http://[::1]/");
+        assert!(ipv6_result.is_err(), "Should block IPv6 loopback: {:?}", ipv6_result);
+    }
+
+    #[test]
+    fn test_validated_url_type_safety() {
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["example.com".to_string()],
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // Create validated URL
+        let validated_url = validator
+            .validate_url("https://example.com/api")
+            .expect("Should validate safe URL");
+
+        // Verify ValidatedUrl provides safe access
+        assert_eq!(validated_url.as_str(), "https://example.com/api");
+        assert_eq!(validated_url.scheme(), "https");
+        assert_eq!(validated_url.host_str(), Some("example.com"));
+        assert_eq!(validated_url.path(), "/api");
+    }
+
+    #[test]
+    fn test_validated_url_only_created_through_validation() {
+        // This test documents that ValidatedUrl::new_unchecked is pub(crate)
+        // So external code CANNOT create ValidatedUrl without validation
+
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["safe.com".to_string()],
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // The ONLY way to get a ValidatedUrl
+        let result = validator.validate_url("https://safe.com/");
+        assert!(result.is_ok());
+
+        // Cannot create ValidatedUrl directly - this would fail to compile in external code:
+        // let evil = ValidatedUrl::new_unchecked(Url::parse("http://evil.com/").unwrap());
+    }
+
+    #[test]
+    fn test_ssrf_allow_local_when_explicitly_enabled() {
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["*".to_string()],
+                deny_domains: vec![],
+                allow_local: true, // Explicitly allow local
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // When allow_local is true, localhost should be allowed
+        let result = validator.validate_url("http://localhost:8080/");
+        assert!(result.is_ok(), "Should allow localhost when policy permits");
+    }
+
+    #[test]
+    fn test_url_scheme_validation() {
+        let policy = HttpPolicy {
+            access: HttpAccess::InternetAccess {
+                allow_domains: vec!["example.com".to_string()],
+                deny_domains: vec![],
+                allow_local: false,
+                timeout: TimeoutSeconds::default(),
+                max_response_size: ResponseSizeLimit::default(),
+                max_redirects: RedirectLimit::default(),
+                user_agent: "test".to_string(),
+            },
+            ..Default::default()
+        };
+
+        let validator = DomainValidator::new(&policy);
+
+        // HTTP and HTTPS should work
+        assert!(validator.validate_url("http://example.com/").is_ok());
+        assert!(validator.validate_url("https://example.com/").is_ok());
+
+        // Other schemes should be blocked
+        assert!(
+            validator.validate_url("file:///etc/passwd").is_err(),
+            "Should block file:// scheme"
+        );
+        assert!(
+            validator.validate_url("ftp://example.com/").is_err(),
+            "Should block ftp:// scheme"
+        );
     }
 }

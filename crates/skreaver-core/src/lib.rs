@@ -34,7 +34,7 @@ pub use sanitization::{
 pub use security::{
     DomainValidator, InputValidator, PathValidator, ResourceLimits, ResourceTracker,
     SecureFileSystem, SecretBytes, SecretString, SecretValue, SecurityConfig, SecurityContext,
-    SecurityError, SecurityManager, SecurityPolicy, ValidatedPath,
+    SecurityError, SecurityManager, SecurityPolicy, ValidatedPath, ValidatedUrl,
 };
 pub use tool::{ExecutionResult, StandardTool, Tool, ToolCall, ToolDispatch};
 
