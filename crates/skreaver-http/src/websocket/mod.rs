@@ -22,11 +22,13 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+pub mod guard;
 pub mod handlers;
 pub mod lock_ordering;
 pub mod manager;
 pub mod protocol;
 
+pub use guard::*;
 pub use handlers::*;
 pub use manager::*;
 pub use protocol::*;
@@ -623,6 +625,9 @@ async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSock
         return;
     }
 
+    // RAII guard ensures cleanup even on panic
+    let _guard = ConnectionGuard::new(conn_id, Arc::clone(&manager));
+
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::channel::<WsMessage>(manager.config.buffer_size);
 
@@ -737,9 +742,9 @@ async fn handle_socket(socket: WebSocket, addr: SocketAddr, manager: Arc<WebSock
         }
     }
 
-    // Cleanup
+    // Cleanup happens automatically when _guard drops
     info!("WebSocket connection {} closed", conn_id);
-    manager.remove_connection(conn_id).await;
+    // Note: Connection cleanup is now handled by ConnectionGuard RAII pattern
 }
 
 #[cfg(test)]

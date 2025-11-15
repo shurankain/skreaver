@@ -848,6 +848,12 @@ impl WebSocketManager {
         }
     }
 
+    /// Get the number of active connections
+    pub async fn connection_count(&self) -> usize {
+        let guard = self.locks.level1_read().await;
+        guard.connections.len()
+    }
+
     /// Test helper: Get IP connection count
     #[doc(hidden)]
     pub async fn test_get_ip_connection_count(&self) -> usize {
