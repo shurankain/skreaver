@@ -40,6 +40,12 @@ pub enum AgentUpdate {
         tool_name: String,
         output: String,
         timestamp: chrono::DateTime<chrono::Utc>,
+        /// Execution duration in milliseconds
+        #[serde(skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+        /// Optional tags for categorization
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tags: Option<Vec<String>>,
     },
     /// Tool execution failed
     ToolFailure {
@@ -47,6 +53,15 @@ pub enum AgentUpdate {
         tool_name: String,
         error: String,
         timestamp: chrono::DateTime<chrono::Utc>,
+        /// Execution duration in milliseconds
+        #[serde(skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+        /// Optional error code for programmatic handling
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_code: Option<String>,
+        /// Whether the error is recoverable
+        #[serde(skip_serializing_if = "Option::is_none")]
+        recoverable: Option<bool>,
     },
     /// Agent produced intermediate output
     Partial {
@@ -77,6 +92,158 @@ pub enum AgentUpdate {
         status_message: String,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
+}
+
+impl AgentUpdate {
+    /// Create a ToolSuccess update from a StructuredToolResult.
+    ///
+    /// This preserves all metadata from the structured result including
+    /// duration, tags, and other context.
+    pub fn tool_success_from_structured(
+        agent_id: String,
+        result: skreaver_core::StructuredToolResult,
+    ) -> Option<Self> {
+        match result {
+            skreaver_core::StructuredToolResult::Success { output, metadata } => {
+                let duration_ms = metadata.duration_ms();
+                let timestamp = metadata.completed_at;
+                let tags = if metadata.tags.is_empty() {
+                    None
+                } else {
+                    Some(metadata.tags.clone())
+                };
+                let tool_name = metadata.tool_name.clone();
+
+                Some(Self::ToolSuccess {
+                    agent_id,
+                    tool_name,
+                    output,
+                    timestamp,
+                    duration_ms: Some(duration_ms),
+                    tags,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Create a ToolFailure update from a StructuredToolResult.
+    ///
+    /// This preserves all error metadata including error codes and
+    /// recoverability information.
+    pub fn tool_failure_from_structured(
+        agent_id: String,
+        result: skreaver_core::StructuredToolResult,
+    ) -> Option<Self> {
+        match result {
+            skreaver_core::StructuredToolResult::Failure {
+                error,
+                metadata,
+                error_code,
+                recoverable,
+            } => {
+                let duration_ms = metadata.duration_ms();
+                let timestamp = metadata.completed_at;
+                let tool_name = metadata.tool_name.clone();
+
+                Some(Self::ToolFailure {
+                    agent_id,
+                    tool_name,
+                    error,
+                    timestamp,
+                    duration_ms: Some(duration_ms),
+                    error_code,
+                    recoverable: Some(recoverable),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Create a tool update (success or failure) from a StructuredToolResult.
+    ///
+    /// This is a convenience method that automatically picks the right variant.
+    pub fn from_structured(
+        agent_id: String,
+        result: skreaver_core::StructuredToolResult,
+    ) -> Self {
+        match result {
+            skreaver_core::StructuredToolResult::Success { output, metadata } => {
+                let duration_ms = metadata.duration_ms();
+                let timestamp = metadata.completed_at;
+                let tags = if metadata.tags.is_empty() {
+                    None
+                } else {
+                    Some(metadata.tags.clone())
+                };
+                let tool_name = metadata.tool_name.clone();
+
+                Self::ToolSuccess {
+                    agent_id,
+                    tool_name,
+                    output,
+                    timestamp,
+                    duration_ms: Some(duration_ms),
+                    tags,
+                }
+            }
+            skreaver_core::StructuredToolResult::Failure {
+                error,
+                metadata,
+                error_code,
+                recoverable,
+            } => {
+                let duration_ms = metadata.duration_ms();
+                let timestamp = metadata.completed_at;
+                let tool_name = metadata.tool_name.clone();
+
+                Self::ToolFailure {
+                    agent_id,
+                    tool_name,
+                    error,
+                    timestamp,
+                    duration_ms: Some(duration_ms),
+                    error_code,
+                    recoverable: Some(recoverable),
+                }
+            }
+        }
+    }
+
+    /// Create a ToolSuccess update with minimal metadata (backwards compatibility).
+    pub fn tool_success(
+        agent_id: String,
+        tool_name: String,
+        output: String,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        Self::ToolSuccess {
+            agent_id,
+            tool_name,
+            output,
+            timestamp,
+            duration_ms: None,
+            tags: None,
+        }
+    }
+
+    /// Create a ToolFailure update with minimal metadata (backwards compatibility).
+    pub fn tool_failure(
+        agent_id: String,
+        tool_name: String,
+        error: String,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        Self::ToolFailure {
+            agent_id,
+            tool_name,
+            error,
+            timestamp,
+            duration_ms: None,
+            error_code: None,
+            recoverable: None,
+        }
+    }
 }
 
 /// Create a Server-Sent Events stream from agent updates with proper termination
@@ -208,24 +375,24 @@ impl StreamingAgentExecutor {
     /// Report a successful tool execution
     pub async fn tool_success(&self, agent_id: &str, tool_name: &str, output: &str) {
         let _ = self
-            .send_update(AgentUpdate::ToolSuccess {
-                agent_id: agent_id.to_string(),
-                tool_name: tool_name.to_string(),
-                output: output.to_string(),
-                timestamp: chrono::Utc::now(),
-            })
+            .send_update(AgentUpdate::tool_success(
+                agent_id.to_string(),
+                tool_name.to_string(),
+                output.to_string(),
+                chrono::Utc::now(),
+            ))
             .await;
     }
 
     /// Report a failed tool execution
     pub async fn tool_failure(&self, agent_id: &str, tool_name: &str, error: &str) {
         let _ = self
-            .send_update(AgentUpdate::ToolFailure {
-                agent_id: agent_id.to_string(),
-                tool_name: tool_name.to_string(),
-                error: error.to_string(),
-                timestamp: chrono::Utc::now(),
-            })
+            .send_update(AgentUpdate::tool_failure(
+                agent_id.to_string(),
+                tool_name.to_string(),
+                error.to_string(),
+                chrono::Utc::now(),
+            ))
             .await;
     }
 

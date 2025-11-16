@@ -505,6 +505,115 @@ pub trait Tool: Send + Sync {
     fn call(&self, input: String) -> ExecutionResult;
 }
 
+/// Extension trait for tools that provide structured results with metadata.
+///
+/// This trait allows tools to opt-in to providing rich execution metadata
+/// alongside their results. Tools implementing this trait can track timing,
+/// add tags, and preserve diagnostic context throughout the execution pipeline.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver_core::tool::{Tool, ExecutionResult, StructuredTool};
+/// use skreaver_core::{StructuredToolResult, ToolResultBuilder};
+/// use chrono::Utc;
+///
+/// struct TimedCalculator;
+///
+/// impl Tool for TimedCalculator {
+///     fn name(&self) -> &str { "calculator" }
+///     fn call(&self, input: String) -> ExecutionResult {
+///         // Simple implementation for backwards compatibility
+///         ExecutionResult::success("42".to_string())
+///     }
+/// }
+///
+/// impl StructuredTool for TimedCalculator {
+///     fn call_structured(&self, input: String) -> StructuredToolResult {
+///         let start = Utc::now();
+///
+///         // Perform calculation
+///         let result = input.parse::<f64>()
+///             .map(|n| n * 2.0);
+///
+///         match result {
+///             Ok(value) => {
+///                 ToolResultBuilder::new(self.name())
+///                     .started_at(start)
+///                     .tag("math")
+///                     .metadata("operation", "multiply")
+///                     .success(value.to_string())
+///             }
+///             Err(_) => {
+///                 ToolResultBuilder::new(self.name())
+///                     .started_at(start)
+///                     .tag("math")
+///                     .failure("Invalid number", true)
+///             }
+///         }
+///     }
+/// }
+/// ```
+pub trait StructuredTool: Tool {
+    /// Execute the tool with structured result tracking.
+    ///
+    /// This method should perform the same functionality as `call()` but
+    /// return a `StructuredToolResult` that preserves execution metadata,
+    /// timing information, and structured context.
+    ///
+    /// # Parameters
+    ///
+    /// * `input` - The input data for the tool to process
+    ///
+    /// # Returns
+    ///
+    /// A `StructuredToolResult` with rich metadata
+    fn call_structured(&self, input: String) -> crate::StructuredToolResult;
+}
+
+/// Adapter that implements StructuredTool for any Tool by wrapping results.
+///
+/// This allows existing tools to automatically gain structured result support
+/// without modification. The adapter creates instant metadata since the original
+/// tool doesn't track timing.
+pub struct StructuredToolAdapter<T: Tool> {
+    inner: T,
+}
+
+impl<T: Tool> StructuredToolAdapter<T> {
+    /// Wrap a Tool to add structured result support.
+    pub fn new(tool: T) -> Self {
+        Self { inner: tool }
+    }
+
+    /// Unwrap to get the inner tool.
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+
+    /// Get a reference to the inner tool.
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+}
+
+impl<T: Tool> Tool for StructuredToolAdapter<T> {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn call(&self, input: String) -> ExecutionResult {
+        self.inner.call(input)
+    }
+}
+
+impl<T: Tool> StructuredTool for StructuredToolAdapter<T> {
+    fn call_structured(&self, input: String) -> crate::StructuredToolResult {
+        let result = self.inner.call(input);
+        crate::StructuredToolResult::from_execution_result(result, self.inner.name())
+    }
+}
+
 /// Non-empty queue of tool calls that prevents invalid states.
 ///
 /// This type ensures that when an agent requests tool execution, there is always
@@ -859,5 +968,68 @@ mod tests {
         let empty_tools: Vec<ToolCall> = vec![];
         let result: Result<NonEmptyToolQueue, _> = empty_tools.try_into();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_structured_tool_adapter() {
+        use crate::StructuredTool;
+
+        let tool = EchoTool;
+        let adapter = StructuredToolAdapter::new(tool);
+
+        // Test that Tool trait still works
+        let result = adapter.call("test input".to_string());
+        assert!(result.is_success());
+        assert_eq!(result.output(), "Echo: test input");
+
+        // Test structured call
+        let structured = adapter.call_structured("test input".to_string());
+        assert!(structured.is_success());
+        assert_eq!(structured.success_output(), Some("Echo: test input"));
+        assert_eq!(structured.tool_name(), "echo");
+        // Metadata is preserved
+        assert!(!structured.metadata().tool_name.is_empty());
+    }
+
+    #[test]
+    fn test_structured_tool_trait() {
+        use crate::{StructuredTool, ToolResultBuilder};
+
+        struct TimedTool;
+
+        impl Tool for TimedTool {
+            fn name(&self) -> &str {
+                "timed"
+            }
+
+            fn call(&self, _input: String) -> ExecutionResult {
+                ExecutionResult::success("result".to_string())
+            }
+        }
+
+        impl StructuredTool for TimedTool {
+            fn call_structured(&self, input: String) -> crate::StructuredToolResult {
+                let start = chrono::Utc::now();
+                std::thread::sleep(std::time::Duration::from_millis(1));
+
+                ToolResultBuilder::new(self.name())
+                    .started_at(start)
+                    .tag("test")
+                    .metadata("input_length", input.len().to_string())
+                    .success("result")
+            }
+        }
+
+        let tool = TimedTool;
+        let result = tool.call_structured("hello".to_string());
+
+        assert!(result.is_success());
+        assert_eq!(result.tool_name(), "timed");
+        assert!(result.duration_ms() >= 1);
+        assert!(result.metadata().tags.contains(&"test".to_string()));
+        assert_eq!(
+            result.metadata().custom_metadata.get("input_length"),
+            Some(&"5".to_string())
+        );
     }
 }
