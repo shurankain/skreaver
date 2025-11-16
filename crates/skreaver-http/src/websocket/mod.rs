@@ -27,6 +27,7 @@ pub mod handlers;
 pub mod lock_ordering;
 pub mod manager;
 pub mod protocol;
+pub mod subscription_limits;
 
 pub use guard::*;
 pub use handlers::*;
