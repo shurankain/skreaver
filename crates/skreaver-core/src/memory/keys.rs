@@ -28,19 +28,27 @@
 //! With predefined keys, validation happens at compile time:
 //!
 //! ```
-//! use skreaver_core::memory::{MemoryUpdate, MemoryKeys};
+//! use skreaver_core::memory::{MemoryUpdate, MemoryKeys, MemoryWriter};
+//! use skreaver_core::InMemoryMemory;
 //!
-//! fn observe(&mut self, input: String) {
-//!     self.last_input = Some(input.clone());
+//! struct MyAgent {
+//!     last_input: Option<String>,
+//!     memory: InMemoryMemory,
+//! }
 //!
-//!     // No validation failure possible!
-//!     let update = MemoryUpdate::from_validated(
-//!         MemoryKeys::last_input(),
-//!         input,
-//!     );
+//! impl MyAgent {
+//!     fn observe(&mut self, input: String) {
+//!         self.last_input = Some(input.clone());
 //!
-//!     // Store can still fail (I/O), but key is guaranteed valid
-//!     let _ = self.memory_writer().store(update);
+//!         // No validation failure possible!
+//!         let update = MemoryUpdate::from_validated(
+//!             MemoryKeys::last_input(),
+//!             input,
+//!         );
+//!
+//!         // Store can still fail (I/O), but key is guaranteed valid
+//!         let _ = self.memory.store(update);
+//!     }
 //! }
 //! ```
 

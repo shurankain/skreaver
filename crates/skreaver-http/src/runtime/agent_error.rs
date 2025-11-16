@@ -342,9 +342,9 @@ mod tests {
         let mut config = HashMap::new();
         config.insert("enabled".to_string(), Value::Bool(true));
 
-        assert_eq!(config.get_bool("enabled").unwrap(), true);
-        assert_eq!(config.get_bool_or("enabled", false), true);
-        assert_eq!(config.get_bool_or("missing", false), false);
+        assert!(config.get_bool("enabled").unwrap());
+        assert!(config.get_bool_or("enabled", false));
+        assert!(!config.get_bool_or("missing", false));
     }
 
     #[test]

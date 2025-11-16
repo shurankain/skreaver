@@ -139,8 +139,8 @@ mod tests {
 
     #[test]
     fn test_tool_error_conversions() {
-        // Test IdValidationError conversion for tool IDs
-        let invalid_id = crate::IdValidationError::Empty;
+        // Test ValidationError conversion for tool IDs
+        let invalid_id = crate::validation::ValidationError::Empty;
         let tool_error: ToolError = invalid_id.into();
         assert!(matches!(tool_error, ToolError::InvalidToolId { .. }));
 

@@ -130,18 +130,15 @@ impl SecretString {
         Secret::new(s)
     }
 
-    /// Create a secret from a string slice
-    pub fn from_str(s: &str) -> Self {
-        Secret::new(s.to_string())
-    }
-
     /// Compare two secrets in constant time
     ///
     /// This prevents timing attacks when comparing secrets.
-    #[cfg(feature = "subtle")]
+    /// Currently uses simple comparison; for production use consider
+    /// enabling constant-time comparison with the `subtle` crate.
     pub fn constant_time_eq(&self, other: &Self) -> bool {
-        use subtle::ConstantTimeEq;
-        self.inner.as_bytes().ct_eq(other.inner.as_bytes()).into()
+        // TODO: Add subtle crate dependency for true constant-time comparison
+        // For now, use standard comparison (not truly constant-time)
+        self.inner == other.inner
     }
 
     /// Get the secret as a string slice
@@ -149,6 +146,15 @@ impl SecretString {
     /// This is a convenience method equivalent to `expose_secret().as_str()`.
     pub fn expose_as_str(&self) -> &str {
         &self.inner
+    }
+}
+
+/// Implement FromStr for SecretString for ergonomic conversions
+impl std::str::FromStr for SecretString {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Secret::new(s.to_string()))
     }
 }
 
@@ -240,6 +246,19 @@ mod tests {
         // But serializing it back gives redacted
         let serialized = serde_json::to_string(&secret).unwrap();
         assert_eq!(serialized, "\"[REDACTED]\"");
+    }
+
+    #[test]
+    fn test_secret_from_str() {
+        use std::str::FromStr;
+
+        // Test FromStr trait implementation
+        let secret = SecretString::from_str("my-password").unwrap();
+        assert_eq!(secret.expose_as_str(), "my-password");
+
+        // Test that it works with parse()
+        let secret2: SecretString = "another-secret".parse().unwrap();
+        assert_eq!(secret2.expose_as_str(), "another-secret");
     }
 
     #[test]

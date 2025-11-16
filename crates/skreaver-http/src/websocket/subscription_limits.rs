@@ -71,11 +71,11 @@ pub const MAX_SUBSCRIPTIONS: usize = 50;
 /// let subs = Subscriptions::<0>::new();
 ///
 /// // Add a subscription (compile-time safe)
-/// let subs = subs.add("room1".to_string());
+/// let subs = subs.subscribe("room1".to_string());
 /// // Type is now Subscriptions<1>
 ///
 /// // Add another (still safe)
-/// let subs = subs.add("room2".to_string());
+/// let subs = subs.subscribe("room2".to_string());
 /// // Type is now Subscriptions<2>
 ///
 /// // If we tried to add 51 subscriptions, it wouldn't compile!
@@ -122,7 +122,7 @@ impl<const N: usize> Subscriptions<N> {
     /// # Returns
     ///
     /// A new `Subscriptions<N+1>` with the channel added.
-    pub fn add<const NEXT: usize>(mut self, channel: String) -> Subscriptions<NEXT>
+    pub fn subscribe<const NEXT: usize>(mut self, channel: String) -> Subscriptions<NEXT>
     where
         [(); NEXT]: Sized,
         ValidateSubscriptionLimit<NEXT>: IsWithinLimit,
@@ -295,17 +295,17 @@ mod tests {
         assert_eq!(subs.count(), 0);
 
         // Add first subscription
-        let subs = subs.add::<1>(channel1.clone());
+        let subs = subs.subscribe::<1>(channel1.clone());
         assert_eq!(subs.count(), 1);
         assert!(subs.contains(&channel1));
 
         // Add second subscription
-        let subs = subs.add::<2>(channel2.clone());
+        let subs = subs.subscribe::<2>(channel2.clone());
         assert_eq!(subs.count(), 2);
         assert!(subs.contains(&channel2));
 
         // Add third subscription
-        let subs = subs.add::<3>(channel3.clone());
+        let subs = subs.subscribe::<3>(channel3.clone());
         assert_eq!(subs.count(), 3);
         assert!(subs.contains(&channel3));
 

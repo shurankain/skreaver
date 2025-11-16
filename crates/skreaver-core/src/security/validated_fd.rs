@@ -242,6 +242,16 @@ impl ValidatedFileDescriptor {
                 path: self.canonical_path.to_string_lossy().to_string(),
                 error: e.to_string(),
             })?;
+
+        // Flush to ensure data is written before file is closed
+        self.file
+            .flush()
+            .map_err(|e| SecurityError::FileSystemError {
+                operation: "flush".to_string(),
+                path: self.canonical_path.to_string_lossy().to_string(),
+                error: e.to_string(),
+            })?;
+
         Ok(())
     }
 
@@ -309,7 +319,19 @@ mod tests {
     use crate::security::policy::{FileSystemAccess, SymlinkBehavior};
 
     fn create_test_dir() -> PathBuf {
-        let temp_dir = std::env::temp_dir().join(format!("skreaver_test_{}", std::process::id()));
+        use std::time::SystemTime;
+
+        // Use timestamp + thread ID for uniqueness across parallel tests
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let thread_id = std::thread::current().id();
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "skreaver_test_{}_{:?}",
+            now, thread_id
+        ));
         std::fs::create_dir_all(&temp_dir).unwrap();
         temp_dir
     }
