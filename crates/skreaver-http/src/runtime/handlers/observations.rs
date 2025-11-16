@@ -17,8 +17,8 @@ use crate::runtime::{
     backpressure::RequestPriority,
     streaming::{self, StreamingAgentExecutor},
     types::{
-        BatchObserveRequest, BatchObserveResponse, BatchResult, ErrorResponse, ObserveRequest,
-        ObserveResponse, StreamRequest,
+        BatchObserveRequest, BatchObserveResponse, BatchOutcome, BatchResult, ErrorResponse,
+        ObserveRequest, ObserveResponse, StreamRequest,
     },
 };
 use std::sync::Arc;
@@ -531,10 +531,10 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
         BatchResult {
             index: 0,
             input: String::new(),
-            response: String::new(),
+            outcome: BatchOutcome::Failure {
+                error: String::new(),
+            },
             processing_time_ms: 0,
-            success: false,
-            error: None,
         };
         request.inputs.len()
     ]));
@@ -585,26 +585,22 @@ pub async fn batch_observe_agent<T: ToolRegistry + Clone + Send + Sync>(
                 Ok(Ok(response)) => BatchResult {
                     index,
                     input: (*input_arc).clone(),
-                    response,
+                    outcome: BatchOutcome::Success { response },
                     processing_time_ms: op_start.elapsed().as_millis() as u64,
-                    success: true,
-                    error: None,
                 },
                 Ok(Err(error)) => BatchResult {
                     index,
                     input: (*input_arc).clone(),
-                    response: String::new(),
+                    outcome: BatchOutcome::Failure { error },
                     processing_time_ms: op_start.elapsed().as_millis() as u64,
-                    success: false,
-                    error: Some(error),
                 },
                 Err(_) => BatchResult {
                     index,
                     input: (*input_arc).clone(),
-                    response: String::new(),
+                    outcome: BatchOutcome::Failure {
+                        error: "Operation timed out".to_string(),
+                    },
                     processing_time_ms: timeout_duration.as_millis() as u64,
-                    success: false,
-                    error: Some("Operation timed out".to_string()),
                 },
             };
 

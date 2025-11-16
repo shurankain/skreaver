@@ -34,12 +34,18 @@ pub enum AgentUpdate {
         input: String,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
-    /// Tool execution result
-    ToolResult {
+    /// Tool execution succeeded
+    ToolSuccess {
         agent_id: String,
         tool_name: String,
-        success: bool,
         output: String,
+        timestamp: chrono::DateTime<chrono::Utc>,
+    },
+    /// Tool execution failed
+    ToolFailure {
+        agent_id: String,
+        tool_name: String,
+        error: String,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
     /// Agent produced intermediate output
@@ -82,7 +88,8 @@ pub fn create_sse_stream(
             AgentUpdate::Started { .. } => "started",
             AgentUpdate::Thinking { .. } => "thinking",
             AgentUpdate::ToolCall { .. } => "tool_call",
-            AgentUpdate::ToolResult { .. } => "tool_result",
+            AgentUpdate::ToolSuccess { .. } => "tool_success",
+            AgentUpdate::ToolFailure { .. } => "tool_failure",
             AgentUpdate::Partial { .. } => "partial",
             AgentUpdate::Completed { .. } => "completed",
             AgentUpdate::Error { .. } => "error",
@@ -198,14 +205,25 @@ impl StreamingAgentExecutor {
             .await;
     }
 
-    /// Report a tool result
-    pub async fn tool_result(&self, agent_id: &str, tool_name: &str, success: bool, output: &str) {
+    /// Report a successful tool execution
+    pub async fn tool_success(&self, agent_id: &str, tool_name: &str, output: &str) {
         let _ = self
-            .send_update(AgentUpdate::ToolResult {
+            .send_update(AgentUpdate::ToolSuccess {
                 agent_id: agent_id.to_string(),
                 tool_name: tool_name.to_string(),
-                success,
                 output: output.to_string(),
+                timestamp: chrono::Utc::now(),
+            })
+            .await;
+    }
+
+    /// Report a failed tool execution
+    pub async fn tool_failure(&self, agent_id: &str, tool_name: &str, error: &str) {
+        let _ = self
+            .send_update(AgentUpdate::ToolFailure {
+                agent_id: agent_id.to_string(),
+                tool_name: tool_name.to_string(),
+                error: error.to_string(),
                 timestamp: chrono::Utc::now(),
             })
             .await;
@@ -401,7 +419,7 @@ mod tests {
                 .progress(agent_id, 30.0, "Processing search results")
                 .await;
             executor
-                .tool_result(agent_id, "search", true, "Found 10 results")
+                .tool_success(agent_id, "search", "Found 10 results")
                 .await;
 
             // Intermediate processing
@@ -434,7 +452,8 @@ mod tests {
                 AgentUpdate::Started { .. } => "started",
                 AgentUpdate::Thinking { .. } => "thinking",
                 AgentUpdate::ToolCall { .. } => "tool_call",
-                AgentUpdate::ToolResult { .. } => "tool_result",
+                AgentUpdate::ToolSuccess { .. } => "tool_success",
+                AgentUpdate::ToolFailure { .. } => "tool_failure",
                 AgentUpdate::Partial { .. } => "partial",
                 AgentUpdate::Completed { .. } => "completed",
                 AgentUpdate::Error { .. } => "error",
@@ -458,7 +477,7 @@ mod tests {
         assert!(received_types.contains(&"thinking"));
         assert!(received_types.contains(&"progress"));
         assert!(received_types.contains(&"tool_call"));
-        assert!(received_types.contains(&"tool_result"));
+        assert!(received_types.contains(&"tool_success"));
         assert!(received_types.contains(&"partial"));
         assert!(received_types.contains(&"completed"));
         assert!(update_count >= 8); // Should have received multiple updates
@@ -688,7 +707,7 @@ mod tests {
         executor.thinking("test", "This should not panic").await;
         executor.progress("test", 50.0, "Should continue").await;
         executor.tool_call("test", "tool", "input").await;
-        executor.tool_result("test", "tool", true, "output").await;
+        executor.tool_success("test", "tool", "output").await;
         executor.partial("test", "partial content").await;
 
         // These should all complete silently without errors

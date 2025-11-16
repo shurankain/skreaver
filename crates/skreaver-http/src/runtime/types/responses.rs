@@ -101,6 +101,22 @@ pub struct BatchObserveResponse {
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
+/// Outcome of a batch item processing
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum BatchOutcome {
+    /// Processing succeeded
+    Success {
+        /// Agent's response to the input
+        response: String,
+    },
+    /// Processing failed
+    Failure {
+        /// Error message
+        error: String,
+    },
+}
+
 /// Individual result in batch operation
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct BatchResult {
@@ -108,15 +124,11 @@ pub struct BatchResult {
     pub index: usize,
     /// Input that was processed
     pub input: String,
-    /// Agent's response to the input
-    pub response: String,
+    /// Processing outcome
+    #[serde(flatten)]
+    pub outcome: BatchOutcome,
     /// Processing time for this input in milliseconds
     pub processing_time_ms: u64,
-    /// Whether the operation was successful
-    pub success: bool,
-    /// Error message if operation failed
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
 
 /// Response for queue metrics

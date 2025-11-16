@@ -341,7 +341,7 @@ async fn test_batch_observe_agent() {
     let results = json["results"].as_array().unwrap();
     for (i, result) in results.iter().enumerate() {
         assert_eq!(result["index"], i);
-        assert_eq!(result["success"], true);
+        assert_eq!(result["status"], "success");
         assert!(result["response"].is_string());
         assert!(result["processing_time_ms"].as_u64().is_some());
     }
@@ -505,7 +505,7 @@ async fn test_concurrent_batch_requests() {
         // All operations should succeed
         let results = json["results"].as_array().unwrap();
         for result in results {
-            assert_eq!(result["success"], true);
+            assert_eq!(result["status"], "success");
         }
     }
 }
