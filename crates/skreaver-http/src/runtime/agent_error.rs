@@ -258,10 +258,11 @@ pub trait ConfigExt {
 
 impl ConfigExt for HashMap<String, Value> {
     fn get_string(&self, field: &str) -> Result<String, AgentBuildError> {
-        self.get(field)
-            .ok_or_else(|| AgentBuildError::missing_field(field))?
-            .as_str()
-            .ok_or_else(|| AgentBuildError::invalid_type(field, "string", self.get(field).unwrap()))
+        let value = self.get(field)
+            .ok_or_else(|| AgentBuildError::missing_field(field))?;
+
+        value.as_str()
+            .ok_or_else(|| AgentBuildError::invalid_type(field, "string", value))
             .map(|s| s.to_string())
     }
 
@@ -273,12 +274,11 @@ impl ConfigExt for HashMap<String, Value> {
     }
 
     fn get_bool(&self, field: &str) -> Result<bool, AgentBuildError> {
-        self.get(field)
-            .ok_or_else(|| AgentBuildError::missing_field(field))?
-            .as_bool()
-            .ok_or_else(|| {
-                AgentBuildError::invalid_type(field, "boolean", self.get(field).unwrap())
-            })
+        let value = self.get(field)
+            .ok_or_else(|| AgentBuildError::missing_field(field))?;
+
+        value.as_bool()
+            .ok_or_else(|| AgentBuildError::invalid_type(field, "boolean", value))
     }
 
     fn get_bool_or(&self, field: &str, default: bool) -> bool {
@@ -286,12 +286,11 @@ impl ConfigExt for HashMap<String, Value> {
     }
 
     fn get_i64(&self, field: &str) -> Result<i64, AgentBuildError> {
-        self.get(field)
-            .ok_or_else(|| AgentBuildError::missing_field(field))?
-            .as_i64()
-            .ok_or_else(|| {
-                AgentBuildError::invalid_type(field, "integer", self.get(field).unwrap())
-            })
+        let value = self.get(field)
+            .ok_or_else(|| AgentBuildError::missing_field(field))?;
+
+        value.as_i64()
+            .ok_or_else(|| AgentBuildError::invalid_type(field, "integer", value))
     }
 
     fn get_i64_or(&self, field: &str, default: i64) -> i64 {

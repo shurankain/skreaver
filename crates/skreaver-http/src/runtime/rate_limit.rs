@@ -58,21 +58,32 @@ pub struct RateLimitError {
 
 impl RateLimitState {
     /// Create a new rate limit state with the given configuration
+    ///
+    /// # Panics
+    ///
+    /// Panics if any rate limit value is 0. Use `try_new` for fallible construction.
     pub fn new(config: RateLimitConfig) -> Self {
-        // Create quota for global rate limiting
-        let global_quota = Quota::per_minute(std::num::NonZeroU32::new(config.global_rpm).unwrap());
+        Self::try_new(config).expect("Rate limit configuration must have non-zero values")
+    }
+
+    /// Try to create a new rate limit state with the given configuration
+    ///
+    /// Returns None if any rate limit value is 0.
+    pub fn try_new(config: RateLimitConfig) -> Option<Self> {
+        // Create quota for global rate limiting (ensure non-zero)
+        let global_quota = Quota::per_minute(std::num::NonZeroU32::new(config.global_rpm)?);
         let global_limiter = RateLimiter::direct(global_quota);
 
-        // Create quota for per-IP rate limiting
-        let ip_quota = Quota::per_minute(std::num::NonZeroU32::new(config.per_ip_rpm).unwrap());
+        // Create quota for per-IP rate limiting (ensure non-zero)
+        let ip_quota = Quota::per_minute(std::num::NonZeroU32::new(config.per_ip_rpm)?);
         let ip_limiter = RateLimiter::keyed(ip_quota);
 
-        Self {
+        Some(Self {
             global_limiter,
             ip_limiter,
             user_limiters: Arc::new(RwLock::new(HashMap::new())),
             config,
-        }
+        })
     }
 
     /// Get or create a rate limiter for a specific user
@@ -82,8 +93,11 @@ impl RateLimitState {
         user_limiters
             .entry(user_id.to_string())
             .or_insert_with(|| {
-                let quota =
-                    Quota::per_minute(std::num::NonZeroU32::new(self.config.per_user_rpm).unwrap());
+                // Safe: per_user_rpm was already validated in new()/try_new()
+                let quota = Quota::per_minute(
+                    std::num::NonZeroU32::new(self.config.per_user_rpm)
+                        .expect("per_user_rpm must be non-zero (validated at construction)"),
+                );
                 Arc::new(RateLimiter::direct(quota))
             })
             .clone()

@@ -406,15 +406,19 @@ impl<T> PooledConnection<T> {
 
 impl<T> std::ops::Deref for PooledConnection<T> {
     type Target = T;
-    
+
     fn deref(&self) -> &Self::Target {
-        self.connection.as_ref().unwrap()
+        // Safety: connection is only None after Drop, which consumes self
+        // Deref cannot be called after Drop, so this unwrap is safe
+        self.connection.as_ref().expect("connection exists until Drop")
     }
 }
 
 impl<T> std::ops::DerefMut for PooledConnection<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.connection.as_mut().unwrap()
+        // Safety: connection is only None after Drop, which consumes self
+        // DerefMut cannot be called after Drop, so this unwrap is safe
+        self.connection.as_mut().expect("connection exists until Drop")
     }
 }
 

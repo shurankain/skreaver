@@ -53,7 +53,9 @@ impl Default for MissingConnectInfoBehavior {
         // Default to fallback for ease of development and testing
         // Production deployments should explicitly configure this to Reject for maximum security
         // via environment variable: SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR=reject
-        Self::UseFallback("127.0.0.1".parse().unwrap())
+
+        // Safety: "127.0.0.1" is a valid IPv4 address constant
+        Self::UseFallback("127.0.0.1".parse().expect("127.0.0.1 is valid IP"))
     }
 }
 
@@ -175,11 +177,12 @@ impl ConnectionTracker {
 
         // Increment per-IP counter
         let mut connections = self.connections_per_ip.write().await;
-        *connections.entry(ip).or_insert(0) += 1;
+        let count = connections.entry(ip).or_insert(0);
+        *count += 1;
         debug!(
             "Connection from {} incremented (total: {})",
             ip,
-            connections.get(&ip).unwrap()
+            count
         );
     }
 
