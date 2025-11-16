@@ -15,6 +15,8 @@ pub mod secret;
 #[cfg(feature = "security-basic")]
 pub mod secure_tool;
 #[cfg(feature = "security-basic")]
+pub mod validated_fd;
+#[cfg(feature = "security-basic")]
 pub mod validated_url;
 #[cfg(feature = "security-basic")]
 pub mod validation;
@@ -31,6 +33,8 @@ pub use config::{
 pub use errors::{SecurityError, SecurityViolation};
 #[cfg(feature = "security-basic")]
 pub use fs::{SecureFileSystem, ValidatedPath};
+#[cfg(feature = "security-basic")]
+pub use validated_fd::ValidatedFileDescriptor;
 pub use limits::{CpuPercent, ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
     FileCountLimit, FileSizeLimit, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy,
