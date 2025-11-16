@@ -33,14 +33,14 @@ pub use config::{
 pub use errors::{SecurityError, SecurityViolation};
 #[cfg(feature = "security-basic")]
 pub use fs::{SecureFileSystem, ValidatedPath};
-#[cfg(feature = "security-basic")]
-pub use validated_fd::ValidatedFileDescriptor;
 pub use limits::{CpuPercent, ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
     FileCountLimit, FileSizeLimit, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy,
     NetworkPort, RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds,
     ToolSecurityPolicy,
 };
+#[cfg(feature = "security-basic")]
+pub use validated_fd::ValidatedFileDescriptor;
 // Re-export secret types - note: config::Secret is a different type (config marker)
 pub use secret::{Secret as SecretValue, SecretBytes, SecretString};
 #[cfg(feature = "security-basic")]

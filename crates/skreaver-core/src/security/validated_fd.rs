@@ -125,11 +125,13 @@ impl ValidatedFileDescriptor {
 
         // Get metadata from the DESCRIPTOR, not the path
         // This ensures we're checking the file we actually opened
-        let metadata = file.metadata().map_err(|e| SecurityError::FileSystemError {
-            operation: "metadata".to_string(),
-            path: path_ref.to_string_lossy().to_string(),
-            error: e.to_string(),
-        })?;
+        let metadata = file
+            .metadata()
+            .map_err(|e| SecurityError::FileSystemError {
+                operation: "metadata".to_string(),
+                path: path_ref.to_string_lossy().to_string(),
+                error: e.to_string(),
+            })?;
 
         // Validate file size
         if metadata.len() > policy.max_file_size.bytes() {
@@ -180,11 +182,13 @@ impl ValidatedFileDescriptor {
                 error: e.to_string(),
             })?;
 
-        let metadata = file.metadata().map_err(|e| SecurityError::FileSystemError {
-            operation: "metadata".to_string(),
-            path: path_ref.to_string_lossy().to_string(),
-            error: e.to_string(),
-        })?;
+        let metadata = file
+            .metadata()
+            .map_err(|e| SecurityError::FileSystemError {
+                operation: "metadata".to_string(),
+                path: path_ref.to_string_lossy().to_string(),
+                error: e.to_string(),
+            })?;
 
         let canonical_path = Self::canonical_path_from_fd(&file, path_ref)?;
 
@@ -289,11 +293,13 @@ impl ValidatedFileDescriptor {
 
     #[cfg(not(target_family = "unix"))]
     fn canonical_path_from_fd(_file: &File, fallback: &Path) -> Result<PathBuf, SecurityError> {
-        fallback.canonicalize().map_err(|e| SecurityError::FileSystemError {
-            operation: "canonical_path".to_string(),
-            path: fallback.to_string_lossy().to_string(),
-            error: e.to_string(),
-        })
+        fallback
+            .canonicalize()
+            .map_err(|e| SecurityError::FileSystemError {
+                operation: "canonical_path".to_string(),
+                path: fallback.to_string_lossy().to_string(),
+                error: e.to_string(),
+            })
     }
 }
 

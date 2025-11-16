@@ -163,10 +163,7 @@ impl AgentUpdate {
     /// Create a tool update (success or failure) from a StructuredToolResult.
     ///
     /// This is a convenience method that automatically picks the right variant.
-    pub fn from_structured(
-        agent_id: String,
-        result: skreaver_core::StructuredToolResult,
-    ) -> Self {
+    pub fn from_structured(agent_id: String, result: skreaver_core::StructuredToolResult) -> Self {
         match result {
             skreaver_core::StructuredToolResult::Success { output, metadata } => {
                 let duration_ms = metadata.duration_ms();

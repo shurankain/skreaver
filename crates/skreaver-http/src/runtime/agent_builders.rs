@@ -141,7 +141,7 @@ impl AdvancedAgent {
                 return Err(AgentBuildError::invalid_mode(
                     other,
                     vec!["simple".into(), "analytical".into(), "creative".into()],
-                ))
+                ));
             }
         };
 

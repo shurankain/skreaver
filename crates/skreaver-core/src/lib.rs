@@ -37,9 +37,7 @@ pub use security::{
     SecretString, SecretValue, SecureFileSystem, SecurityConfig, SecurityContext, SecurityError,
     SecurityManager, SecurityPolicy, ValidatedPath, ValidatedUrl,
 };
-pub use structured_tool_result::{
-    StructuredToolResult, ToolExecutionMetadata, ToolResultBuilder,
-};
+pub use structured_tool_result::{StructuredToolResult, ToolExecutionMetadata, ToolResultBuilder};
 pub use tool::{
     ExecutionResult, StandardTool, StructuredTool, StructuredToolAdapter, Tool, ToolCall,
     ToolDispatch,

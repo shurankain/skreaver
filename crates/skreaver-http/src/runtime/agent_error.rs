@@ -136,7 +136,11 @@ impl AgentBuildError {
     }
 
     /// Create an error for an invalid field type
-    pub fn invalid_type(field: impl Into<String>, expected: impl Into<String>, value: &Value) -> Self {
+    pub fn invalid_type(
+        field: impl Into<String>,
+        expected: impl Into<String>,
+        value: &Value,
+    ) -> Self {
         Self::InvalidFieldType {
             field: field.into(),
             expected: expected.into(),
@@ -257,9 +261,7 @@ impl ConfigExt for HashMap<String, Value> {
         self.get(field)
             .ok_or_else(|| AgentBuildError::missing_field(field))?
             .as_str()
-            .ok_or_else(|| {
-                AgentBuildError::invalid_type(field, "string", self.get(field).unwrap())
-            })
+            .ok_or_else(|| AgentBuildError::invalid_type(field, "string", self.get(field).unwrap()))
             .map(|s| s.to_string())
     }
 
@@ -315,10 +317,8 @@ mod tests {
             "Invalid type for field 'count': expected integer, got string"
         );
 
-        let err = AgentBuildError::invalid_mode(
-            "unknown",
-            vec!["simple".into(), "advanced".into()],
-        );
+        let err =
+            AgentBuildError::invalid_mode("unknown", vec!["simple".into(), "advanced".into()]);
         assert_eq!(
             err.to_string(),
             "Invalid processing mode 'unknown'. Valid modes: simple, advanced"

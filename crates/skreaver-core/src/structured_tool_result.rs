@@ -354,11 +354,7 @@ impl ToolResultBuilder {
     }
 
     /// Build a failed result.
-    pub fn failure(
-        self,
-        error: impl Into<String>,
-        recoverable: bool,
-    ) -> StructuredToolResult {
+    pub fn failure(self, error: impl Into<String>, recoverable: bool) -> StructuredToolResult {
         let completed_at = Utc::now();
         let started_at = self.started_at.unwrap_or(completed_at);
 
@@ -431,8 +427,14 @@ mod tests {
             .with_metadata("request_id", "abc123")
             .with_metadata("user_id", "user_42");
 
-        assert_eq!(metadata.custom_metadata.get("request_id"), Some(&"abc123".to_string()));
-        assert_eq!(metadata.custom_metadata.get("user_id"), Some(&"user_42".to_string()));
+        assert_eq!(
+            metadata.custom_metadata.get("request_id"),
+            Some(&"abc123".to_string())
+        );
+        assert_eq!(
+            metadata.custom_metadata.get("user_id"),
+            Some(&"user_42".to_string())
+        );
     }
 
     #[test]

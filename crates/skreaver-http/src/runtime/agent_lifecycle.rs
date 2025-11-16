@@ -359,7 +359,10 @@ mod tests {
         let lifecycle = lifecycle.start().unwrap();
 
         // Process (only available in Running state)
-        let response = lifecycle.process_observation("test input".to_string()).await.unwrap();
+        let response = lifecycle
+            .process_observation("test input".to_string())
+            .await
+            .unwrap();
         assert!(!response.is_empty());
 
         // Terminate
@@ -383,7 +386,10 @@ mod tests {
         let lifecycle = lifecycle.resume().unwrap();
 
         // Should be able to process again
-        let _response = lifecycle.process_observation("after resume".to_string()).await.unwrap();
+        let _response = lifecycle
+            .process_observation("after resume".to_string())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

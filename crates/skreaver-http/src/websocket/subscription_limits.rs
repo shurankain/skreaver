@@ -186,9 +186,8 @@ pub trait IsWithinLimit {}
 
 // Implement IsWithinLimit for all N where N <= MAX_SUBSCRIPTIONS
 // This uses a const generic trick to enforce the limit at compile time
-impl<const N: usize> IsWithinLimit for ValidateSubscriptionLimit<N>
-where
-    ValidateSubscriptionLimit<N>: ValidSubscriptionCount,
+impl<const N: usize> IsWithinLimit for ValidateSubscriptionLimit<N> where
+    ValidateSubscriptionLimit<N>: ValidSubscriptionCount
 {
 }
 
