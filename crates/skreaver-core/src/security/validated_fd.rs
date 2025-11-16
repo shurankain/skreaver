@@ -328,10 +328,7 @@ mod tests {
             .as_nanos();
         let thread_id = std::thread::current().id();
 
-        let temp_dir = std::env::temp_dir().join(format!(
-            "skreaver_test_{}_{:?}",
-            now, thread_id
-        ));
+        let temp_dir = std::env::temp_dir().join(format!("skreaver_test_{}_{:?}", now, thread_id));
         std::fs::create_dir_all(&temp_dir).unwrap();
         temp_dir
     }

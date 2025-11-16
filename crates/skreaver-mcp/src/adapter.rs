@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::error::{McpError, McpResult};
 
 /// Adapter that wraps a Skreaver tool for MCP compatibility
+#[derive(Clone)]
 pub struct ToolAdapter {
     tool: Arc<dyn Tool>,
 }
@@ -81,6 +82,7 @@ pub struct McpToolDefinition {
 }
 
 /// Registry of adapted tools
+#[derive(Clone)]
 pub struct AdaptedToolRegistry {
     tools: Vec<ToolAdapter>,
 }

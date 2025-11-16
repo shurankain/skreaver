@@ -35,4 +35,8 @@ pub enum McpError {
     /// Transport error
     #[error("Transport error: {0}")]
     TransportError(String),
+
+    /// Server error
+    #[error("Server error: {0}")]
+    ServerError(String),
 }
