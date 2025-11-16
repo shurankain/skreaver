@@ -57,6 +57,8 @@ pub mod agent_builders;
 pub mod agent_factory;
 /// Agent instance management with state tracking.
 pub mod agent_instance;
+/// Typestate pattern for agent lifecycle management.
+pub mod agent_lifecycle;
 /// Type-safe agent status management.
 pub mod agent_status;
 /// Improved API types with type safety and validation.
