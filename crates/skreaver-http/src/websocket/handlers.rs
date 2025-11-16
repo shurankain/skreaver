@@ -347,7 +347,15 @@ async fn send_protocol_message(
         _ => return Ok(()), // Skip other message types for now
     };
 
-    manager.send_to_connection(conn_id, legacy_msg).await
+    let result = manager.send_to_connection(conn_id, legacy_msg).await?;
+    if result.is_failure() {
+        tracing::warn!(
+            connection_id = %conn_id,
+            send_result = %result,
+            "Failed to send legacy message conversion"
+        );
+    }
+    Ok(())
 }
 
 /// Get WebSocket status and information

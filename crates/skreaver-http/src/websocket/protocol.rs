@@ -613,3 +613,88 @@ mod tests {
         assert_eq!(envelope.message_id, deserialized.message_id);
     }
 }
+
+/// Result of attempting to send a message to a WebSocket connection
+///
+/// This type provides explicit information about message delivery status,
+/// preventing silent failures and enabling proper error handling.
+///
+/// # Examples
+///
+/// ```
+/// use skreaver_http::websocket::SendResult;
+///
+/// match send_result {
+///     SendResult::Sent => {
+///         // Message was delivered to the send queue
+///     }
+///     SendResult::Queued { queue_size } => {
+///         // Message queued but queue is getting full
+///         if queue_size > 100 {
+///             // Consider backpressure
+///         }
+///     }
+///     SendResult::ConnectionClosed => {
+///         // Connection no longer exists - can't send
+///     }
+///     SendResult::BufferFull => {
+///         // Queue is full - message was NOT sent
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendResult {
+    /// Message was successfully sent to the connection's send queue
+    Sent,
+
+    /// Message was queued but the queue is filling up
+    ///
+    /// The caller should consider implementing backpressure if queue_size
+    /// exceeds expected thresholds.
+    Queued {
+        /// Current number of messages in the send queue
+        queue_size: usize,
+    },
+
+    /// Connection does not exist or has been closed
+    ///
+    /// The message was NOT delivered.
+    ConnectionClosed,
+
+    /// The send buffer is full and cannot accept more messages
+    ///
+    /// The message was NOT delivered. The caller should implement
+    /// backpressure or retry logic.
+    BufferFull,
+}
+
+impl SendResult {
+    /// Returns true if the message was successfully sent or queued
+    pub fn is_success(&self) -> bool {
+        matches!(self, SendResult::Sent | SendResult::Queued { .. })
+    }
+
+    /// Returns true if the message was NOT delivered
+    pub fn is_failure(&self) -> bool {
+        !self.is_success()
+    }
+
+    /// Returns the queue size if the message was queued
+    pub fn queue_size(&self) -> Option<usize> {
+        match self {
+            SendResult::Queued { queue_size } => Some(*queue_size),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for SendResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendResult::Sent => write!(f, "sent"),
+            SendResult::Queued { queue_size } => write!(f, "queued (size: {})", queue_size),
+            SendResult::ConnectionClosed => write!(f, "connection closed"),
+            SendResult::BufferFull => write!(f, "buffer full"),
+        }
+    }
+}

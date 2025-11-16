@@ -349,7 +349,14 @@ impl WebSocketManager {
 
         match message {
             WsMessage::Ping { .. } => {
-                self.send_to_connection(conn_id, WsMessage::pong()).await?;
+                let result = self.send_to_connection(conn_id, WsMessage::pong()).await?;
+                if result.is_failure() {
+                    tracing::warn!(
+                        connection_id = %conn_id,
+                        send_result = %result,
+                        "Failed to send pong response"
+                    );
+                }
             }
             WsMessage::Pong { .. } => {
                 // Activity already updated
@@ -381,11 +388,20 @@ impl WebSocketManager {
                         state.authenticate(user_id);
                         drop(guard);
 
-                        self.send_to_connection(
-                            conn_id,
-                            WsMessage::success("Authentication successful"),
-                        )
-                        .await?;
+                        let result = self
+                            .send_to_connection(
+                                conn_id,
+                                WsMessage::success("Authentication successful"),
+                            )
+                            .await?;
+
+                        if result.is_failure() {
+                            tracing::warn!(
+                                connection_id = %conn_id,
+                                send_result = %result,
+                                "Failed to send authentication success message"
+                            );
+                        }
                         info!("Connection {} authenticated", conn_id);
                     }
                 }
@@ -400,8 +416,17 @@ impl WebSocketManager {
                 state.authenticate(format!("anonymous_{}", conn_id));
                 drop(guard);
 
-                self.send_to_connection(conn_id, WsMessage::success("Authentication successful"))
+                let result = self
+                    .send_to_connection(conn_id, WsMessage::success("Authentication successful"))
                     .await?;
+
+                if result.is_failure() {
+                    tracing::warn!(
+                        connection_id = %conn_id,
+                        send_result = %result,
+                        "Failed to send authentication success message (anonymous)"
+                    );
+                }
             }
         }
 
@@ -496,8 +521,18 @@ impl WebSocketManager {
 
         drop(guards);
 
-        self.send_to_connection(conn_id, WsMessage::success("Subscription successful"))
+        let result = self
+            .send_to_connection(conn_id, WsMessage::success("Subscription successful"))
             .await?;
+
+        if result.is_failure() {
+            tracing::warn!(
+                connection_id = %conn_id,
+                send_result = %result,
+                "Failed to send subscription success message"
+            );
+        }
+
         Ok(())
     }
 
@@ -529,25 +564,101 @@ impl WebSocketManager {
 
         drop(guards);
 
-        self.send_to_connection(conn_id, WsMessage::success("Unsubscription successful"))
+        let result = self
+            .send_to_connection(conn_id, WsMessage::success("Unsubscription successful"))
             .await?;
+
+        if result.is_failure() {
+            tracing::warn!(
+                connection_id = %conn_id,
+                send_result = %result,
+                "Failed to send unsubscription success message"
+            );
+        }
+
         Ok(())
     }
 
-    /// Send message to specific connection
-    pub async fn send_to_connection(&self, conn_id: Uuid, message: WsMessage) -> WsResult<()> {
+    /// Send a message to a specific connection
+    ///
+    /// Returns a [`SendResult`] indicating the delivery status:
+    /// - `SendResult::Sent` - Message successfully sent
+    /// - `SendResult::Queued { queue_size }` - Message queued (queue filling up)
+    /// - `SendResult::ConnectionClosed` - Connection doesn't exist
+    /// - `SendResult::BufferFull` - Send buffer is full
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// match manager.send_to_connection(conn_id, message).await? {
+    ///     SendResult::Sent => {
+    ///         // Success!
+    ///     }
+    ///     SendResult::Queued { queue_size } if queue_size > 100 => {
+    ///         // Implement backpressure
+    ///     }
+    ///     SendResult::ConnectionClosed => {
+    ///         // Clean up and stop sending
+    ///     }
+    ///     SendResult::BufferFull => {
+    ///         // Retry or drop message
+    ///     }
+    ///     _ => {}
+    /// }
+    /// ```
+    pub async fn send_to_connection(
+        &self,
+        conn_id: Uuid,
+        message: WsMessage,
+    ) -> WsResult<super::SendResult> {
+        use super::SendResult;
+
         let guard = self.locks.level1_read().await;
         if let Some(state) = guard.connections.get(&conn_id) {
-            // Try to send, log error if channel is closed
-            if let Err(e) = state.sender().send(message).await {
-                tracing::warn!(
-                    connection_id = %conn_id,
-                    error = %e,
-                    "Failed to send message to connection (channel may be closed)"
-                );
+            let sender = state.sender();
+
+            // Check queue capacity before sending
+            let capacity = sender.capacity();
+            let max_capacity = sender.max_capacity();
+
+            match sender.try_send(message) {
+                Ok(()) => {
+                    // Calculate current queue size
+                    let queue_size = max_capacity - capacity;
+
+                    if queue_size == 0 {
+                        Ok(SendResult::Sent)
+                    } else {
+                        // Queue has messages - return queue size for backpressure
+                        Ok(SendResult::Queued { queue_size })
+                    }
+                }
+                Err(e) => {
+                    use tokio::sync::mpsc::error::TrySendError;
+
+                    match e {
+                        TrySendError::Full(_) => {
+                            tracing::warn!(
+                                connection_id = %conn_id,
+                                "Send buffer full - message dropped"
+                            );
+                            Ok(SendResult::BufferFull)
+                        }
+                        TrySendError::Closed(_) => {
+                            // Channel closed
+                            tracing::warn!(
+                                connection_id = %conn_id,
+                                "Connection closed - cannot send message"
+                            );
+                            Ok(SendResult::ConnectionClosed)
+                        }
+                    }
+                }
             }
+        } else {
+            // Connection doesn't exist
+            Ok(SendResult::ConnectionClosed)
         }
-        Ok(())
     }
 
     /// Broadcast message to channel
