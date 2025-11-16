@@ -624,6 +624,7 @@ mod tests {
 /// ```
 /// use skreaver_http::websocket::SendResult;
 ///
+/// let send_result = SendResult::Sent;
 /// match send_result {
 ///     SendResult::Sent => {
 ///         // Message was delivered to the send queue

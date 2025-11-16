@@ -1,3 +1,6 @@
+pub mod keys;
+pub use keys::MemoryKeys;
+
 /// Validated memory key that prevents typos and ensures consistent naming.
 ///
 /// `MemoryKey` is a newtype wrapper around `String` that provides compile-time
@@ -84,6 +87,25 @@ impl MemoryKey {
             })?;
 
         Ok(MemoryKey(validated))
+    }
+
+    /// Create a MemoryKey without validation
+    ///
+    /// # Safety
+    ///
+    /// This function is `pub(crate)` to ensure only the `memory` module can create
+    /// unvalidated keys. External code MUST use `MemoryKey::new()` for validation
+    /// or use predefined keys from `MemoryKeys`.
+    ///
+    /// The caller must ensure that the key meets all validation requirements:
+    /// - Not empty
+    /// - Valid identifier characters only
+    /// - No leading/trailing whitespace
+    /// - Within length limits
+    ///
+    /// This is primarily used by `MemoryKeys` for compile-time validated constants.
+    pub(crate) fn new_unchecked(key: &str) -> Self {
+        MemoryKey(key.to_string())
     }
 
     /// Get the memory key as a string slice.

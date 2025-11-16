@@ -8,7 +8,7 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
-use skreaver_core::memory::{MemoryReader, MemoryWriter};
+use skreaver_core::memory::{MemoryKeys, MemoryReader, MemoryWriter};
 use skreaver_core::{Agent, ExecutionResult, InMemoryMemory, MemoryUpdate, Tool, ToolCall};
 use skreaver_tools::InMemoryToolRegistry;
 use std::sync::Arc;
@@ -65,10 +65,9 @@ impl Agent for EchoAgent {
 
     fn observe(&mut self, input: Self::Observation) {
         self.last_input = Some(input.clone());
-        if let Ok(update) = MemoryUpdate::new("last_input", &input) {
-            if let Err(e) = self.memory_writer().store(update) {
-                tracing::warn!(error = %e, "Failed to store last_input to memory");
-            }
+        let update = MemoryUpdate::from_validated(MemoryKeys::last_input(), input);
+        if let Err(e) = self.memory_writer().store(update) {
+            tracing::warn!(error = %e, "Failed to store last_input to memory");
         }
     }
 
@@ -87,10 +86,12 @@ impl Agent for EchoAgent {
     fn handle_result(&mut self, result: ExecutionResult) {
         // Echo agent can optionally modify output based on tool results
         if result.is_success() {
-            if let Ok(update) = MemoryUpdate::new("last_tool_result", result.output()) {
-                if let Err(e) = self.memory_writer().store(update) {
-                    tracing::warn!(error = %e, "Failed to store last_tool_result to memory");
-                }
+            let update = MemoryUpdate::from_validated(
+                MemoryKeys::last_tool_result(),
+                result.output().to_string(),
+            );
+            if let Err(e) = self.memory_writer().store(update) {
+                tracing::warn!(error = %e, "Failed to store last_tool_result to memory");
             }
         }
     }
@@ -155,10 +156,9 @@ impl Agent for AdvancedAgent {
 
     fn observe(&mut self, input: Self::Observation) {
         self.context = input.clone();
-        if let Ok(update) = MemoryUpdate::new("context", &input) {
-            if let Err(e) = self.memory_writer().store(update) {
-                tracing::warn!(error = %e, "Failed to store context to memory");
-            }
+        let update = MemoryUpdate::from_validated(MemoryKeys::context(), input);
+        if let Err(e) = self.memory_writer().store(update) {
+            tracing::warn!(error = %e, "Failed to store context to memory");
         }
     }
 
@@ -207,10 +207,10 @@ impl Agent for AdvancedAgent {
         if result.is_success() {
             self.context
                 .push_str(&format!(" [Tool result: {}]", result.output()));
-            if let Ok(update) = MemoryUpdate::new("enriched_context", &self.context) {
-                if let Err(e) = self.memory_writer().store(update) {
-                    tracing::warn!(error = %e, "Failed to store enriched_context to memory");
-                }
+            let update =
+                MemoryUpdate::from_validated(MemoryKeys::enriched_context(), self.context.clone());
+            if let Err(e) = self.memory_writer().store(update) {
+                tracing::warn!(error = %e, "Failed to store enriched_context to memory");
             }
         }
     }
@@ -268,10 +268,9 @@ impl Agent for AnalyticsAgent {
 
     fn observe(&mut self, input: Self::Observation) {
         self.data.push(input.clone());
-        if let Ok(update) = MemoryUpdate::new("latest_data", &input) {
-            if let Err(e) = self.memory_writer().store(update) {
-                tracing::warn!(error = %e, "Failed to store latest_data to memory");
-            }
+        let update = MemoryUpdate::from_validated(MemoryKeys::latest_data(), input);
+        if let Err(e) = self.memory_writer().store(update) {
+            tracing::warn!(error = %e, "Failed to store latest_data to memory");
         }
     }
 
@@ -344,10 +343,12 @@ impl Agent for AnalyticsAgent {
 
     fn handle_result(&mut self, result: ExecutionResult) {
         if result.is_success() {
-            if let Ok(update) = MemoryUpdate::new("analysis_results", result.output()) {
-                if let Err(e) = self.memory_writer().store(update) {
-                    tracing::warn!(error = %e, "Failed to store analysis_results to memory");
-                }
+            let update = MemoryUpdate::from_validated(
+                MemoryKeys::analysis_results(),
+                result.output().to_string(),
+            );
+            if let Err(e) = self.memory_writer().store(update) {
+                tracing::warn!(error = %e, "Failed to store analysis_results to memory");
             }
         }
     }
