@@ -299,14 +299,18 @@ impl AuthService {
         user_id: String,
         permissions: Vec<String>,
     ) -> RuntimeResult<TokenResult> {
-        let secret = self.secret_manager.get_jwt_secret().await;
-        
-        // TODO: Implement proper JWT creation using the secret
-        // This is a placeholder that would use the jsonwebtoken crate
-        
+        let _secret = self.secret_manager.get_jwt_secret().await;
+
+        // Use existing JWT implementation from auth module
+        let token = crate::runtime::auth::create_jwt_token(user_id, permissions)
+            .map_err(|e| RuntimeError::TokenCreationFailed {
+                request_id: RequestId::new(),
+                reason: e.to_string(),
+            })?;
+
         Ok(TokenResult {
-            token: "generated-token".to_string(),
-            expires_in: 86400,
+            token,
+            expires_in: 86400, // 24 hours
             token_type: "Bearer".to_string(),
         })
     }
@@ -319,10 +323,15 @@ impl AuthService {
     ) -> RuntimeResult<AuthContext> {
         match token {
             crate::runtime::auth_token::AuthToken::Jwt(jwt) => {
-                // TODO: Validate JWT using secret manager
+                // Validate JWT using existing auth module implementation
+                let token_data = crate::runtime::auth::validate_jwt_token(jwt)
+                    .map_err(|e| RuntimeError::Auth(crate::runtime::error::AuthError::InvalidToken(
+                        crate::runtime::auth_token::AuthTokenError::InvalidFormat(e.to_string())
+                    )))?;
+
                 Ok(AuthContext {
-                    user_id: "jwt-user".to_string(),
-                    permissions: vec!["read".to_string(), "write".to_string()],
+                    user_id: token_data.claims.sub,
+                    permissions: token_data.claims.permissions,
                     auth_method: AuthMethod::Jwt,
                 })
             }
