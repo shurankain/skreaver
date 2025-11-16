@@ -605,13 +605,25 @@ mod tests {
 
         // Localhost variants
         let localhost_result = validator.validate_url("http://localhost/");
-        assert!(localhost_result.is_err(), "Should block localhost: {:?}", localhost_result);
+        assert!(
+            localhost_result.is_err(),
+            "Should block localhost: {:?}",
+            localhost_result
+        );
 
         let ipv4_result = validator.validate_url("http://127.0.0.1/");
-        assert!(ipv4_result.is_err(), "Should block 127.0.0.1: {:?}", ipv4_result);
+        assert!(
+            ipv4_result.is_err(),
+            "Should block 127.0.0.1: {:?}",
+            ipv4_result
+        );
 
         let ipv6_result = validator.validate_url("http://[::1]/");
-        assert!(ipv6_result.is_err(), "Should block IPv6 loopback: {:?}", ipv6_result);
+        assert!(
+            ipv6_result.is_err(),
+            "Should block IPv6 loopback: {:?}",
+            ipv6_result
+        );
     }
 
     #[test]

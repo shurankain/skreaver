@@ -449,7 +449,10 @@ mod tests {
             .unwrap();
 
         let mut headers = HeaderMap::new();
-        headers.insert("X-API-Key", HeaderValue::from_str(key.expose_key()).unwrap());
+        headers.insert(
+            "X-API-Key",
+            HeaderValue::from_str(key.expose_key()).unwrap(),
+        );
 
         let auth_context = extract_auth_context(&headers, &manager).await.unwrap();
         assert!(!auth_context.user_id.is_empty());

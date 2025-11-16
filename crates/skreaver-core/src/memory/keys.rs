@@ -164,7 +164,11 @@ mod tests {
 
             // Verify we can create the same key through normal validation
             let validated = MemoryKey::new(key.as_str());
-            assert!(validated.is_ok(), "Predefined key '{}' failed validation", key.as_str());
+            assert!(
+                validated.is_ok(),
+                "Predefined key '{}' failed validation",
+                key.as_str()
+            );
         }
     }
 

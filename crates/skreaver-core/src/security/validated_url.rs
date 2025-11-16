@@ -185,7 +185,10 @@ mod tests {
         assert_eq!(validated.port(), Some(8080));
         assert_eq!(validated.path(), "/path");
         assert_eq!(validated.query(), Some("query=value"));
-        assert_eq!(validated.as_str(), "https://example.com:8080/path?query=value");
+        assert_eq!(
+            validated.as_str(),
+            "https://example.com:8080/path?query=value"
+        );
     }
 
     #[test]
