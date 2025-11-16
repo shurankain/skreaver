@@ -53,6 +53,8 @@
 
 /// Concrete agent builders for standard agent types.
 pub mod agent_builders;
+/// Specific error types for agent operations.
+pub mod agent_error;
 /// Agent factory pattern for dynamic agent creation.
 pub mod agent_factory;
 /// Agent instance management with state tracking.

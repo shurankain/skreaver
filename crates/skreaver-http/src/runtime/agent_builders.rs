@@ -5,6 +5,7 @@
 
 #![allow(clippy::collapsible_if)]
 
+use crate::runtime::agent_error::{AgentBuildError, ConfigExt};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -50,7 +51,7 @@ pub struct EchoAgent {
 }
 
 impl EchoAgent {
-    pub fn new(_config: HashMap<String, Value>) -> Result<Self, String> {
+    pub fn new(_config: HashMap<String, Value>) -> Result<Self, AgentBuildError> {
         Ok(Self {
             memory: InMemoryMemory::default(),
             last_input: None,
@@ -128,17 +129,23 @@ enum ProcessingMode {
 }
 
 impl AdvancedAgent {
-    pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
-        let processing_mode = match config.get("mode").and_then(|v| v.as_str()) {
-            Some("analytical") => ProcessingMode::Analytical,
-            Some("creative") => ProcessingMode::Creative,
-            _ => ProcessingMode::Simple,
+    pub fn new(config: HashMap<String, Value>) -> Result<Self, AgentBuildError> {
+        // Use the ConfigExt trait for type-safe config extraction
+        let mode_str = config.get_string_or("mode", "simple");
+
+        let processing_mode = match mode_str.as_str() {
+            "analytical" => ProcessingMode::Analytical,
+            "creative" => ProcessingMode::Creative,
+            "simple" => ProcessingMode::Simple,
+            other => {
+                return Err(AgentBuildError::invalid_mode(
+                    other,
+                    vec!["simple".into(), "analytical".into(), "creative".into()],
+                ))
+            }
         };
 
-        let use_tools = config
-            .get("use_tools")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+        let use_tools = config.get_bool_or("use_tools", true);
 
         Ok(Self {
             memory: InMemoryMemory::default(),
@@ -246,7 +253,7 @@ enum AnalysisDepth {
 }
 
 impl AnalyticsAgent {
-    pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
+    pub fn new(config: HashMap<String, Value>) -> Result<Self, AgentBuildError> {
         let analysis_depth = match config.get("depth").and_then(|v| v.as_str()) {
             Some("detailed") => AnalysisDepth::Detailed,
             Some("comprehensive") => AnalysisDepth::Comprehensive,
@@ -375,13 +382,16 @@ pub struct EchoCoordinator {
 }
 
 impl EchoCoordinator {
-    pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
+    pub fn new(config: HashMap<String, Value>) -> Result<Self, AgentBuildError> {
         let mut agent = EchoAgent::new(config)?;
 
         // Initialize the agent before use
         agent
             .initialize()
-            .map_err(|e| format!("Agent initialization failed: {}", e))?;
+            .map_err(|e| AgentBuildError::ValidationFailed {
+                what: "agent initialization".to_string(),
+                reason: e.to_string(),
+            })?;
 
         let registry = InMemoryToolRegistry::new();
         Ok(Self {
@@ -414,13 +424,16 @@ pub struct AdvancedCoordinator {
 }
 
 impl AdvancedCoordinator {
-    pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
+    pub fn new(config: HashMap<String, Value>) -> Result<Self, AgentBuildError> {
         let mut agent = AdvancedAgent::new(config)?;
 
         // Initialize the agent before use
         agent
             .initialize()
-            .map_err(|e| format!("Agent initialization failed: {}", e))?;
+            .map_err(|e| AgentBuildError::ValidationFailed {
+                what: "agent initialization".to_string(),
+                reason: e.to_string(),
+            })?;
 
         let registry = InMemoryToolRegistry::new();
 
@@ -460,13 +473,16 @@ pub struct AnalyticsCoordinator {
 }
 
 impl AnalyticsCoordinator {
-    pub fn new(config: HashMap<String, Value>) -> Result<Self, String> {
+    pub fn new(config: HashMap<String, Value>) -> Result<Self, AgentBuildError> {
         let mut agent = AnalyticsAgent::new(config)?;
 
         // Initialize the agent before use
         agent
             .initialize()
-            .map_err(|e| format!("Agent initialization failed: {}", e))?;
+            .map_err(|e| AgentBuildError::ValidationFailed {
+                what: "agent initialization".to_string(),
+                reason: e.to_string(),
+            })?;
 
         let registry = InMemoryToolRegistry::new();
 
@@ -522,7 +538,7 @@ impl AgentBuilder for EchoAgentBuilder {
         let coordinator = EchoCoordinator::new(spec.config.clone()).map_err(|e| {
             AgentFactoryError::CreationFailed {
                 agent_type: self.agent_type(),
-                reason: e,
+                reason: e.to_string(),
             }
         })?;
         Ok(Box::new(coordinator))
@@ -561,7 +577,7 @@ impl AgentBuilder for AdvancedAgentBuilder {
         let coordinator = AdvancedCoordinator::new(spec.config.clone()).map_err(|e| {
             AgentFactoryError::CreationFailed {
                 agent_type: self.agent_type(),
-                reason: e,
+                reason: e.to_string(),
             }
         })?;
         Ok(Box::new(coordinator))
@@ -622,7 +638,7 @@ impl AgentBuilder for AnalyticsAgentBuilder {
         let coordinator = AnalyticsCoordinator::new(spec.config.clone()).map_err(|e| {
             AgentFactoryError::CreationFailed {
                 agent_type: self.agent_type(),
-                reason: e,
+                reason: e.to_string(),
             }
         })?;
         Ok(Box::new(coordinator))
