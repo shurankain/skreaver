@@ -257,8 +257,8 @@ impl DomainValidator {
     ///
     /// ```
     /// use skreaver_core::security::{
-    ///     DomainValidator, HttpPolicy, HttpAccess, TimeoutSeconds,
-    ///     ResponseSizeLimit, RedirectLimit
+    ///     DomainValidator, DomainFilter, HttpAccessConfig, HttpPolicy, HttpAccess,
+    ///     RedirectLimit
     /// };
     ///
     /// let policy = HttpPolicy {

@@ -16,8 +16,8 @@
 //!
 //! ```
 //! use skreaver_core::security::{
-//!     DomainValidator, HttpPolicy, HttpAccess, TimeoutSeconds,
-//!     ResponseSizeLimit, RedirectLimit
+//!     DomainValidator, DomainFilter, HttpAccessConfig, HttpPolicy, HttpAccess,
+//!     RedirectLimit
 //! };
 //!
 //! let policy = HttpPolicy {
@@ -68,8 +68,8 @@ use url::Url;
 ///
 /// ```
 /// use skreaver_core::security::{
-///     DomainValidator, ValidatedUrl, HttpPolicy, HttpAccess,
-///     TimeoutSeconds, ResponseSizeLimit, RedirectLimit
+///     DomainValidator, DomainFilter, HttpAccessConfig, ValidatedUrl, HttpPolicy, HttpAccess,
+///     RedirectLimit
 /// };
 ///
 /// let policy = HttpPolicy {

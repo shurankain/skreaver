@@ -31,25 +31,18 @@
 //! use skreaver_core::memory::{MemoryUpdate, MemoryKeys, MemoryWriter};
 //! use skreaver_core::InMemoryMemory;
 //!
-//! struct MyAgent {
-//!     last_input: Option<String>,
-//!     memory: InMemoryMemory,
-//! }
+//! // Using predefined keys eliminates runtime validation errors
+//! let mut memory = InMemoryMemory::new();
+//! let input = "user observation".to_string();
 //!
-//! impl MyAgent {
-//!     fn observe(&mut self, input: String) {
-//!         self.last_input = Some(input.clone());
+//! // No validation failure possible with predefined keys!
+//! let update = MemoryUpdate::from_validated(
+//!     MemoryKeys::last_input(),
+//!     input,
+//! );
 //!
-//!         // No validation failure possible!
-//!         let update = MemoryUpdate::from_validated(
-//!             MemoryKeys::last_input(),
-//!             input,
-//!         );
-//!
-//!         // Store can still fail (I/O), but key is guaranteed valid
-//!         let _ = self.memory.store(update);
-//!     }
-//! }
+//! // Store can still fail (I/O), but key is guaranteed valid
+//! memory.store(update).expect("memory store failed");
 //! ```
 
 use super::MemoryKey;

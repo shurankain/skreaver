@@ -73,12 +73,20 @@ async fn test_load_security_config_from_file() {
     // Verify HTTP policy exists
     assert!(!matches!(security_config.http.access, HttpAccess::Disabled));
 
-    // Check if HTTP policy has allowed domains (if it's InternetAccess)
-    if let HttpAccess::InternetAccess { allow_domains, .. } = &security_config.http.access {
-        assert!(
-            !allow_domains.is_empty(),
-            "HTTP policy should have allowed domains"
-        );
+    // Check if HTTP policy has domain filtering configured
+    if let HttpAccess::Internet { domain_filter, .. } = &security_config.http.access {
+        use skreaver_core::security::DomainFilter;
+        match domain_filter {
+            DomainFilter::AllowList { allow_list, .. } => {
+                assert!(
+                    !allow_list.is_empty(),
+                    "HTTP policy AllowList should have allowed domains"
+                );
+            }
+            DomainFilter::AllowAll { .. } => {
+                // AllowAll is also valid - no assertion needed
+            }
+        }
     }
 
     // Verify network policy exists

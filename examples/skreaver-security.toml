@@ -63,8 +63,8 @@ max_files_per_operation = 100
 # HTTP Policy
 # ----------------------------------------------------------------------------
 [http]
-# Access control mode: "Disabled", { LocalOnly = {...} }, or { InternetAccess = {...} }
-access = { InternetAccess = { allow_domains = ["api.example.com", "data.example.com"], deny_domains = ["malicious-site.com"], allow_local = false, timeout = 30, max_response_size = 33554432, max_redirects = 3, user_agent = "Skreaver-Agent/0.3.0" } }
+# Access control mode: "Disabled", { LocalOnly = {...} }, or { Internet = {...} }
+access = { Internet = { config = { timeout = 30, max_response_size = 33554432 }, domain_filter = { AllowList = { allow_list = ["api.example.com", "data.example.com"], deny_list = ["malicious-site.com"] } }, include_local = false, max_redirects = 3, user_agent = "Skreaver-Agent/0.3.0" } }
 
 # Allowed HTTP methods
 # Common: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]

@@ -74,37 +74,47 @@ fn display_http_policy(config: &SecurityConfig) {
         HttpAccess::Disabled => {
             println!("   Status: ❌ DISABLED");
         }
-        HttpAccess::LocalOnly {
-            timeout,
-            max_response_size,
-        } => {
+        HttpAccess::LocalOnly(config) => {
             println!("   Status: ✅ ENABLED (Local Only)");
-            println!("   Timeout: {:?}", timeout);
-            println!("   Max Response Size: {:?}", max_response_size);
+            println!("   Timeout: {:?}", config.timeout);
+            println!("   Max Response Size: {:?}", config.max_response_size);
         }
-        HttpAccess::InternetAccess {
-            allow_domains,
-            deny_domains,
-            allow_local,
-            timeout,
-            max_response_size,
+        HttpAccess::Internet {
+            config,
+            domain_filter,
+            include_local,
             max_redirects,
             user_agent,
         } => {
+            use skreaver_core::security::DomainFilter;
             println!("   Status: ✅ ENABLED (Internet Access)");
-            println!("   Allowed Domains ({}):", allow_domains.len());
-            for domain in allow_domains {
-                println!("      ✅ {}", domain);
+
+            match domain_filter {
+                DomainFilter::AllowAll { deny_list } => {
+                    println!("   Domain Filter: Allow All (except denied)");
+                    println!("   Denied Domains ({}):", deny_list.len());
+                    for domain in deny_list {
+                        println!("      🚫 {}", domain);
+                    }
+                }
+                DomainFilter::AllowList { allow_list, deny_list } => {
+                    println!("   Domain Filter: Allow List");
+                    println!("   Allowed Domains ({}):", allow_list.len());
+                    for domain in allow_list {
+                        println!("      ✅ {}", domain);
+                    }
+                    println!("\n   Denied Domains ({}):", deny_list.len());
+                    for domain in deny_list {
+                        println!("      🚫 {}", domain);
+                    }
+                }
             }
-            println!("\n   Denied Domains ({}):", deny_domains.len());
-            for domain in deny_domains {
-                println!("      🚫 {}", domain);
-            }
-            println!("\n   Timeout: {:?}", timeout);
-            println!("   Max Response Size: {:?}", max_response_size);
+
+            println!("\n   Timeout: {:?}", config.timeout);
+            println!("   Max Response Size: {:?}", config.max_response_size);
             println!("   Max Redirects: {:?}", max_redirects);
             println!("   User Agent: {}", user_agent);
-            println!("   Allow Local: {}", allow_local);
+            println!("   Allow Local: {}", include_local);
         }
     }
     println!();
