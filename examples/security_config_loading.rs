@@ -97,7 +97,10 @@ fn display_http_policy(config: &SecurityConfig) {
                         println!("      🚫 {}", domain);
                     }
                 }
-                DomainFilter::AllowList { allow_list, deny_list } => {
+                DomainFilter::AllowList {
+                    allow_list,
+                    deny_list,
+                } => {
                     println!("   Domain Filter: Allow List");
                     println!("   Allowed Domains ({}):", allow_list.len());
                     for domain in allow_list {
