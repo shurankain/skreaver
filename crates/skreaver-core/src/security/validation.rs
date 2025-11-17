@@ -1,7 +1,9 @@
 //! Input validation and sanitization
 
 use super::errors::SecurityError;
-use super::policy::{FileSystemPolicy, HttpPolicy, SecurityPolicy};
+use super::policy::{
+    DomainFilter, FileSystemPolicy, HttpAccess, HttpAccessConfig, HttpPolicy, SecurityPolicy,
+};
 use super::validated_url::ValidatedUrl;
 #[cfg(feature = "security-basic")]
 use once_cell::sync::Lazy;
@@ -260,12 +262,13 @@ impl DomainValidator {
     /// };
     ///
     /// let policy = HttpPolicy {
-    ///     access: HttpAccess::InternetAccess {
-    ///         allow_domains: vec!["example.com".to_string()],
-    ///         deny_domains: vec![],
-    ///         allow_local: false,
-    ///         timeout: TimeoutSeconds::default(),
-    ///         max_response_size: ResponseSizeLimit::default(),
+    ///     access: HttpAccess::Internet {
+    ///         config: HttpAccessConfig::default(),
+    ///         domain_filter: DomainFilter::AllowList {
+    ///             allow_list: vec!["example.com".to_string()],
+    ///             deny_list: vec![],
+    ///         },
+    ///         include_local: false,
     ///         max_redirects: RedirectLimit::default(),
     ///         user_agent: "test".to_string(),
     ///     },
@@ -317,8 +320,8 @@ impl DomainValidator {
         // Check for local/private IPs if not allowed
         let allow_local = match &self.policy.access {
             super::HttpAccess::Disabled => false,
-            super::HttpAccess::LocalOnly { .. } => true,
-            super::HttpAccess::InternetAccess { allow_local, .. } => *allow_local,
+            super::HttpAccess::LocalOnly(_) => true,
+            super::HttpAccess::Internet { include_local, .. } => *include_local,
         };
 
         if !allow_local {
@@ -463,7 +466,10 @@ pub struct ScanResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::security::{HttpAccess, RedirectLimit, ResponseSizeLimit, TimeoutSeconds};
+    use crate::security::{
+        DomainFilter, HttpAccess, HttpAccessConfig, RedirectLimit, ResponseSizeLimit,
+        TimeoutSeconds,
+    };
 
     #[test]
     fn test_input_validator_secrets() {
@@ -487,12 +493,13 @@ mod tests {
     #[test]
     fn test_domain_validator() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["*.example.com".to_string()],
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowList {
+                    allow_list: vec!["*.example.com".to_string()],
+                    deny_list: vec![],
+                },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -535,12 +542,12 @@ mod tests {
     #[test]
     fn test_ssrf_aws_metadata_endpoint_blocked() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["*".to_string()], // Allow all domains
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowAll {
+                    deny_list: vec![], // Allow all domains
+                },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -557,12 +564,10 @@ mod tests {
     #[test]
     fn test_ssrf_private_ip_ranges_blocked() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["*".to_string()],
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowAll { deny_list: vec![] },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -589,12 +594,10 @@ mod tests {
     #[test]
     fn test_ssrf_localhost_variants_blocked() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["*".to_string()],
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowAll { deny_list: vec![] },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -629,12 +632,13 @@ mod tests {
     #[test]
     fn test_validated_url_type_safety() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["example.com".to_string()],
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowList {
+                    allow_list: vec!["example.com".to_string()],
+                    deny_list: vec![],
+                },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -661,12 +665,13 @@ mod tests {
         // So external code CANNOT create ValidatedUrl without validation
 
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["safe.com".to_string()],
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowList {
+                    allow_list: vec!["safe.com".to_string()],
+                    deny_list: vec![],
+                },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -686,12 +691,10 @@ mod tests {
     #[test]
     fn test_ssrf_allow_local_when_explicitly_enabled() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["*".to_string()],
-                deny_domains: vec![],
-                allow_local: true, // Explicitly allow local
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowAll { deny_list: vec![] },
+                include_local: true, // Explicitly allow local
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },
@@ -708,12 +711,13 @@ mod tests {
     #[test]
     fn test_url_scheme_validation() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["example.com".to_string()],
-                deny_domains: vec![],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowList {
+                    allow_list: vec!["example.com".to_string()],
+                    deny_list: vec![],
+                },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },

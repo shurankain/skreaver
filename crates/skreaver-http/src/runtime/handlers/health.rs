@@ -165,10 +165,13 @@ async fn check_security_health<T: ToolRegistry + Clone + Send + Sync>(
         HttpAccess::Disabled => {
             issues.push("HTTP access is disabled".to_string());
         }
-        HttpAccess::InternetAccess { allow_domains, .. } if allow_domains.is_empty() => {
+        HttpAccess::Internet {
+            domain_filter: skreaver_core::security::DomainFilter::AllowList { allow_list, .. },
+            ..
+        } if allow_list.is_empty() => {
             issues.push("No HTTP domains allowed".to_string());
         }
-        _ => {} // LocalOnly or InternetAccess with domains is fine
+        _ => {} // LocalOnly or Internet with AllowAll/non-empty AllowList is fine
     }
 
     // Check resource limits
@@ -189,8 +192,15 @@ async fn check_security_health<T: ToolRegistry + Clone + Send + Sync>(
     health.response_time_ms = response_time;
 
     let http_domains_count = match &security_config.http.access {
-        HttpAccess::InternetAccess { allow_domains, .. } => allow_domains.len(),
-        HttpAccess::LocalOnly { .. } => 0,
+        HttpAccess::Internet {
+            domain_filter: skreaver_core::security::DomainFilter::AllowList { allow_list, .. },
+            ..
+        } => allow_list.len(),
+        HttpAccess::Internet {
+            domain_filter: skreaver_core::security::DomainFilter::AllowAll { .. },
+            ..
+        } => 0, // AllowAll means no specific allowed domains
+        HttpAccess::LocalOnly(_) => 0,
         HttpAccess::Disabled => 0,
     };
 

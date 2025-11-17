@@ -481,33 +481,43 @@ impl FileSystemPolicy {
     }
 }
 
-/// HTTP access mode
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HttpAccess {
-    /// HTTP access is disabled
-    Disabled,
-    /// Only local/loopback access allowed
-    LocalOnly {
-        timeout: TimeoutSeconds,
-        max_response_size: ResponseSizeLimit,
+/// Common configuration for HTTP access
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HttpAccessConfig {
+    pub timeout: TimeoutSeconds,
+    pub max_response_size: ResponseSizeLimit,
+}
+
+impl Default for HttpAccessConfig {
+    fn default() -> Self {
+        Self {
+            timeout: TimeoutSeconds::default(),
+            max_response_size: ResponseSizeLimit::default(),
+        }
+    }
+}
+
+/// Domain filtering strategy
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DomainFilter {
+    /// Allow all domains (except those explicitly denied)
+    AllowAll {
+        #[serde(default)]
+        deny_list: Vec<String>,
     },
-    /// Internet access with domain controls
-    InternetAccess {
-        allow_domains: Vec<String>,
-        deny_domains: Vec<String>,
-        allow_local: bool,
-        timeout: TimeoutSeconds,
-        max_response_size: ResponseSizeLimit,
-        max_redirects: RedirectLimit,
-        user_agent: String,
+    /// Only allow specific domains (and deny others)
+    AllowList {
+        allow_list: Vec<String>,
+        #[serde(default)]
+        deny_list: Vec<String>,
     },
 }
 
-impl Default for HttpAccess {
+impl Default for DomainFilter {
     fn default() -> Self {
-        Self::InternetAccess {
-            allow_domains: vec![],
-            deny_domains: vec![
+        // Default denies dangerous internal endpoints
+        Self::AllowAll {
+            deny_list: vec![
                 "localhost".to_string(),
                 "127.0.0.1".to_string(),
                 "0.0.0.0".to_string(),
@@ -517,9 +527,33 @@ impl Default for HttpAccess {
                 "172.16.*".to_string(),
                 "192.168.*".to_string(),
             ],
-            allow_local: false,
-            timeout: TimeoutSeconds::default(),
-            max_response_size: ResponseSizeLimit::default(),
+        }
+    }
+}
+
+/// HTTP access mode
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum HttpAccess {
+    /// HTTP access is disabled
+    Disabled,
+    /// Only local/loopback access allowed
+    LocalOnly(HttpAccessConfig),
+    /// Internet access with domain controls
+    Internet {
+        config: HttpAccessConfig,
+        domain_filter: DomainFilter,
+        include_local: bool,
+        max_redirects: RedirectLimit,
+        user_agent: String,
+    },
+}
+
+impl Default for HttpAccess {
+    fn default() -> Self {
+        Self::Internet {
+            config: HttpAccessConfig::default(),
+            domain_filter: DomainFilter::default(),
+            include_local: false,
             max_redirects: RedirectLimit::default(),
             user_agent: "skreaver-agent/0.1.0".to_string(),
         }
@@ -566,41 +600,54 @@ impl HttpPolicy {
             HttpAccess::Disabled => Err(SecurityError::ToolDisabled {
                 tool_name: "http".to_string(),
             }),
-            HttpAccess::LocalOnly { .. } => {
+            HttpAccess::LocalOnly(_) => {
                 // Only allow localhost/127.0.0.1
                 Ok(domain == "localhost" || domain.starts_with("127."))
             }
-            HttpAccess::InternetAccess {
-                allow_domains,
-                deny_domains,
-                allow_local,
+            HttpAccess::Internet {
+                domain_filter,
+                include_local,
                 ..
             } => {
-                // Check deny list first (takes precedence)
-                for denied in deny_domains {
-                    if Self::matches_pattern(domain, denied) {
-                        return Ok(false);
-                    }
-                }
-
-                // If allow_local is false, block localhost
-                if !allow_local && (domain == "localhost" || domain.starts_with("127.")) {
+                // If include_local is false, block localhost
+                if !include_local && (domain == "localhost" || domain.starts_with("127.")) {
                     return Ok(false);
                 }
 
-                // If allow list is empty, allow all (except denied)
-                if allow_domains.is_empty() {
-                    return Ok(true);
-                }
+                // Check domain filter
+                match domain_filter {
+                    DomainFilter::AllowAll { deny_list } => {
+                        // Check deny list
+                        for denied in deny_list {
+                            if Self::matches_pattern(domain, denied) {
+                                return Ok(false);
+                            }
+                        }
+                        // Not denied, so allow
+                        Ok(true)
+                    }
+                    DomainFilter::AllowList {
+                        allow_list,
+                        deny_list,
+                    } => {
+                        // Check deny list first (takes precedence)
+                        for denied in deny_list {
+                            if Self::matches_pattern(domain, denied) {
+                                return Ok(false);
+                            }
+                        }
 
-                // Check allow list
-                for allowed in allow_domains {
-                    if Self::matches_pattern(domain, allowed) {
-                        return Ok(true);
+                        // Check allow list
+                        for allowed in allow_list {
+                            if Self::matches_pattern(domain, allowed) {
+                                return Ok(true);
+                            }
+                        }
+
+                        // Not in allow list, so deny
+                        Ok(false)
                     }
                 }
-
-                Ok(false)
             }
         }
     }
@@ -622,8 +669,8 @@ impl HttpPolicy {
     pub fn get_timeout(&self) -> Duration {
         match &self.access {
             HttpAccess::Disabled => Duration::from_secs(0),
-            HttpAccess::LocalOnly { timeout, .. } | HttpAccess::InternetAccess { timeout, .. } => {
-                timeout.as_duration()
+            HttpAccess::LocalOnly(config) | HttpAccess::Internet { config, .. } => {
+                config.timeout.as_duration()
             }
         }
     }
@@ -737,12 +784,13 @@ mod tests {
     #[test]
     fn test_http_policy_domain_matching() {
         let policy = HttpPolicy {
-            access: HttpAccess::InternetAccess {
-                allow_domains: vec!["*.example.com".to_string(), "api.test.org".to_string()],
-                deny_domains: vec!["evil.example.com".to_string()],
-                allow_local: false,
-                timeout: TimeoutSeconds::default(),
-                max_response_size: ResponseSizeLimit::default(),
+            access: HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: DomainFilter::AllowList {
+                    allow_list: vec!["*.example.com".to_string(), "api.test.org".to_string()],
+                    deny_list: vec!["evil.example.com".to_string()],
+                },
+                include_local: false,
                 max_redirects: RedirectLimit::default(),
                 user_agent: "test".to_string(),
             },

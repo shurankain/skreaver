@@ -21,12 +21,13 @@
 //! };
 //!
 //! let policy = HttpPolicy {
-//!     access: HttpAccess::InternetAccess {
-//!         allow_domains: vec!["example.com".to_string()],
-//!         deny_domains: vec![],
-//!         allow_local: false,
-//!         timeout: TimeoutSeconds::default(),
-//!         max_response_size: ResponseSizeLimit::default(),
+//!     access: HttpAccess::Internet {
+//!         config: HttpAccessConfig::default(),
+//!         domain_filter: DomainFilter::AllowList {
+//!             allow_list: vec!["example.com".to_string()],
+//!             deny_list: vec![],
+//!         },
+//!         include_local: false,
 //!         max_redirects: RedirectLimit::default(),
 //!         user_agent: "test".to_string(),
 //!     },
@@ -72,12 +73,13 @@ use url::Url;
 /// };
 ///
 /// let policy = HttpPolicy {
-///     access: HttpAccess::InternetAccess {
-///         allow_domains: vec!["httpbin.org".to_string()],
-///         deny_domains: vec![],
-///         allow_local: false,
-///         timeout: TimeoutSeconds::default(),
-///         max_response_size: ResponseSizeLimit::default(),
+///     access: HttpAccess::Internet {
+///         config: HttpAccessConfig::default(),
+///         domain_filter: DomainFilter::AllowList {
+///             allow_list: vec!["httpbin.org".to_string()],
+///             deny_list: vec![],
+///         },
+///         include_local: false,
 ///         max_redirects: RedirectLimit::default(),
 ///         user_agent: "test".to_string(),
 ///     },

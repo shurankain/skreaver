@@ -29,8 +29,8 @@ pub use types::{
 use super::errors::SecurityError;
 use super::limits::ResourceLimits;
 use super::policy::{
-    FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy, NetworkPolicy, SecurityPolicy,
-    SymlinkBehavior, ToolSecurityPolicy,
+    DomainFilter, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy, NetworkPolicy,
+    SecurityPolicy, SymlinkBehavior, ToolSecurityPolicy,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -192,18 +192,20 @@ impl SecurityConfig {
         // during deserialization, so no additional validation is needed here.
 
         // Validate HTTP policies
-        if let HttpAccess::InternetAccess { allow_domains, .. } = &self.http.access
-            && allow_domains.is_empty()
+        if let HttpAccess::Internet {
+            domain_filter: DomainFilter::AllowList { allow_list, .. },
+            ..
+        } = &self.http.access
+            && allow_list.is_empty()
             && !self.development.enabled
         {
-            tracing::warn!(
-                "HTTP enabled but no allowed domains configured (all domains will be blocked)"
-            );
+            tracing::warn!("HTTP enabled with empty allow list (all domains will be blocked)");
         }
 
         // Check for overly permissive settings (WARNINGS)
-        if let HttpAccess::InternetAccess {
-            allow_local: true, ..
+        if let HttpAccess::Internet {
+            include_local: true,
+            ..
         } = &self.http.access
             && !self.development.enabled
         {
@@ -345,7 +347,7 @@ max_file_size_bytes = 16777216
 max_files_per_operation = 100
 
 [http]
-access = { InternetAccess = { allow_domains = ["example.com"], deny_domains = ["localhost"], allow_local = false, timeout = 30, max_response_size = 33554432, max_redirects = 3, user_agent = "test-agent" } }
+access = { Internet = { config = { timeout = 30, max_response_size = 33554432 }, domain_filter = { AllowList = { allow_list = ["example.com"], deny_list = ["localhost"] } }, include_local = false, max_redirects = 3, user_agent = "test-agent" } }
 allow_methods = ["GET", "POST"]
 default_headers = []
 

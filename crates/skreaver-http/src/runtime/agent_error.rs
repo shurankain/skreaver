@@ -258,10 +258,12 @@ pub trait ConfigExt {
 
 impl ConfigExt for HashMap<String, Value> {
     fn get_string(&self, field: &str) -> Result<String, AgentBuildError> {
-        let value = self.get(field)
+        let value = self
+            .get(field)
             .ok_or_else(|| AgentBuildError::missing_field(field))?;
 
-        value.as_str()
+        value
+            .as_str()
             .ok_or_else(|| AgentBuildError::invalid_type(field, "string", value))
             .map(|s| s.to_string())
     }
@@ -274,10 +276,12 @@ impl ConfigExt for HashMap<String, Value> {
     }
 
     fn get_bool(&self, field: &str) -> Result<bool, AgentBuildError> {
-        let value = self.get(field)
+        let value = self
+            .get(field)
             .ok_or_else(|| AgentBuildError::missing_field(field))?;
 
-        value.as_bool()
+        value
+            .as_bool()
             .ok_or_else(|| AgentBuildError::invalid_type(field, "boolean", value))
     }
 
@@ -286,10 +290,12 @@ impl ConfigExt for HashMap<String, Value> {
     }
 
     fn get_i64(&self, field: &str) -> Result<i64, AgentBuildError> {
-        let value = self.get(field)
+        let value = self
+            .get(field)
             .ok_or_else(|| AgentBuildError::missing_field(field))?;
 
-        value.as_i64()
+        value
+            .as_i64()
             .ok_or_else(|| AgentBuildError::invalid_type(field, "integer", value))
     }
 

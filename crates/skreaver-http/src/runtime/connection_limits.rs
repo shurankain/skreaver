@@ -179,11 +179,7 @@ impl ConnectionTracker {
         let mut connections = self.connections_per_ip.write().await;
         let count = connections.entry(ip).or_insert(0);
         *count += 1;
-        debug!(
-            "Connection from {} incremented (total: {})",
-            ip,
-            count
-        );
+        debug!("Connection from {} incremented (total: {})", ip, count);
     }
 
     /// Decrement connection counters for the given IP
