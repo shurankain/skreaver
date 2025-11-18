@@ -29,8 +29,8 @@ pub use types::{
 use super::errors::SecurityError;
 use super::limits::ResourceLimits;
 use super::policy::{
-    DomainFilter, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy, NetworkPolicy,
-    SecurityPolicy, SymlinkBehavior, ToolSecurityPolicy,
+    ContentScanning, DomainFilter, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy,
+    NetworkPolicy, SecurityPolicy, SymlinkBehavior, ToolSecurityPolicy,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -340,7 +340,7 @@ created = "2025-09-08"
 description = "Test configuration"
 
 [fs]
-access = { Enabled = { symlink_behavior = "NoFollow", content_scanning = true } }
+access = { Enabled = { symlink_behavior = "NoFollow", content_scanning = "Basic" } }
 allow_paths = ["/tmp"]
 deny_patterns = [".."]
 max_file_size_bytes = 16777216
@@ -495,7 +495,7 @@ version = "0.1.0"
         let mut config = SecurityConfig::create_default();
         config.fs.access = FileSystemAccess::Enabled {
             symlink_behavior: SymlinkBehavior::NoFollow,
-            content_scanning: true,
+            content_scanning: ContentScanning::Basic,
         };
         config.fs.allow_paths.clear();
 

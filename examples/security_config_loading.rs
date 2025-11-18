@@ -40,12 +40,30 @@ fn display_fs_policy(config: &SecurityConfig) {
             symlink_behavior,
             content_scanning,
         } => {
+            use skreaver_core::security::ContentScanning;
             println!("   Status: ✅ ENABLED");
             println!(
                 "   Follow Symlinks: {}",
                 matches!(symlink_behavior, SymlinkBehavior::Follow)
             );
-            println!("   Scan Content: {}", content_scanning);
+            match content_scanning {
+                ContentScanning::Disabled => {
+                    println!("   Content Scanning: Disabled");
+                }
+                ContentScanning::Basic => {
+                    println!("   Content Scanning: Basic (MIME type validation)");
+                }
+                ContentScanning::Advanced {
+                    check_secrets,
+                    check_patterns,
+                } => {
+                    println!("   Content Scanning: Advanced");
+                    println!("      Check Secrets: {}", check_secrets);
+                    if !check_patterns.is_empty() {
+                        println!("      Custom Patterns: {}", check_patterns.len());
+                    }
+                }
+            }
         }
     }
 

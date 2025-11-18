@@ -316,7 +316,7 @@ impl ValidatedFileDescriptor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::security::policy::{FileSystemAccess, SymlinkBehavior};
+    use crate::security::policy::{ContentScanning, FileSystemAccess, SymlinkBehavior};
 
     fn create_test_dir() -> PathBuf {
         use std::time::SystemTime;
@@ -337,7 +337,7 @@ mod tests {
         FileSystemPolicy {
             access: FileSystemAccess::Enabled {
                 symlink_behavior: SymlinkBehavior::NoFollow,
-                content_scanning: false,
+                content_scanning: ContentScanning::Disabled,
             },
             allow_paths: vec![temp_dir.to_path_buf()],
             deny_patterns: vec![],

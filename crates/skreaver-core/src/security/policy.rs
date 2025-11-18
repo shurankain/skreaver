@@ -372,6 +372,30 @@ impl Default for SymlinkBehavior {
     }
 }
 
+/// Content scanning strategy for file operations
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ContentScanning {
+    /// No content scanning performed
+    Disabled,
+    /// Basic MIME type and magic number validation
+    Basic,
+    /// Advanced scanning with pattern matching for secrets/malware
+    Advanced {
+        /// Check for secrets (API keys, tokens, passwords)
+        #[serde(default)]
+        check_secrets: bool,
+        /// Custom patterns to check for (regex)
+        #[serde(default)]
+        check_patterns: Vec<String>,
+    },
+}
+
+impl Default for ContentScanning {
+    fn default() -> Self {
+        Self::Basic
+    }
+}
+
 /// File system access mode
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FileSystemAccess {
@@ -380,7 +404,7 @@ pub enum FileSystemAccess {
     /// File system access is enabled with specific constraints
     Enabled {
         symlink_behavior: SymlinkBehavior,
-        content_scanning: bool,
+        content_scanning: ContentScanning,
     },
 }
 
@@ -388,7 +412,7 @@ impl Default for FileSystemAccess {
     fn default() -> Self {
         Self::Enabled {
             symlink_behavior: SymlinkBehavior::default(),
-            content_scanning: true,
+            content_scanning: ContentScanning::default(),
         }
     }
 }

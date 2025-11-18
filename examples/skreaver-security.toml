@@ -29,9 +29,10 @@ description = "Production security configuration example"
 # File System Policy
 # ----------------------------------------------------------------------------
 [fs]
-# Access control mode: "Disabled" or { Enabled = { symlink_behavior = "...", content_scanning = true/false } }
+# Access control mode: "Disabled" or { Enabled = { symlink_behavior = "...", content_scanning = "..." } }
 # symlink_behavior: "Follow" or "NoFollow"
-access = { Enabled = { symlink_behavior = "NoFollow", content_scanning = true } }
+# content_scanning: "Disabled", "Basic", or { Advanced = { check_secrets = true, check_patterns = [...] } }
+access = { Enabled = { symlink_behavior = "NoFollow", content_scanning = "Basic" } }
 
 # Allowed paths (whitelist) - Only these paths can be accessed
 # Use absolute paths for production
