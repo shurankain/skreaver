@@ -1,9 +1,7 @@
 //! Input validation and sanitization
 
 use super::errors::SecurityError;
-use super::policy::{
-    DomainFilter, FileSystemPolicy, HttpAccess, HttpAccessConfig, HttpPolicy, SecurityPolicy,
-};
+use super::policy::{FileSystemPolicy, HttpPolicy, SecurityPolicy};
 use super::validated_url::ValidatedUrl;
 #[cfg(feature = "security-basic")]
 use once_cell::sync::Lazy;
@@ -466,10 +464,7 @@ pub struct ScanResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::security::{
-        DomainFilter, HttpAccess, HttpAccessConfig, RedirectLimit, ResponseSizeLimit,
-        TimeoutSeconds,
-    };
+    use crate::security::{DomainFilter, HttpAccess, HttpAccessConfig, RedirectLimit};
 
     #[test]
     fn test_input_validator_secrets() {

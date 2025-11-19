@@ -506,19 +506,10 @@ impl FileSystemPolicy {
 }
 
 /// Common configuration for HTTP access
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HttpAccessConfig {
     pub timeout: TimeoutSeconds,
     pub max_response_size: ResponseSizeLimit,
-}
-
-impl Default for HttpAccessConfig {
-    fn default() -> Self {
-        Self {
-            timeout: TimeoutSeconds::default(),
-            max_response_size: ResponseSizeLimit::default(),
-        }
-    }
 }
 
 /// Domain filtering strategy
