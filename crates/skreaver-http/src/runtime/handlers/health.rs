@@ -58,7 +58,7 @@ fn get_memory_usage_mb() -> f64 {
 
     // Use sysinfo for cross-platform memory reporting
     let mut system = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::new().with_memory())
+        RefreshKind::new().with_processes(ProcessRefreshKind::new().with_memory()),
     );
 
     if let Ok(pid) = sysinfo::get_current_pid() {

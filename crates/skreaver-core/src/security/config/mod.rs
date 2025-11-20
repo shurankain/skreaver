@@ -29,8 +29,8 @@ pub use types::{
 use super::errors::SecurityError;
 use super::limits::ResourceLimits;
 use super::policy::{
-    DomainFilter, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy,
-    NetworkPolicy, SecurityPolicy, SymlinkBehavior, ToolSecurityPolicy,
+    DomainFilter, FileSystemAccess, FileSystemPolicy, HttpAccess, HttpPolicy, NetworkPolicy,
+    SecurityPolicy, SymlinkBehavior, ToolSecurityPolicy,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -327,8 +327,8 @@ impl Default for SecurityConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::policy::ContentScanning;
+    use super::*;
     use std::path::PathBuf;
     use std::time::Duration;
 
