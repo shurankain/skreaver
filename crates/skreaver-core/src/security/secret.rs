@@ -133,12 +133,10 @@ impl SecretString {
     /// Compare two secrets in constant time
     ///
     /// This prevents timing attacks when comparing secrets.
-    /// Currently uses simple comparison; for production use consider
-    /// enabling constant-time comparison with the `subtle` crate.
+    /// Uses the `subtle` crate for true constant-time comparison.
     pub fn constant_time_eq(&self, other: &Self) -> bool {
-        // TODO: Add subtle crate dependency for true constant-time comparison
-        // For now, use standard comparison (not truly constant-time)
-        self.inner == other.inner
+        use subtle::ConstantTimeEq;
+        self.inner.as_bytes().ct_eq(other.inner.as_bytes()).into()
     }
 
     /// Get the secret as a string slice
@@ -294,5 +292,23 @@ mod tests {
 
         assert_eq!(secret1.expose_as_str(), secret2.expose_as_str());
         assert_eq!(secret2.expose_as_str(), "original");
+    }
+
+    #[test]
+    fn test_constant_time_eq() {
+        let secret1 = SecretString::from_string("password123".to_string());
+        let secret2 = SecretString::from_string("password123".to_string());
+        let secret3 = SecretString::from_string("different".to_string());
+
+        // Same values should be equal
+        assert!(secret1.constant_time_eq(&secret2));
+        assert!(secret2.constant_time_eq(&secret1));
+
+        // Different values should not be equal
+        assert!(!secret1.constant_time_eq(&secret3));
+        assert!(!secret3.constant_time_eq(&secret1));
+
+        // Same reference should be equal to itself
+        assert!(secret1.constant_time_eq(&secret1));
     }
 }

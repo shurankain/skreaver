@@ -244,8 +244,22 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     }
 
     // Use backpressure manager for request processing
-    let priority = RequestPriority::Normal; // TODO: Allow setting priority in request
-    let timeout = Some(std::time::Duration::from_secs(30)); // TODO: Make configurable
+    let priority = request
+        .priority
+        .as_deref()
+        .and_then(|p| match p.to_lowercase().as_str() {
+            "low" => Some(RequestPriority::Low),
+            "normal" => Some(RequestPriority::Normal),
+            "high" => Some(RequestPriority::High),
+            "critical" => Some(RequestPriority::Critical),
+            _ => None,
+        })
+        .unwrap_or(RequestPriority::Normal);
+
+    let timeout = request
+        .timeout_seconds
+        .map(std::time::Duration::from_secs)
+        .or(Some(std::time::Duration::from_secs(30)));
 
     // Share input via Arc to avoid cloning
     let input_arc = Arc::new(request.input);

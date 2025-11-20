@@ -26,6 +26,14 @@ pub struct ObserveRequest {
     #[serde(default)]
     #[schema(default = false)]
     pub stream: bool,
+    /// Priority for request processing (Low, Normal, High, Critical)
+    #[serde(default)]
+    #[schema(default = "Normal")]
+    pub priority: Option<String>,
+    /// Timeout for the operation in seconds
+    #[serde(default)]
+    #[schema(default = 30)]
+    pub timeout_seconds: Option<u64>,
 }
 
 /// Request body for creating a JWT token

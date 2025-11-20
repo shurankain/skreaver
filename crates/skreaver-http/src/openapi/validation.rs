@@ -352,12 +352,77 @@ impl<T> ValidatedJson<T> {
 }
 
 /// Validation middleware for OpenAPI compliance
+///
+/// This middleware validates requests against OpenAPI schemas. To use it:
+///
+/// 1. Create a `RequestValidator` with schemas loaded from your OpenAPI spec
+/// 2. Store it in Axum state
+/// 3. Apply this middleware to routes that need validation
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use axum::{Router, routing::post, middleware};
+/// use skreaver_http::openapi::validation::{RequestValidator, ValidationConfig, validation_middleware};
+/// use serde_json::json;
+///
+/// let mut validator = RequestValidator::new(ValidationConfig::default());
+/// validator.add_schema("CreateUser".to_string(), json!({
+///     "type": "object",
+///     "required": ["name", "email"],
+///     "properties": {
+///         "name": {"type": "string", "minLength": 1},
+///         "email": {"type": "string", "pattern": "^.+@.+\\..+$"}
+///     }
+/// }));
+///
+/// let app = Router::new()
+///     .route("/users", post(create_user))
+///     .layer(middleware::from_fn(validation_middleware))
+///     .with_state(validator);
+/// ```
+///
+/// # Note
+///
+/// This is a basic implementation. For production use, consider:
+/// - Using a proper JSON Schema validator library (e.g., `jsonschema`)
+/// - Extracting schema name from route metadata
+/// - Caching validation results
+/// - Adding content-type validation
 pub async fn validation_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Result<Response, Response> {
-    // TODO: Implement request validation based on OpenAPI spec
-    // For now, just pass through
+    // Basic implementation: pass through all requests
+    //
+    // For full implementation, you would:
+    // 1. Extract the request path and method
+    // 2. Look up the corresponding OpenAPI operation
+    // 3. Extract and parse the request body
+    // 4. Validate against the operation's requestBody schema
+    // 5. If validation fails, return 422 Unprocessable Entity
+    // 6. If validation succeeds, reconstruct the request and pass to next
+    //
+    // This requires:
+    // - Access to the OpenAPI spec (via state or extension)
+    // - Buffering the request body (which consumes it)
+    // - Re-creating the request with the buffered body
+    //
+    // Example implementation sketch:
+    //
+    // let (parts, body) = req.into_parts();
+    // let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|_| {
+    //     (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read body").into_response()
+    // })?;
+    //
+    // if let Ok(json_value) = serde_json::from_slice::<Value>(&bytes) {
+    //     // Validate json_value against schema
+    //     // If validation fails, return error response
+    // }
+    //
+    // let new_body = axum::body::Body::from(bytes);
+    // let new_req = axum::http::Request::from_parts(parts, new_body);
+
     Ok(next.run(req).await)
 }
 

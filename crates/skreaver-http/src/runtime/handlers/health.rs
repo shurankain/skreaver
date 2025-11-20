@@ -54,6 +54,23 @@ pub async fn health_check() -> (StatusCode, Json<serde_json::Value>) {
 }
 
 fn get_memory_usage_mb() -> f64 {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+
+    // Use sysinfo for cross-platform memory reporting
+    let mut system = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::new().with_memory())
+    );
+
+    if let Ok(pid) = sysinfo::get_current_pid() {
+        // Refresh only the current process
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
+
+        if let Some(process) = system.process(pid) {
+            return process.memory() as f64 / 1024.0 / 1024.0; // Convert bytes to MB
+        }
+    }
+
+    // Fallback to platform-specific implementation
     #[cfg(target_os = "linux")]
     {
         std::fs::read_to_string("/proc/self/status")
@@ -73,7 +90,7 @@ fn get_memory_usage_mb() -> f64 {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        0.0 // TODO: Implement for other platforms
+        0.0
     }
 }
 

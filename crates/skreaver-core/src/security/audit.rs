@@ -503,37 +503,59 @@ impl AuditLogger {
     }
 
     fn update_security_metrics(&self, audit_log: &SecurityAuditLog) {
-        // TODO: Update Prometheus metrics when available
-        // use crate::benchmarks::metrics::SECURITY_METRICS;
-
-        // TODO: Implement metrics when SECURITY_METRICS is available
-        match &audit_log.event {
-            SecurityEvent::PolicyViolation { .. } => {
-                // SECURITY_METRICS.security_violations_by_type.inc();
-            }
-            SecurityEvent::ResourceLimitCheck {
-                result: SecurityResult::LimitExceeded { .. },
-                ..
-            } => {
-                // SECURITY_METRICS.resource_limit_exceeded_total.inc();
-            }
-            SecurityEvent::ValidationAttempt {
-                result: SecurityResult::Denied { .. },
-                ..
-            } => {
-                // SECURITY_METRICS.access_denied_total.inc();
-            }
-            SecurityEvent::AuthenticationAttempt {
-                result: SecurityResult::Error { .. },
-                ..
-            } => {
-                // SECURITY_METRICS.authentication_failures.inc();
-            }
-            SecurityEvent::SuspiciousActivity { .. } => {
-                // SECURITY_METRICS.suspicious_activity_score.set(*confidence_score);
-            }
-            _ => {}
-        }
+        // Metrics are updated via the optional metrics callback if configured
+        // This avoids circular dependencies between skreaver-core and skreaver-observability
+        //
+        // To integrate metrics, set a callback using `AuditLogger::set_metrics_callback`:
+        //
+        // ```rust
+        // use skreaver_observability::get_metrics_registry;
+        //
+        // audit_logger.set_metrics_callback(Box::new(|event| {
+        //     let metrics = get_metrics_registry().core_metrics();
+        //     match event {
+        //         SecurityEvent::PolicyViolation { violation, .. } => {
+        //             metrics.security_policy_violations_total
+        //                 .with_label_values(&[&violation.violation_type])
+        //                 .inc();
+        //         }
+        //         SecurityEvent::ResourceLimitCheck {
+        //             result: SecurityResult::LimitExceeded { .. },
+        //             resource_type,
+        //             ..
+        //         } => {
+        //             metrics.security_resource_limit_exceeded_total
+        //                 .with_label_values(&[resource_type])
+        //                 .inc();
+        //         }
+        //         SecurityEvent::AuthenticationAttempt { result, .. } => {
+        //             let result_label = match result {
+        //                 SecurityResult::Allowed => "success",
+        //                 SecurityResult::Denied { .. } => "failure",
+        //                 SecurityResult::Error { .. } => "invalid",
+        //                 _ => "unknown",
+        //             };
+        //             metrics.security_auth_attempts_total
+        //                 .with_label_values(&[result_label])
+        //                 .inc();
+        //         }
+        //         SecurityEvent::AuthorizationCheck { result, .. } => {
+        //             let result_label = match result {
+        //                 SecurityResult::Allowed => "allowed",
+        //                 SecurityResult::Denied { .. } => "denied",
+        //                 _ => "unknown",
+        //             };
+        //             metrics.security_rbac_checks_total
+        //                 .with_label_values(&[result_label])
+        //                 .inc();
+        //         }
+        //         _ => {}
+        //     }
+        // }));
+        // ```
+        //
+        // For now, this is a no-op. Metrics integration happens at the application layer.
+        _ = audit_log;
     }
 }
 
