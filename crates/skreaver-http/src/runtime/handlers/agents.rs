@@ -33,16 +33,17 @@ pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync + 'static>(
 ) -> Result<Json<AgentsListResponse>, (StatusCode, Json<ErrorResponse>)> {
     let agents = runtime.agents.read().await;
 
-    let agent_statuses: Vec<AgentStatus> = agents
-        .iter()
-        .map(|(id, instance)| AgentStatus {
+    // Collect agent statuses with actual creation time and last activity
+    let mut agent_statuses = Vec::new();
+    for (id, instance) in agents.iter() {
+        agent_statuses.push(AgentStatus {
             agent_id: id.to_string(),
             agent_type: instance.coordinator.get_agent_type().to_string(),
             status: "running".to_string(),
-            created_at: chrono::Utc::now(), // TODO: Track actual creation time
-            last_activity: None,            // TODO: Track last activity
-        })
-        .collect();
+            created_at: instance.created_at,
+            last_activity: Some(instance.get_last_activity().await),
+        });
+    }
 
     Ok(Json(AgentsListResponse {
         total: agent_statuses.len(),
@@ -152,13 +153,16 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync + 'static>(
     let agents = runtime.agents.read().await;
 
     match agents.get(&parsed_id) {
-        Some(instance) => Ok(Json(AgentStatus {
-            agent_id, // No need to clone, we own it
-            agent_type: instance.coordinator.get_agent_type().to_string(),
-            status: "running".to_string(),
-            created_at: chrono::Utc::now(), // TODO: Track actual creation time
-            last_activity: None,            // TODO: Track last activity
-        })),
+        Some(instance) => {
+            let last_activity = instance.get_last_activity().await;
+            Ok(Json(AgentStatus {
+                agent_id, // No need to clone, we own it
+                agent_type: instance.coordinator.get_agent_type().to_string(),
+                status: "running".to_string(),
+                created_at: instance.created_at,
+                last_activity: Some(last_activity),
+            }))
+        }
         None => Err((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
