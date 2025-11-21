@@ -221,10 +221,21 @@ async fn handle_protocol_message(
     match envelope.payload {
         MessagePayload::Handshake(data) => {
             info!(
-                "Handshake from {}: {} v{}",
-                conn_id, data.client_name, data.client_version
+                "Handshake from {}: {} v{} (capabilities: {:?})",
+                conn_id, data.client_name, data.client_version, data.capabilities
             );
-            // TODO: Store handshake information
+
+            // Store handshake information in connection metadata
+            manager
+                .store_handshake_info(
+                    conn_id,
+                    data.client_name,
+                    data.client_version,
+                    data.capabilities,
+                )
+                .await;
+
+            debug!("Stored handshake information for connection {}", conn_id);
             Ok(())
         }
         MessagePayload::Auth(data) => {

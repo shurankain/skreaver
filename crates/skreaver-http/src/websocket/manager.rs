@@ -340,6 +340,32 @@ impl WebSocketManager {
         }
     }
 
+    /// Store handshake information in connection metadata
+    pub async fn store_handshake_info(
+        &self,
+        id: Uuid,
+        client_name: String,
+        client_version: String,
+        capabilities: Vec<String>,
+    ) {
+        let mut guard = self.locks.level1_write().await;
+        if let Some(state) = guard.connections.get_mut(&id) {
+            // Store handshake information in metadata for both connection types
+            match state {
+                ConnectionState::Unauthenticated { info, .. } => {
+                    info.metadata.insert("client_name".to_string(), client_name);
+                    info.metadata.insert("client_version".to_string(), client_version);
+                    info.metadata.insert("capabilities".to_string(), capabilities.join(","));
+                }
+                ConnectionState::Authenticated { info, .. } => {
+                    info.metadata.insert("client_name".to_string(), client_name);
+                    info.metadata.insert("client_version".to_string(), client_version);
+                    info.metadata.insert("capabilities".to_string(), capabilities.join(","));
+                }
+            }
+        }
+    }
+
     /// Handle incoming message
     pub async fn handle_message(&self, conn_id: Uuid, message: WsMessage) -> WsResult<()> {
         debug!("Handling message from {}: {:?}", conn_id, message);
