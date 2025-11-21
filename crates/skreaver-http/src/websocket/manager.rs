@@ -354,13 +354,17 @@ impl WebSocketManager {
             match state {
                 ConnectionState::Unauthenticated { info, .. } => {
                     info.metadata.insert("client_name".to_string(), client_name);
-                    info.metadata.insert("client_version".to_string(), client_version);
-                    info.metadata.insert("capabilities".to_string(), capabilities.join(","));
+                    info.metadata
+                        .insert("client_version".to_string(), client_version);
+                    info.metadata
+                        .insert("capabilities".to_string(), capabilities.join(","));
                 }
                 ConnectionState::Authenticated { info, .. } => {
                     info.metadata.insert("client_name".to_string(), client_name);
-                    info.metadata.insert("client_version".to_string(), client_version);
-                    info.metadata.insert("capabilities".to_string(), capabilities.join(","));
+                    info.metadata
+                        .insert("client_version".to_string(), client_version);
+                    info.metadata
+                        .insert("capabilities".to_string(), capabilities.join(","));
                 }
             }
         }

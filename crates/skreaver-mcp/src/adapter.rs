@@ -94,11 +94,7 @@ impl AdaptedToolRegistry {
         let tools = registry
             .tool_names()
             .iter()
-            .filter_map(|name| {
-                registry
-                    .get_tool(name)
-                    .map(|tool| ToolAdapter::new(tool))
-            })
+            .filter_map(|name| registry.get_tool(name).map(|tool| ToolAdapter::new(tool)))
             .collect();
 
         Self { tools }
