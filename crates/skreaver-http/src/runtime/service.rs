@@ -4,12 +4,13 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use crate::runtime::{
-    agent_instance::{AgentInstance, AgentId, AgentExecutionError},
+    agent_instance::{AgentInstance, AgentId, AgentExecutionError, CoordinatorTrait},
     agent_status::AgentStatus,
-    api_types::{AgentSpec, AgentObservation, AgentResponse, AgentStatusResponse, ResourceUsage, AgentMetrics},
+    api_types::{AgentSpec, AgentType, AgentObservation, AgentResponse, AgentStatusResponse, ResourceUsage, AgentMetrics},
     error::{RuntimeError, AgentError, RuntimeResult},
     performance::OptimizedAgentRegistry,
 };
+use std::collections::HashMap;
 
 /// High-level service interface for agent operations
 /// 
@@ -225,14 +226,40 @@ impl AgentService {
     
     async fn create_agent_instance(
         &self,
-        _agent_id: &AgentId,
-        _spec: &AgentSpec,
+        agent_id: &AgentId,
+        spec: &AgentSpec,
     ) -> RuntimeResult<Arc<AgentInstance>> {
-        // TODO: Implement agent factory pattern
-        // This would create different agent types based on spec.agent_type
-        Err(RuntimeError::Agent(AgentError::CreationFailed(
-            "Agent factory not implemented".to_string()
-        )))
+        // Create coordinator based on agent type using factory pattern
+        let coordinator: Box<dyn CoordinatorTrait + Send + Sync> = match &spec.agent_type {
+            AgentType::Echo => {
+                Box::new(EchoCoordinator::new())
+            }
+            AgentType::Advanced => {
+                Box::new(AdvancedCoordinator::new(spec.config.clone()))
+            }
+            AgentType::Analytics => {
+                Box::new(AnalyticsCoordinator::new(spec.config.clone()))
+            }
+            AgentType::Custom(type_name) => {
+                // For custom agent types, return an error with guidance
+                return Err(RuntimeError::Agent(AgentError::CreationFailed(
+                    format!(
+                        "Custom agent type '{}' requires registration. \
+                        Register custom agent factories using HttpAgentRuntime::register_agent_factory()",
+                        type_name
+                    )
+                )));
+            }
+        };
+
+        // Create agent instance with the coordinator
+        let instance = AgentInstance::new(
+            agent_id.clone(),
+            spec.agent_type.implementation_name().to_string(),
+            coordinator,
+        );
+
+        Ok(Arc::new(instance))
     }
     
     fn update_avg_response_time(&self, new_time_ms: u64) {
@@ -377,6 +404,88 @@ pub enum AuthMethod {
     ApiKey,
 }
 
+// Agent Coordinator Implementations (Factory Pattern)
+
+/// Simple echo coordinator that returns the input
+struct EchoCoordinator;
+
+impl EchoCoordinator {
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl CoordinatorTrait for EchoCoordinator {
+    fn step(&mut self, input: String) -> String {
+        format!("Echo: {}", input)
+    }
+
+    fn get_agent_type(&self) -> &'static str {
+        "EchoAgent"
+    }
+}
+
+/// Advanced coordinator with configurable behavior
+struct AdvancedCoordinator {
+    config: HashMap<String, serde_json::Value>,
+}
+
+impl AdvancedCoordinator {
+    fn new(config: HashMap<String, serde_json::Value>) -> Self {
+        Self { config }
+    }
+}
+
+impl CoordinatorTrait for AdvancedCoordinator {
+    fn step(&mut self, input: String) -> String {
+        // Process input with advanced logic (placeholder)
+        let prefix = self.config
+            .get("response_prefix")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Advanced");
+
+        format!("{}: Processed '{}'", prefix, input)
+    }
+
+    fn get_agent_type(&self) -> &'static str {
+        "AdvancedDemoAgent"
+    }
+}
+
+/// Analytics coordinator for data processing
+struct AnalyticsCoordinator {
+    config: HashMap<String, serde_json::Value>,
+    request_count: usize,
+}
+
+impl AnalyticsCoordinator {
+    fn new(config: HashMap<String, serde_json::Value>) -> Self {
+        Self {
+            config,
+            request_count: 0,
+        }
+    }
+}
+
+impl CoordinatorTrait for AnalyticsCoordinator {
+    fn step(&mut self, input: String) -> String {
+        self.request_count += 1;
+
+        // Perform analytics on input (placeholder)
+        let word_count = input.split_whitespace().count();
+        let char_count = input.chars().count();
+
+        format!(
+            "Analytics: Request #{} | Input: {} words, {} chars | Raw: '{}'",
+            self.request_count, word_count, char_count, input
+        )
+    }
+
+    fn get_agent_type(&self) -> &'static str {
+        "AnalyticsAgent"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,20 +493,52 @@ mod tests {
     #[tokio::test]
     async fn test_agent_service_creation() {
         let service = AgentService::new(ServiceConfig::default());
-        
+
         // Test health status
         let health = service.get_health_status();
         assert!(health.healthy);
     }
-    
+
     #[tokio::test]
     async fn test_list_agents_pagination() {
         let service = AgentService::new(ServiceConfig::default());
-        
+
         let result = service.list_agents(Some(10), Some(0)).await.unwrap();
         assert_eq!(result.agents.len(), 0); // No agents created yet
         assert_eq!(result.total, 0);
         assert_eq!(result.offset, 0);
         assert_eq!(result.limit, 10);
+    }
+
+    #[test]
+    fn test_echo_coordinator() {
+        let mut coordinator = EchoCoordinator::new();
+        let result = coordinator.step("test input".to_string());
+        assert_eq!(result, "Echo: test input");
+        assert_eq!(coordinator.get_agent_type(), "EchoAgent");
+    }
+
+    #[test]
+    fn test_advanced_coordinator() {
+        let mut config = HashMap::new();
+        config.insert("response_prefix".to_string(), serde_json::json!("Custom"));
+
+        let mut coordinator = AdvancedCoordinator::new(config);
+        let result = coordinator.step("test".to_string());
+        assert!(result.contains("Custom"));
+        assert!(result.contains("test"));
+    }
+
+    #[test]
+    fn test_analytics_coordinator() {
+        let mut coordinator = AnalyticsCoordinator::new(HashMap::new());
+
+        let result1 = coordinator.step("hello world".to_string());
+        assert!(result1.contains("Request #1"));
+        assert!(result1.contains("2 words"));
+
+        let result2 = coordinator.step("test".to_string());
+        assert!(result2.contains("Request #2"));
+        assert!(result2.contains("1 words"));
     }
 }
