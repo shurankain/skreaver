@@ -89,11 +89,17 @@ pub struct AdaptedToolRegistry {
 
 impl AdaptedToolRegistry {
     /// Create a new adapted tool registry from a Skreaver InMemoryToolRegistry
-    pub fn from_registry(_registry: &skreaver_tools::InMemoryToolRegistry) -> Self {
-        // For now, create an empty registry as InMemoryToolRegistry doesn't expose tool iteration
-        // This is a placeholder until we add proper tool enumeration support
-        // TODO: Add tool_names() and get_tool() methods to InMemoryToolRegistry
-        let tools = Vec::new();
+    pub fn from_registry(registry: &skreaver_tools::InMemoryToolRegistry) -> Self {
+        // Iterate over all tools in the registry and adapt them
+        let tools = registry
+            .tool_names()
+            .iter()
+            .filter_map(|name| {
+                registry
+                    .get_tool(name)
+                    .map(|tool| ToolAdapter::new(tool))
+            })
+            .collect();
 
         Self { tools }
     }

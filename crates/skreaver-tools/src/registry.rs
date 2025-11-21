@@ -241,6 +241,67 @@ impl InMemoryToolRegistry {
         self.custom_tools.insert(name, tool);
         self
     }
+
+    /// Get all tool names registered in this registry.
+    ///
+    /// Returns an iterator over all registered tool names, including both
+    /// standard and custom tools. This is useful for introspection and
+    /// tool discovery.
+    ///
+    /// # Returns
+    ///
+    /// A vector of tool names as strings
+    pub fn tool_names(&self) -> Vec<String> {
+        let standard_names = self.standard_tools.keys().map(|st| st.name().to_string());
+        let custom_names = self.custom_tools.keys().map(|tn| tn.as_str().to_string());
+        standard_names.chain(custom_names).collect()
+    }
+
+    /// Get a tool by name.
+    ///
+    /// Looks up a tool by its name and returns a reference to it if found.
+    /// This is useful for tool inspection and metadata access.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The name of the tool to retrieve
+    ///
+    /// # Returns
+    ///
+    /// `Some(Arc<dyn Tool>)` if the tool exists, `None` otherwise
+    pub fn get_tool(&self, name: &str) -> Option<Arc<dyn super::Tool>> {
+        // Try standard tools first
+        if let Some(standard_tool) = super::StandardTool::from_name(name) {
+            return self.standard_tools.get(&standard_tool).cloned();
+        }
+
+        // Then try custom tools
+        if let Ok(tool_name) = super::ToolName::parse(name) {
+            return self.custom_tools.get(&tool_name).cloned();
+        }
+
+        None
+    }
+
+    /// Get the number of tools registered.
+    ///
+    /// Returns the total count of both standard and custom tools.
+    ///
+    /// # Returns
+    ///
+    /// The total number of registered tools
+    pub fn len(&self) -> usize {
+        self.standard_tools.len() + self.custom_tools.len()
+    }
+
+    /// Check if the registry is empty.
+    ///
+    /// # Returns
+    ///
+    /// `true` if no tools are registered, `false` otherwise
+    pub fn is_empty(&self) -> bool {
+        self.standard_tools.is_empty() && self.custom_tools.is_empty()
+    }
 }
 
 impl super::registry::ToolRegistry for InMemoryToolRegistry {
@@ -376,5 +437,52 @@ mod tests {
             }
             _ => panic!("Expected failure result"),
         }
+    }
+
+    #[test]
+    fn registry_tool_names_returns_all_tools() {
+        let registry = InMemoryToolRegistry::new()
+            .with_tool("uppercase", Arc::new(UppercaseTool))
+            .with_tool("reverse", Arc::new(ReverseTool));
+
+        let names = registry.tool_names();
+
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"uppercase".to_string()));
+        assert!(names.contains(&"reverse".to_string()));
+    }
+
+    #[test]
+    fn registry_get_tool_returns_correct_tool() {
+        let registry = InMemoryToolRegistry::new()
+            .with_tool("uppercase", Arc::new(UppercaseTool))
+            .with_tool("reverse", Arc::new(ReverseTool));
+
+        // Get existing tools
+        let uppercase = registry.get_tool("uppercase");
+        let reverse = registry.get_tool("reverse");
+
+        assert!(uppercase.is_some());
+        assert!(reverse.is_some());
+        assert_eq!(uppercase.unwrap().name(), "uppercase");
+        assert_eq!(reverse.unwrap().name(), "reverse");
+
+        // Get non-existent tool
+        let missing = registry.get_tool("nonexistent");
+        assert!(missing.is_none());
+    }
+
+    #[test]
+    fn registry_len_and_is_empty() {
+        let empty_registry = InMemoryToolRegistry::new();
+        assert!(empty_registry.is_empty());
+        assert_eq!(empty_registry.len(), 0);
+
+        let registry = InMemoryToolRegistry::new()
+            .with_tool("uppercase", Arc::new(UppercaseTool))
+            .with_tool("reverse", Arc::new(ReverseTool));
+
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 2);
     }
 }
