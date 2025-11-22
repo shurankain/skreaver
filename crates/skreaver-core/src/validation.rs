@@ -3,21 +3,81 @@
 //! This module provides consistent validation logic for string-based identifiers
 //! like tool names, memory keys, etc.
 
+/// Character policy for identifiers - defines which special characters are allowed
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharacterPolicy {
+    /// Only alphanumeric, underscores, and hyphens
+    Strict,
+    /// Also allow dots (e.g., "domain.name")
+    WithDots,
+    /// Also allow colons (e.g., "namespace:resource")
+    WithColons,
+    /// Allow both dots and colons (e.g., "user.settings:v1")
+    WithDotsAndColons,
+}
+
+impl CharacterPolicy {
+    /// Check if a character is allowed under this policy
+    fn is_allowed(&self, ch: char) -> bool {
+        if ch.is_alphanumeric() || ch == '_' || ch == '-' {
+            return true;
+        }
+
+        match self {
+            CharacterPolicy::Strict => false,
+            CharacterPolicy::WithDots => ch == '.',
+            CharacterPolicy::WithColons => ch == ':',
+            CharacterPolicy::WithDotsAndColons => ch == '.' || ch == ':',
+        }
+    }
+}
+
+/// Path safety policy - defines how path-like characters are handled
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathSafetyPolicy {
+    /// Reject all path characters (/, \) and check for path traversal sequences
+    NoPathCharacters,
+    /// Allow slashes but check for path traversal sequences (../, ./)
+    AllowPathsWithTraversalChecks,
+}
+
+impl PathSafetyPolicy {
+    /// Check if slashes are allowed
+    fn allows_slashes(&self) -> bool {
+        matches!(self, PathSafetyPolicy::AllowPathsWithTraversalChecks)
+    }
+
+    /// Check if path traversal checking should be performed
+    /// Both policies check for traversal - one rejects slashes entirely,
+    /// the other allows them but still checks for dangerous patterns
+    fn should_check_traversal(&self) -> bool {
+        true // Always check for path traversal
+    }
+}
+
+/// Whitespace handling policy
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WhitespaceHandling {
+    /// Preserve whitespace as-is, reject if leading/trailing
+    Preserve,
+    /// Trim leading and trailing whitespace before validation
+    TrimEdges,
+}
+
 /// Validation rules for string identifiers
+///
+/// This struct uses enum-based policies instead of booleans to make
+/// invalid state combinations impossible at compile time.
 #[derive(Debug, Clone, Copy)]
 pub struct IdentifierRules {
     /// Maximum allowed length in characters
     pub max_length: usize,
-    /// Whether to allow dots (.) in the identifier
-    pub allow_dots: bool,
-    /// Whether to allow colons (:) in the identifier
-    pub allow_colons: bool,
-    /// Whether to allow forward slashes (/) in the identifier
-    pub allow_slashes: bool,
-    /// Whether to check for path traversal sequences (../ and ./)
-    pub check_path_traversal: bool,
-    /// Whether to trim whitespace before validation
-    pub trim_whitespace: bool,
+    /// Character policy - which special characters are allowed
+    pub character_policy: CharacterPolicy,
+    /// Path safety policy - how to handle path-like characters
+    pub path_safety: PathSafetyPolicy,
+    /// Whitespace handling policy
+    pub whitespace_handling: WhitespaceHandling,
 }
 
 impl IdentifierRules {
@@ -26,14 +86,12 @@ impl IdentifierRules {
     /// - Max length: 64 characters
     /// - Allows: alphanumeric, `_`, `-`
     /// - Disallows: `.`, `:`, `/`, spaces, and other special characters
-    /// - Checks for path traversal
+    /// - Trims whitespace before validation
     pub const TOOL_NAME: Self = Self {
         max_length: 64,
-        allow_dots: false,
-        allow_colons: false,
-        allow_slashes: false,
-        check_path_traversal: true,
-        trim_whitespace: true,
+        character_policy: CharacterPolicy::Strict,
+        path_safety: PathSafetyPolicy::NoPathCharacters,
+        whitespace_handling: WhitespaceHandling::TrimEdges,
     };
 
     /// Standard rules for memory keys
@@ -41,18 +99,16 @@ impl IdentifierRules {
     /// - Max length: 128 characters
     /// - Allows: alphanumeric, `_`, `-`, `.`, `:`
     /// - Disallows: `/`, spaces, and other special characters
-    /// - Checks for path traversal
+    /// - Trims whitespace before validation
     ///
     /// The additional characters (`.` and `:`) enable namespacing patterns like:
     /// - `user.settings`
     /// - `cache:session:123`
     pub const MEMORY_KEY: Self = Self {
         max_length: 128,
-        allow_dots: true,
-        allow_colons: true,
-        allow_slashes: false,
-        check_path_traversal: true,
-        trim_whitespace: true,
+        character_policy: CharacterPolicy::WithDotsAndColons,
+        path_safety: PathSafetyPolicy::NoPathCharacters,
+        whitespace_handling: WhitespaceHandling::TrimEdges,
     };
 
     /// Standard rules for general identifiers (AgentId, ToolId, SessionId)
@@ -60,14 +116,12 @@ impl IdentifierRules {
     /// - Max length: 128 characters
     /// - Allows: alphanumeric, `_`, `-`, `.`
     /// - Disallows: `:`, `/`, spaces, and other special characters
-    /// - Checks for path traversal sequences
+    /// - Preserves whitespace (rejects if leading/trailing)
     pub const IDENTIFIER: Self = Self {
         max_length: 128,
-        allow_dots: true,
-        allow_colons: false,
-        allow_slashes: false,
-        check_path_traversal: true,
-        trim_whitespace: false, // Identifiers must not have whitespace at all
+        character_policy: CharacterPolicy::WithDots,
+        path_safety: PathSafetyPolicy::NoPathCharacters,
+        whitespace_handling: WhitespaceHandling::Preserve,
     };
 
     /// Validate a string against these rules
@@ -78,13 +132,13 @@ impl IdentifierRules {
     ///
     /// # Returns
     ///
-    /// * `Ok(String)` - The validated string (trimmed if trim_whitespace is true)
+    /// * `Ok(String)` - The validated string (trimmed if whitespace_handling is TrimEdges)
     /// * `Err(ValidationError)` - Description of validation failure
     pub fn validate(&self, input: &str) -> Result<String, ValidationError> {
-        let processed = if self.trim_whitespace {
-            input.trim()
-        } else {
-            input
+        // Apply whitespace handling
+        let processed = match self.whitespace_handling {
+            WhitespaceHandling::TrimEdges => input.trim(),
+            WhitespaceHandling::Preserve => input,
         };
 
         // Check for empty
@@ -92,13 +146,17 @@ impl IdentifierRules {
             return Err(ValidationError::Empty);
         }
 
-        // Check for whitespace-only (if trimming is disabled and original had whitespace)
-        if !self.trim_whitespace && input.trim().is_empty() {
+        // Check for whitespace-only (if preserving and original had whitespace)
+        if matches!(self.whitespace_handling, WhitespaceHandling::Preserve)
+            && input.trim().is_empty()
+        {
             return Err(ValidationError::WhitespaceOnly);
         }
 
-        // Check for leading/trailing whitespace when trimming is disabled
-        if !self.trim_whitespace && input != input.trim() {
+        // Check for leading/trailing whitespace when preserving
+        if matches!(self.whitespace_handling, WhitespaceHandling::Preserve)
+            && input != input.trim()
+        {
             return Err(ValidationError::LeadingTrailingWhitespace);
         }
 
@@ -110,21 +168,22 @@ impl IdentifierRules {
             });
         }
 
-        // Check for path traversal sequences
-        if self.check_path_traversal && (processed.contains("../") || processed.contains("./")) {
+        // Check for path traversal sequences if policy requires it
+        if self.path_safety.should_check_traversal()
+            && (processed.contains("../") || processed.contains("./"))
+        {
             return Err(ValidationError::PathTraversal);
         }
 
         // Check for invalid characters
         for ch in processed.chars() {
-            let is_valid = ch.is_alphanumeric()
-                || ch == '_'
-                || ch == '-'
-                || (ch == '.' && self.allow_dots)
-                || (ch == ':' && self.allow_colons)
-                || (ch == '/' && self.allow_slashes);
+            // Check against character policy
+            let char_allowed = self.character_policy.is_allowed(ch);
 
-            if !is_valid {
+            // Check against path safety policy for slashes
+            let slash_allowed = (ch == '/' || ch == '\\') && self.path_safety.allows_slashes();
+
+            if !char_allowed && !slash_allowed {
                 return Err(ValidationError::InvalidChar {
                     char: ch,
                     input: processed.to_string(),
