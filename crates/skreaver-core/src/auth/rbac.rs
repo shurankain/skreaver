@@ -113,80 +113,190 @@ impl fmt::Display for Permission {
     }
 }
 
-/// Tool access policy
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolPolicy {
-    /// Tool name pattern (supports wildcards)
-    pub tool_pattern: String,
-    /// Required roles to access this tool
+/// Access requirements for a tool
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccessRequirements {
+    /// Must have ALL of these roles (OR logic - at least one)
     pub required_roles: HashSet<Role>,
-    /// Required permissions to access this tool
+    /// Must have ALL of these permissions (AND logic - all required)
     pub required_permissions: HashSet<Permission>,
-    /// Is this tool blocked entirely?
-    pub blocked: bool,
 }
 
-impl ToolPolicy {
-    /// Create a new tool policy
-    pub fn new(tool_pattern: String) -> Self {
+impl AccessRequirements {
+    /// Create new empty access requirements (unrestricted)
+    pub fn new() -> Self {
         Self {
-            tool_pattern,
             required_roles: HashSet::new(),
             required_permissions: HashSet::new(),
-            blocked: false,
         }
     }
 
-    /// Require a role for this tool
-    pub fn require_role(mut self, role: Role) -> Self {
+    /// No requirements - anyone can access
+    pub fn unrestricted() -> Self {
+        Self::new()
+    }
+
+    /// Require a specific role
+    pub fn with_role(mut self, role: Role) -> Self {
         self.required_roles.insert(role);
         self
     }
 
-    /// Require a permission for this tool
-    pub fn require_permission(mut self, permission: Permission) -> Self {
+    /// Require a specific permission
+    pub fn with_permission(mut self, permission: Permission) -> Self {
         self.required_permissions.insert(permission);
         self
     }
 
-    /// Block this tool entirely
-    pub fn block(mut self) -> Self {
-        self.blocked = true;
-        self
+    /// Check if requirements are met
+    pub fn check(&self, roles: &[Role], permissions: &HashSet<Permission>) -> bool {
+        // Check if any required role is present (OR logic)
+        let has_required_role =
+            self.required_roles.is_empty() || self.required_roles.iter().any(|r| roles.contains(r));
+
+        // Check if all required permissions are present (AND logic)
+        let has_required_permissions = self.required_permissions.is_empty()
+            || self.required_permissions.iter().all(|p| permissions.contains(p));
+
+        has_required_role && has_required_permissions
+    }
+}
+
+impl Default for AccessRequirements {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Tool access policy - defines whether a tool can be accessed and under what conditions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolPolicy {
+    /// Tool is completely blocked - cannot be accessed by anyone
+    Blocked {
+        /// Tool name pattern (supports wildcards)
+        tool_pattern: String,
+        /// Optional reason for blocking (for audit logs)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+
+    /// Tool is allowed with specific access requirements
+    Allowed {
+        /// Tool name pattern (supports wildcards)
+        tool_pattern: String,
+        /// Access requirements (roles and permissions)
+        #[serde(default)]
+        requirements: AccessRequirements,
+    },
+}
+
+impl ToolPolicy {
+    /// Create a new allowed tool policy with no restrictions
+    pub fn new(tool_pattern: String) -> Self {
+        Self::Allowed {
+            tool_pattern,
+            requirements: AccessRequirements::unrestricted(),
+        }
+    }
+
+    /// Create a blocked tool policy
+    pub fn blocked(tool_pattern: String) -> Self {
+        Self::Blocked {
+            tool_pattern,
+            reason: None,
+        }
+    }
+
+    /// Create a blocked tool policy with a reason
+    pub fn blocked_with_reason(tool_pattern: String, reason: String) -> Self {
+        Self::Blocked {
+            tool_pattern,
+            reason: Some(reason),
+        }
+    }
+
+    /// Create an allowed policy with specific requirements
+    pub fn allowed_with_requirements(
+        tool_pattern: String,
+        requirements: AccessRequirements,
+    ) -> Self {
+        Self::Allowed {
+            tool_pattern,
+            requirements,
+        }
+    }
+
+    /// Require a role for this tool (only works for Allowed policies)
+    pub fn require_role(self, role: Role) -> Self {
+        match self {
+            Self::Allowed {
+                tool_pattern,
+                requirements,
+            } => Self::Allowed {
+                tool_pattern,
+                requirements: requirements.with_role(role),
+            },
+            blocked => blocked, // Keep blocked as-is
+        }
+    }
+
+    /// Require a permission for this tool (only works for Allowed policies)
+    pub fn require_permission(self, permission: Permission) -> Self {
+        match self {
+            Self::Allowed {
+                tool_pattern,
+                requirements,
+            } => Self::Allowed {
+                tool_pattern,
+                requirements: requirements.with_permission(permission),
+            },
+            blocked => blocked, // Keep blocked as-is
+        }
+    }
+
+    /// Get the tool pattern for this policy
+    pub fn tool_pattern(&self) -> &str {
+        match self {
+            Self::Blocked { tool_pattern, .. } => tool_pattern,
+            Self::Allowed { tool_pattern, .. } => tool_pattern,
+        }
     }
 
     /// Check if a tool name matches this policy
     pub fn matches(&self, tool_name: &str) -> bool {
-        if self.tool_pattern == "*" {
+        let pattern = self.tool_pattern();
+
+        if pattern == "*" {
             return true;
         }
 
-        if self.tool_pattern.ends_with('*') {
-            let prefix = &self.tool_pattern[..self.tool_pattern.len() - 1];
+        if let Some(prefix) = pattern.strip_suffix('*') {
             return tool_name.starts_with(prefix);
         }
 
-        self.tool_pattern == tool_name
+        pattern == tool_name
     }
 
     /// Check if roles and permissions satisfy this policy
     pub fn is_allowed(&self, roles: &[Role], permissions: &HashSet<Permission>) -> bool {
-        if self.blocked {
-            return false;
+        match self {
+            Self::Blocked { .. } => false,
+            Self::Allowed { requirements, .. } => requirements.check(roles, permissions),
         }
+    }
 
-        // Check if any required role is present
-        let has_required_role =
-            self.required_roles.is_empty() || self.required_roles.iter().any(|r| roles.contains(r));
+    /// Check if this policy blocks access
+    pub fn is_blocked(&self) -> bool {
+        matches!(self, Self::Blocked { .. })
+    }
 
-        // Check if all required permissions are present
-        let has_required_permissions = self.required_permissions.is_empty()
-            || self
-                .required_permissions
-                .iter()
-                .all(|p| permissions.contains(p));
-
-        has_required_role && has_required_permissions
+    /// Get the block reason if this is a blocked policy
+    pub fn block_reason(&self) -> Option<&str> {
+        match self {
+            Self::Blocked { reason, .. } => reason.as_deref(),
+            Self::Allowed { .. } => None,
+        }
     }
 }
 
