@@ -294,6 +294,68 @@ impl Key<Revoked> {
     }
 }
 
+/// API Key status - represents the current state of a key
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ApiKeyStatus {
+    /// Key is active and can be used for authentication
+    #[default]
+    Active,
+
+    /// Key has been explicitly revoked
+    Revoked {
+        /// When the key was revoked
+        revoked_at: DateTime<Utc>,
+    },
+
+    /// Key has expired naturally
+    Expired {
+        /// When the key expired
+        expired_at: DateTime<Utc>,
+    },
+
+    /// Key is temporarily suspended (can be resumed)
+    Suspended {
+        /// When the key was suspended
+        suspended_at: DateTime<Utc>,
+        /// Optional: when the suspension will be lifted
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resume_at: Option<DateTime<Utc>>,
+    },
+
+    /// Key has hit rate limits
+    RateLimited {
+        /// When the rate limit was imposed
+        limited_at: DateTime<Utc>,
+        /// When the limit will be lifted
+        limited_until: DateTime<Utc>,
+    },
+}
+
+impl ApiKeyStatus {
+    /// Check if the status allows key usage
+    pub fn is_usable(&self) -> bool {
+        matches!(self, ApiKeyStatus::Active)
+    }
+
+    /// Check if the key can be rotated in this status
+    pub fn can_rotate(&self) -> bool {
+        // Can't rotate permanently revoked keys
+        !matches!(self, ApiKeyStatus::Revoked { .. })
+    }
+
+    /// Get a human-readable description of the status
+    pub fn description(&self) -> &'static str {
+        match self {
+            ApiKeyStatus::Active => "Active and ready for use",
+            ApiKeyStatus::Revoked { .. } => "Revoked and cannot be used",
+            ApiKeyStatus::Expired { .. } => "Expired and cannot be used",
+            ApiKeyStatus::Suspended { .. } => "Temporarily suspended",
+            ApiKeyStatus::RateLimited { .. } => "Rate limited",
+        }
+    }
+}
+
 /// Backward-compatible API Key metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKey {
@@ -313,8 +375,9 @@ pub struct ApiKey {
     pub expires_at: Option<DateTime<Utc>>,
     /// Last used timestamp
     pub last_used_at: Option<DateTime<Utc>>,
-    /// Is the key active?
-    pub active: bool,
+    /// Key status (replaces simple boolean)
+    #[serde(default)]
+    pub status: ApiKeyStatus,
     /// Additional metadata
     pub metadata: HashMap<String, String>,
 }
@@ -331,7 +394,7 @@ impl From<Key<Active>> for ApiKey {
             created_at: key.created_at,
             expires_at: key.expires_at,
             last_used_at: key.last_used_at,
-            active: true,
+            status: ApiKeyStatus::Active,
             metadata: key.metadata,
         }
     }
@@ -339,6 +402,7 @@ impl From<Key<Active>> for ApiKey {
 
 impl From<Key<Expired>> for ApiKey {
     fn from(key: Key<Expired>) -> Self {
+        let expired_at = key.expires_at.unwrap_or_else(Utc::now);
         Self {
             key: key.key,
             id: key.id,
@@ -348,7 +412,7 @@ impl From<Key<Expired>> for ApiKey {
             created_at: key.created_at,
             expires_at: key.expires_at,
             last_used_at: key.last_used_at,
-            active: false,
+            status: ApiKeyStatus::Expired { expired_at },
             metadata: key.metadata,
         }
     }
@@ -365,7 +429,9 @@ impl From<Key<Revoked>> for ApiKey {
             created_at: key.created_at,
             expires_at: key.expires_at,
             last_used_at: key.last_used_at,
-            active: false,
+            status: ApiKeyStatus::Revoked {
+                revoked_at: Utc::now(),
+            },
             metadata: key.metadata,
         }
     }
@@ -375,10 +441,12 @@ impl TryFrom<ApiKey> for Key<Active> {
     type Error = AuthError;
 
     fn try_from(api_key: ApiKey) -> Result<Self, Self::Error> {
-        if !api_key.active {
+        // Check status
+        if !api_key.status.is_usable() {
             return Err(AuthError::InvalidCredentials);
         }
 
+        // Double-check expiration for safety
         if let Some(expires_at) = api_key.expires_at
             && Utc::now() > expires_at
         {
@@ -410,8 +478,14 @@ impl ApiKey {
         self.key.expose_as_str()
     }
 
-    /// Check if the key is expired
+    /// Check if the key is expired (either by status or expiration time)
     pub fn is_expired(&self) -> bool {
+        // Check status first
+        if matches!(self.status, ApiKeyStatus::Expired { .. }) {
+            return true;
+        }
+
+        // Also check expiration time
         if let Some(expires_at) = self.expires_at {
             Utc::now() > expires_at
         } else {
@@ -419,9 +493,29 @@ impl ApiKey {
         }
     }
 
-    /// Check if the key is valid
+    /// Check if the key is valid and can be used
     pub fn is_valid(&self) -> bool {
-        self.active && !self.is_expired()
+        self.status.is_usable() && !self.is_expired()
+    }
+
+    /// Check if the key is revoked
+    pub fn is_revoked(&self) -> bool {
+        matches!(self.status, ApiKeyStatus::Revoked { .. })
+    }
+
+    /// Check if the key is suspended
+    pub fn is_suspended(&self) -> bool {
+        matches!(self.status, ApiKeyStatus::Suspended { .. })
+    }
+
+    /// Check if the key is rate limited
+    pub fn is_rate_limited(&self) -> bool {
+        matches!(self.status, ApiKeyStatus::RateLimited { .. })
+    }
+
+    /// Get the status description
+    pub fn status_description(&self) -> &'static str {
+        self.status.description()
     }
 }
 
@@ -473,7 +567,9 @@ impl ApiKeyStore {
     async fn revoke(&self, key_hash: &str) -> bool {
         let mut keys = self.keys.write().await;
         if let Some(key) = keys.get_mut(key_hash) {
-            key.active = false;
+            key.status = ApiKeyStatus::Revoked {
+                revoked_at: Utc::now(),
+            };
             true
         } else {
             false
