@@ -156,7 +156,10 @@ impl AccessRequirements {
 
         // Check if all required permissions are present (AND logic)
         let has_required_permissions = self.required_permissions.is_empty()
-            || self.required_permissions.iter().all(|p| permissions.contains(p));
+            || self
+                .required_permissions
+                .iter()
+                .all(|p| permissions.contains(p));
 
         has_required_role && has_required_permissions
     }

@@ -154,8 +154,7 @@ impl IdentifierRules {
         }
 
         // Check for leading/trailing whitespace when preserving
-        if matches!(self.whitespace_handling, WhitespaceHandling::Preserve)
-            && input != input.trim()
+        if matches!(self.whitespace_handling, WhitespaceHandling::Preserve) && input != input.trim()
         {
             return Err(ValidationError::LeadingTrailingWhitespace);
         }
