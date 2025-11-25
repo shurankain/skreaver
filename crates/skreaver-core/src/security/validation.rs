@@ -408,21 +408,28 @@ impl ContentScanner {
         let is_binary = self.is_binary_content(content);
 
         if is_binary {
-            return Ok(ScanResult {
-                is_safe: true, // Allow binary files but don't scan content
-                issues: vec!["Binary file detected".to_string()],
-                redacted_content: None,
+            // Binary content is treated as a security violation
+            // since we cannot reliably scan it for secrets
+            return Ok(ScanResult::Unsafe {
+                violations: vec![SecurityViolation {
+                    kind: ViolationKind::BinaryContent,
+                    description: "Binary file detected - cannot scan for secrets".to_string(),
+                }],
+                redacted_content: "[BINARY CONTENT]".to_string(),
             });
         }
 
         // Convert to string for text scanning
         let text = String::from_utf8_lossy(content);
-        let mut issues = Vec::new();
+        let mut violations = Vec::new();
 
         // Check for secrets using global patterns
         for pattern in SECRET_PATTERNS.iter() {
             if pattern.is_match(&text) {
-                issues.push("Potential secret detected".to_string());
+                violations.push(SecurityViolation {
+                    kind: ViolationKind::SecretDetected,
+                    description: "Potential secret or credential detected".to_string(),
+                });
                 break;
             }
         }
@@ -433,11 +440,16 @@ impl ContentScanner {
             redacted = pattern.replace_all(&redacted, "[REDACTED]").to_string();
         }
 
-        Ok(ScanResult {
-            is_safe: issues.is_empty(),
-            issues,
-            redacted_content: Some(redacted),
-        })
+        if violations.is_empty() {
+            Ok(ScanResult::Safe {
+                content: text.to_string(),
+            })
+        } else {
+            Ok(ScanResult::Unsafe {
+                violations,
+                redacted_content: redacted,
+            })
+        }
     }
 
     fn is_binary_content(&self, content: &[u8]) -> bool {
@@ -454,11 +466,70 @@ impl ContentScanner {
     }
 }
 
+/// Type of security violation detected during content scanning
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ViolationKind {
+    /// Potential secret or credential detected
+    SecretDetected,
+    /// Binary content detected (may contain encoded secrets)
+    BinaryContent,
+}
+
+/// A security violation found during content scanning
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanResult {
-    pub is_safe: bool,
-    pub issues: Vec<String>,
-    pub redacted_content: Option<String>,
+pub struct SecurityViolation {
+    /// Type of violation
+    pub kind: ViolationKind,
+    /// Human-readable description
+    pub description: String,
+}
+
+/// Result of content security scanning
+///
+/// This enum uses the typestate pattern to make invalid states unrepresentable:
+/// - Safe content has no violations
+/// - Unsafe content always has at least one violation with details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ScanResult {
+    /// Content is safe - no security violations detected
+    Safe {
+        /// Original content (for text) or indication it was binary
+        content: String,
+    },
+    /// Content contains security violations
+    Unsafe {
+        /// Security violations detected (guaranteed non-empty)
+        violations: Vec<SecurityViolation>,
+        /// Content with sensitive parts redacted
+        redacted_content: String,
+    },
+}
+
+impl ScanResult {
+    /// Check if the content is safe
+    pub fn is_safe(&self) -> bool {
+        matches!(self, ScanResult::Safe { .. })
+    }
+
+    /// Get violations if unsafe, or empty vec if safe
+    pub fn violations(&self) -> Vec<SecurityViolation> {
+        match self {
+            ScanResult::Safe { .. } => Vec::new(),
+            ScanResult::Unsafe { violations, .. } => violations.clone(),
+        }
+    }
+
+    /// Get redacted content if available
+    pub fn redacted_content(&self) -> Option<String> {
+        match self {
+            ScanResult::Safe { content } => Some(content.clone()),
+            ScanResult::Unsafe {
+                redacted_content, ..
+            } => Some(redacted_content.clone()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -523,13 +594,20 @@ mod tests {
         // Test safe text content
         let safe_content = b"Hello, world! This is safe content.";
         let result = scanner.scan_content(safe_content).unwrap();
-        assert!(result.is_safe);
+        assert!(result.is_safe());
+        assert!(matches!(result, ScanResult::Safe { .. }));
 
         // Test content with potential secret
         let secret_content = b"api_key=abc123def456ghi789";
         let result = scanner.scan_content(secret_content).unwrap();
-        assert!(!result.is_safe);
-        assert!(!result.issues.is_empty());
+        assert!(!result.is_safe());
+        match result {
+            ScanResult::Unsafe { violations, .. } => {
+                assert!(!violations.is_empty());
+                assert_eq!(violations[0].kind, ViolationKind::SecretDetected);
+            }
+            _ => panic!("Expected Unsafe result"),
+        }
     }
 
     // ===== SSRF Protection Tests =====

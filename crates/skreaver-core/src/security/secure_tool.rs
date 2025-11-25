@@ -70,7 +70,7 @@ impl<T: Tool> SecureTool<T> {
             }
         })?;
 
-        if !scan_result.is_safe {
+        if !scan_result.is_safe() {
             return Err(SecurityError::SecretInInput);
         }
 
