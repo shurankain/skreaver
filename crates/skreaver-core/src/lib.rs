@@ -63,7 +63,7 @@ pub use auth::{
     AuthContext, AuthError, AuthManager, AuthMethod, AuthResult, Principal,
     api_key::{ApiKey, ApiKeyConfig, ApiKeyManager},
     jwt::{JwtClaims, JwtConfig, JwtManager, JwtToken},
-    middleware::{AuthMiddleware, AuthenticatedRequest},
+    middleware::{AuthMiddleware, AuthenticatedRequest, AuthenticationPolicy},
     rbac::{Permission, Role, RoleManager, ToolPolicy},
     storage::{CredentialStorage, InMemoryStorage, SecureStorage},
 };

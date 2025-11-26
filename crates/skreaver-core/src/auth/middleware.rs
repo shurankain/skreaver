@@ -9,11 +9,30 @@ pub struct AuthenticatedRequest<T> {
     pub auth_context: AuthContext,
 }
 
+/// Authentication policy for protected endpoints
+///
+/// This enum makes invalid states unrepresentable by encoding the policy
+/// in the type system rather than using a boolean flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthenticationPolicy {
+    /// Require authentication for all protected paths
+    Required,
+    /// Allow anonymous access to protected paths (less secure)
+    AllowAnonymous,
+}
+
+impl Default for AuthenticationPolicy {
+    fn default() -> Self {
+        // Secure by default: require authentication
+        Self::Required
+    }
+}
+
 /// Authentication middleware for HTTP endpoints
 pub struct AuthMiddleware {
     auth_manager: Arc<AuthManager>,
-    /// Allow anonymous access
-    allow_anonymous: bool,
+    /// Authentication policy for protected paths
+    policy: AuthenticationPolicy,
     /// Paths that don't require authentication
     public_paths: Vec<String>,
 }
@@ -22,14 +41,25 @@ impl AuthMiddleware {
     pub fn new(auth_manager: Arc<AuthManager>) -> Self {
         Self {
             auth_manager,
-            allow_anonymous: false,
+            policy: AuthenticationPolicy::default(),
             public_paths: vec!["/health".to_string(), "/metrics".to_string()],
         }
     }
 
-    pub fn with_anonymous(mut self, allow: bool) -> Self {
-        self.allow_anonymous = allow;
+    /// Set the authentication policy
+    pub fn with_policy(mut self, policy: AuthenticationPolicy) -> Self {
+        self.policy = policy;
         self
+    }
+
+    /// Allow anonymous access to protected paths (convenience method)
+    pub fn with_anonymous_access(self) -> Self {
+        self.with_policy(AuthenticationPolicy::AllowAnonymous)
+    }
+
+    /// Require authentication for protected paths (convenience method)
+    pub fn with_required_auth(self) -> Self {
+        self.with_policy(AuthenticationPolicy::Required)
     }
 
     pub fn with_public_path(mut self, path: String) -> Self {
@@ -89,10 +119,11 @@ impl AuthMiddleware {
         if let Some(method) = auth_method {
             let context = self.auth_manager.authenticate(&method).await?;
             Ok(Some(context))
-        } else if self.allow_anonymous {
-            Ok(None)
         } else {
-            Err(AuthError::InvalidCredentials)
+            match self.policy {
+                AuthenticationPolicy::AllowAnonymous => Ok(None),
+                AuthenticationPolicy::Required => Err(AuthError::InvalidCredentials),
+            }
         }
     }
 }

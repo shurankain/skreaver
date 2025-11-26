@@ -25,7 +25,7 @@ pub use jwt::{
 #[cfg(feature = "redis")]
 pub use jwt_revocation::RedisBlacklist;
 pub use jwt_revocation::{InMemoryBlacklist, TokenBlacklist};
-pub use middleware::{AuthMiddleware, AuthenticatedRequest};
+pub use middleware::{AuthMiddleware, AuthenticatedRequest, AuthenticationPolicy};
 pub use rbac::{Permission, Role, RoleManager, ToolPolicy};
 pub use storage::{CredentialStorage, EncryptionKey, InMemoryStorage, SecureStorage};
 
