@@ -176,7 +176,7 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                     .inc();
             }
 
-            return Some(ExecutionResult::Failure { error });
+            return Some(ExecutionResult::failure(error));
         }
 
         // Record RBAC allowed metric
@@ -210,7 +210,7 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                     .inc();
             }
 
-            return Some(ExecutionResult::Failure { error });
+            return Some(ExecutionResult::failure(error));
         }
 
         // Record RBAC allowed metric
@@ -244,7 +244,7 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                     .inc();
             }
 
-            return Ok(ExecutionResult::Failure { error });
+            return Ok(ExecutionResult::failure(error));
         }
 
         // Record RBAC allowed metric
@@ -268,13 +268,11 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                 error = %error,
                 "Tool execution blocked by RBAC policy"
             );
-            ExecutionResult::Failure { error }
+            ExecutionResult::failure(error)
         } else {
-            self.inner
-                .dispatch_ref(calls.head())
-                .unwrap_or_else(|| ExecutionResult::Failure {
-                    error: format!("Tool not found: {}", calls.head().name()),
-                })
+            self.inner.dispatch_ref(calls.head()).unwrap_or_else(|| {
+                ExecutionResult::failure(format!("Tool not found: {}", calls.head().name()))
+            })
         };
 
         let tail_results: Vec<ExecutionResult> = calls
@@ -287,13 +285,11 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
                         error = %error,
                         "Tool execution blocked by RBAC policy"
                     );
-                    ExecutionResult::Failure { error }
+                    ExecutionResult::failure(error)
                 } else {
-                    self.inner
-                        .dispatch_ref(call)
-                        .unwrap_or_else(|| ExecutionResult::Failure {
-                            error: format!("Tool not found: {}", call.name()),
-                        })
+                    self.inner.dispatch_ref(call).unwrap_or_else(|| {
+                        ExecutionResult::failure(format!("Tool not found: {}", call.name()))
+                    })
                 }
             })
             .collect();

@@ -288,8 +288,8 @@ impl StructuredToolResult {
         let metadata = ToolExecutionMetadata::instant(tool_name);
         match result {
             super::tool::ExecutionResult::Success { output } => Self::Success { output, metadata },
-            super::tool::ExecutionResult::Failure { error } => Self::Failure {
-                error,
+            super::tool::ExecutionResult::Failure { reason } => Self::Failure {
+                error: reason.message(),
                 metadata,
                 error_code: None,
                 recoverable: true, // Default to recoverable when we don't have info

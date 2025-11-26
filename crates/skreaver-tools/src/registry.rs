@@ -73,20 +73,17 @@ pub trait ToolRegistry {
     /// Failed lookups are returned as `ExecutionResult::Error` with a message indicating
     /// the tool was not found.
     fn dispatch_batch(&self, calls: &NonEmptyVec<ToolCall>) -> NonEmptyVec<ExecutionResult> {
-        let head = self
-            .dispatch_ref(calls.head())
-            .unwrap_or_else(|| ExecutionResult::Failure {
-                error: format!("Tool not found: {}", calls.head().name()),
-            });
+        let head = self.dispatch_ref(calls.head()).unwrap_or_else(|| {
+            ExecutionResult::failure(format!("Tool not found: {}", calls.head().name()))
+        });
 
         let tail: Vec<ExecutionResult> = calls
             .tail()
             .iter()
             .map(|call| {
-                self.dispatch_ref(call)
-                    .unwrap_or_else(|| ExecutionResult::Failure {
-                        error: format!("Tool not found: {}", call.name()),
-                    })
+                self.dispatch_ref(call).unwrap_or_else(|| {
+                    ExecutionResult::failure(format!("Tool not found: {}", call.name()))
+                })
             })
             .collect();
 

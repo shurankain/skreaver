@@ -207,8 +207,8 @@ mod tests {
 
         let result = secure_tool.call("safe input".to_string());
         assert!(result.is_failure());
-        if let ExecutionResult::Failure { error } = result {
-            assert!(error.contains("security scan failed"));
+        if let ExecutionResult::Failure { reason } = result {
+            assert!(reason.message().contains("security scan failed"));
         }
     }
 
@@ -224,8 +224,8 @@ mod tests {
         // Test with input containing secrets
         let result = secure_tool.call("api_key=fake123test456mock".to_string());
         assert!(result.is_failure());
-        if let ExecutionResult::Failure { error } = result {
-            assert!(error.contains("Security validation failed"));
+        if let ExecutionResult::Failure { reason } = result {
+            assert!(reason.message().contains("Security validation failed"));
         }
     }
 }

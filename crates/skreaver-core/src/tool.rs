@@ -333,11 +333,86 @@ impl std::error::Error for ToolCallBuildError {
     }
 }
 
+/// Categorized failure reasons for tool execution.
+///
+/// This enum provides structured error information instead of plain strings,
+/// making it easier to handle different failure types programmatically.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FailureReason {
+    /// Invalid or malformed input provided to the tool
+    InvalidInput {
+        /// Description of what was invalid
+        message: String,
+    },
+    /// Required resource not found (file, URL, etc.)
+    NotFound {
+        /// What was not found
+        resource: String,
+    },
+    /// Permission denied or unauthorized access
+    PermissionDenied {
+        /// What operation was denied
+        message: String,
+    },
+    /// Network-related failure
+    NetworkError {
+        /// Description of the network issue
+        message: String,
+    },
+    /// I/O operation failed
+    IoError {
+        /// Description of the I/O failure
+        message: String,
+    },
+    /// Timeout exceeded
+    Timeout {
+        /// What operation timed out
+        operation: String,
+    },
+    /// Internal tool error or unexpected state
+    InternalError {
+        /// Description of the internal error
+        message: String,
+    },
+    /// Custom error for tool-specific failures
+    Custom {
+        /// Error category or code
+        category: String,
+        /// Error message
+        message: String,
+    },
+}
+
+impl FailureReason {
+    /// Get a human-readable error message
+    pub fn message(&self) -> String {
+        match self {
+            FailureReason::InvalidInput { message } => format!("Invalid input: {}", message),
+            FailureReason::NotFound { resource } => format!("Not found: {}", resource),
+            FailureReason::PermissionDenied { message } => {
+                format!("Permission denied: {}", message)
+            }
+            FailureReason::NetworkError { message } => format!("Network error: {}", message),
+            FailureReason::IoError { message } => format!("I/O error: {}", message),
+            FailureReason::Timeout { operation } => format!("Timeout: {}", operation),
+            FailureReason::InternalError { message } => format!("Internal error: {}", message),
+            FailureReason::Custom { category, message } => format!("{}: {}", category, message),
+        }
+    }
+}
+
+impl std::fmt::Display for FailureReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
+
 /// The result of executing a tool.
 ///
 /// `ExecutionResult` represents either successful execution with output
-/// or failed execution with an error message. This design makes it impossible
-/// to have inconsistent success/failure states at compile time.
+/// or failed execution with a structured failure reason. This design makes it
+/// impossible to have inconsistent success/failure states at compile time.
 #[derive(Debug, Clone)]
 pub enum ExecutionResult {
     /// Tool executed successfully with the given output.
@@ -346,11 +421,11 @@ pub enum ExecutionResult {
     /// The format depends on the specific tool implementation.
     Success { output: String },
 
-    /// Tool execution failed with the given error.
+    /// Tool execution failed with a structured reason.
     ///
     /// This indicates that the tool encountered an error, received
     /// invalid input, or could not complete the requested operation.
-    Failure { error: String },
+    Failure { reason: FailureReason },
 }
 
 impl ExecutionResult {
@@ -367,7 +442,23 @@ impl ExecutionResult {
         ExecutionResult::Success { output }
     }
 
-    /// Create a failed execution result.
+    /// Create a failed execution result with a structured reason.
+    ///
+    /// # Parameters
+    ///
+    /// * `reason` - The structured failure reason
+    ///
+    /// # Returns
+    ///
+    /// An `ExecutionResult::Failure` variant
+    pub fn failed(reason: FailureReason) -> Self {
+        ExecutionResult::Failure { reason }
+    }
+
+    /// Create a failed execution result from a plain error message.
+    ///
+    /// This is a convenience method for backward compatibility.
+    /// The message is wrapped in `FailureReason::InternalError`.
     ///
     /// # Parameters
     ///
@@ -378,7 +469,9 @@ impl ExecutionResult {
     /// An `ExecutionResult::Failure` variant
     pub fn failure(error_message: String) -> Self {
         ExecutionResult::Failure {
-            error: error_message,
+            reason: FailureReason::InternalError {
+                message: error_message,
+            },
         }
     }
 
@@ -404,11 +497,11 @@ impl ExecutionResult {
     ///
     /// # Returns
     ///
-    /// A reference to the output string or error message
-    pub fn output(&self) -> &str {
+    /// The output string or error message
+    pub fn output(&self) -> String {
         match self {
-            ExecutionResult::Success { output } => output,
-            ExecutionResult::Failure { error } => error,
+            ExecutionResult::Success { output } => output.clone(),
+            ExecutionResult::Failure { reason } => reason.message(),
         }
     }
 
@@ -424,15 +517,27 @@ impl ExecutionResult {
         }
     }
 
+    /// Get the failure reason if available.
+    ///
+    /// # Returns
+    ///
+    /// `Some(reason)` if failed, `None` if successful
+    pub fn failure_reason(&self) -> Option<&FailureReason> {
+        match self {
+            ExecutionResult::Success { .. } => None,
+            ExecutionResult::Failure { reason } => Some(reason),
+        }
+    }
+
     /// Get the error message if available.
     ///
     /// # Returns
     ///
     /// `Some(error)` if failed, `None` if successful
-    pub fn error_message(&self) -> Option<&str> {
+    pub fn error_message(&self) -> Option<String> {
         match self {
             ExecutionResult::Success { .. } => None,
-            ExecutionResult::Failure { error } => Some(error),
+            ExecutionResult::Failure { reason } => Some(reason.message()),
         }
     }
 
@@ -444,7 +549,7 @@ impl ExecutionResult {
     pub fn into_result(self) -> Result<String, String> {
         match self {
             ExecutionResult::Success { output } => Ok(output),
-            ExecutionResult::Failure { error } => Err(error),
+            ExecutionResult::Failure { reason } => Err(reason.message()),
         }
     }
 }

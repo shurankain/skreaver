@@ -39,8 +39,8 @@ pub use security::{
 };
 pub use structured_tool_result::{StructuredToolResult, ToolExecutionMetadata, ToolResultBuilder};
 pub use tool::{
-    ExecutionResult, StandardTool, StructuredTool, StructuredToolAdapter, Tool, ToolCall,
-    ToolDispatch, ToolInput,
+    ExecutionResult, FailureReason, StandardTool, StructuredTool, StructuredToolAdapter, Tool,
+    ToolCall, ToolDispatch, ToolInput,
 };
 
 // Re-export collections types

@@ -87,7 +87,13 @@ fn test_execution_result_failure() {
 
     assert!(!result.is_success());
     assert!(result.is_failure());
-    assert_eq!(result.output(), "error_message");
+    assert_eq!(result.output(), "Internal error: error_message");
+
+    // Check the error message method
+    assert_eq!(
+        result.error_message(),
+        Some("Internal error: error_message".to_string())
+    );
 }
 
 /// Test mock tool call tracking
