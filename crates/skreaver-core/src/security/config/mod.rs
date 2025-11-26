@@ -122,7 +122,7 @@ impl SecurityConfig {
             } else {
                 HttpPolicy::disabled()
             },
-            network_policy: if tool_policy.network_enabled.unwrap_or(self.network.enabled) {
+            network_policy: if tool_policy.network_enabled.unwrap_or(self.network.is_enabled()) {
                 self.network.clone()
             } else {
                 NetworkPolicy::disabled()
@@ -229,7 +229,7 @@ impl SecurityConfig {
         }
 
         // Validate network policies
-        if self.network.allow_ports.is_empty() && self.network.enabled {
+        if self.network.allow_ports.is_empty() && self.network.is_enabled() {
             tracing::warn!("Network enabled but no allowed ports configured");
         }
 

@@ -36,8 +36,9 @@ pub use fs::{SecureFileSystem, ValidatedPath};
 pub use limits::{CpuPercent, ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
     ContentScanning, DomainFilter, FileCountLimit, FileSizeLimit, FileSystemAccess,
-    FileSystemPolicy, HttpAccess, HttpAccessConfig, HttpPolicy, NetworkPort, RedirectLimit,
-    ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds, ToolSecurityPolicy,
+    FileSystemPolicy, HttpAccess, HttpAccessConfig, HttpPolicy, NetworkAccess, NetworkPolicy,
+    NetworkPort, RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior,
+    TimeoutSeconds, ToolSecurityPolicy,
 };
 #[cfg(feature = "security-basic")]
 pub use validated_fd::ValidatedFileDescriptor;

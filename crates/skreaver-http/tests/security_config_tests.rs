@@ -94,7 +94,7 @@ async fn test_load_security_config_from_file() {
     assert!(
         !security_config.network.allow_ports.is_empty()
             || !security_config.network.deny_ports.is_empty()
-            || !security_config.network.enabled,
+            || !security_config.network.is_enabled(),
         "Network policy should be configured"
     );
 

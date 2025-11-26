@@ -144,7 +144,7 @@ fn display_http_policy(config: &SecurityConfig) {
 fn display_network_policy(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("🔌 Step 5: Network Policy\n");
-    println!("   Enabled: {}", config.network.enabled);
+    println!("   Enabled: {}", config.network.is_enabled());
     println!("   Allowed Ports ({}):", config.network.allow_ports.len());
     if !config.network.allow_ports.is_empty() {
         print!("      ✅ ");

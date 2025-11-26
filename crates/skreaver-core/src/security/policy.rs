@@ -691,10 +691,31 @@ impl HttpPolicy {
     }
 }
 
+/// Network access control
+///
+/// This enum makes the network access state explicit in the type system,
+/// preventing confusion about whether network features are enabled/disabled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum NetworkAccess {
+    /// Network access is disabled
+    Disabled,
+    /// Network access is enabled
+    Enabled,
+}
+
+impl Default for NetworkAccess {
+    fn default() -> Self {
+        // Secure by default: disabled
+        Self::Disabled
+    }
+}
+
 /// Network access policy for raw TCP/UDP
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkPolicy {
-    pub enabled: bool,
+    #[serde(default)]
+    pub access: NetworkAccess,
     pub allow_ports: Vec<NetworkPort>,
     pub deny_ports: Vec<NetworkPort>,
     #[serde(alias = "ttl_seconds")]
@@ -708,7 +729,7 @@ impl Default for NetworkPolicy {
         let create_port = |port: u16| NetworkPort::new(port).expect("Valid port number");
 
         Self {
-            enabled: false, // Disabled by default
+            access: NetworkAccess::default(), // Disabled by default
             allow_ports: vec![],
             deny_ports: vec![
                 create_port(22),    // SSH
@@ -733,16 +754,30 @@ impl Default for NetworkPolicy {
 impl NetworkPolicy {
     pub fn disabled() -> Self {
         Self {
-            enabled: false,
+            access: NetworkAccess::Disabled,
             ..Default::default()
         }
     }
 
+    pub fn enabled() -> Self {
+        Self {
+            access: NetworkAccess::Enabled,
+            ..Default::default()
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        matches!(self.access, NetworkAccess::Enabled)
+    }
+
     pub fn is_port_allowed(&self, port: NetworkPort) -> Result<bool, SecurityError> {
-        if !self.enabled {
-            return Err(SecurityError::ToolDisabled {
-                tool_name: "network".to_string(),
-            });
+        match self.access {
+            NetworkAccess::Disabled => {
+                return Err(SecurityError::ToolDisabled {
+                    tool_name: "network".to_string(),
+                });
+            }
+            NetworkAccess::Enabled => {}
         }
 
         // Check deny list first
@@ -821,7 +856,7 @@ mod tests {
     #[test]
     fn test_network_policy_port_validation() {
         let policy = NetworkPolicy {
-            enabled: true,
+            access: NetworkAccess::Enabled,
             allow_ports: vec![
                 NetworkPort::new(80).unwrap(),
                 NetworkPort::new(443).unwrap(),
