@@ -37,8 +37,8 @@ pub use limits::{CpuPercent, ResourceLimits, ResourceTracker, ResourceUsage};
 pub use policy::{
     ContentScanning, DomainFilter, FileCountLimit, FileSizeLimit, FileSystemAccess,
     FileSystemPolicy, HttpAccess, HttpAccessConfig, HttpPolicy, NetworkAccess, NetworkPolicy,
-    NetworkPort, RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior,
-    TimeoutSeconds, ToolSecurityPolicy,
+    NetworkPort, RedirectLimit, ResponseSizeLimit, SecurityPolicy, SymlinkBehavior, TimeoutSeconds,
+    ToolSecurityPolicy,
 };
 #[cfg(feature = "security-basic")]
 pub use validated_fd::ValidatedFileDescriptor;

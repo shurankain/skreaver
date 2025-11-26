@@ -122,7 +122,10 @@ impl SecurityConfig {
             } else {
                 HttpPolicy::disabled()
             },
-            network_policy: if tool_policy.network_enabled.unwrap_or(self.network.is_enabled()) {
+            network_policy: if tool_policy
+                .network_enabled
+                .unwrap_or(self.network.is_enabled())
+            {
                 self.network.clone()
             } else {
                 NetworkPolicy::disabled()

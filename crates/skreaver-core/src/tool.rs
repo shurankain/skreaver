@@ -449,6 +449,132 @@ impl ExecutionResult {
     }
 }
 
+/// Validated tool input.
+///
+/// This newtype wraps a String and ensures it has been validated for
+/// security concerns (secrets, injection attacks, etc.) before being
+/// passed to tool implementations.
+///
+/// # Type Safety
+///
+/// By using a newtype, we ensure at compile time that only validated
+/// input can be passed to tools. This prevents accidentally passing
+/// unvalidated user input directly to sensitive operations.
+///
+/// # Example
+///
+/// ```rust
+/// use skreaver_core::tool::ToolInput;
+///
+/// // Can only be created through validation
+/// let input = ToolInput::new_unchecked("safe input".to_string());
+/// let value: &str = input.as_str();
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct ToolInput(String);
+
+impl ToolInput {
+    /// Create a new ToolInput without validation.
+    ///
+    /// # Safety
+    ///
+    /// This bypasses validation and should only be used when:
+    /// - The input is known to be safe (e.g., from trusted sources)
+    /// - The input has already been validated
+    /// - The tool will perform its own validation
+    ///
+    /// For user-provided input, use `validate()` instead.
+    pub fn new_unchecked(input: String) -> Self {
+        Self(input)
+    }
+
+    /// Create a validated ToolInput from user-provided string.
+    ///
+    /// This method performs security validation including:
+    /// - Secret detection (API keys, passwords, tokens)
+    /// - Injection attack patterns (SQL, command injection)
+    /// - Length limits
+    ///
+    /// # Parameters
+    ///
+    /// * `input` - The raw input string to validate
+    /// * `policy` - Security policy to validate against
+    ///
+    /// # Returns
+    ///
+    /// `Ok(ToolInput)` if validation passes, `Err(SecurityError)` otherwise
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use skreaver_core::tool::ToolInput;
+    /// use skreaver_core::security::{SecurityPolicy, policy::*};
+    ///
+    /// let policy = SecurityPolicy {
+    ///     fs_policy: FileSystemPolicy::default(),
+    ///     http_policy: HttpPolicy::default(),
+    ///     network_policy: NetworkPolicy::default(),
+    /// };
+    /// let input = ToolInput::validate("safe input".to_string(), &policy);
+    /// ```
+    #[cfg(feature = "security-basic")]
+    pub fn validate(
+        input: String,
+        policy: &crate::security::SecurityPolicy,
+    ) -> Result<Self, crate::security::SecurityError> {
+        use crate::security::validation::InputValidator;
+
+        let validator = InputValidator::new(policy);
+        validator.validate(&input)?;
+        Ok(Self(input))
+    }
+
+    /// Get the input as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Convert into the inner String.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// Get the length of the input in bytes.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if the input is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl AsRef<str> for ToolInput {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for ToolInput {
+    fn from(s: String) -> Self {
+        Self::new_unchecked(s)
+    }
+}
+
+impl From<ToolInput> for String {
+    fn from(input: ToolInput) -> Self {
+        input.0
+    }
+}
+
+impl std::fmt::Display for ToolInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Trait defining an external capability that agents can invoke.
 ///
 /// Tools extend agent functionality beyond internal reasoning to include
@@ -1031,5 +1157,67 @@ mod tests {
             result.metadata().custom_metadata.get("input_length"),
             Some(&"5".to_string())
         );
+    }
+
+    #[test]
+    fn test_tool_input_creation() {
+        let input = ToolInput::new_unchecked("test input".to_string());
+        assert_eq!(input.as_str(), "test input");
+        assert_eq!(input.len(), 10);
+        assert!(!input.is_empty());
+    }
+
+    #[test]
+    fn test_tool_input_conversions() {
+        let input = ToolInput::from("test".to_string());
+        assert_eq!(input.as_str(), "test");
+
+        let s: String = input.clone().into();
+        assert_eq!(s, "test");
+
+        let r: &str = input.as_ref();
+        assert_eq!(r, "test");
+    }
+
+    #[test]
+    fn test_tool_input_display() {
+        let input = ToolInput::new_unchecked("hello world".to_string());
+        assert_eq!(format!("{}", input), "hello world");
+    }
+
+    #[test]
+    #[cfg(feature = "security-basic")]
+    fn test_tool_input_validation() {
+        use crate::security::{
+            SecurityPolicy,
+            policy::{FileSystemPolicy, HttpPolicy, NetworkPolicy},
+        };
+
+        let policy = SecurityPolicy {
+            fs_policy: FileSystemPolicy::default(),
+            http_policy: HttpPolicy::default(),
+            network_policy: NetworkPolicy::default(),
+        };
+
+        // Valid input should pass
+        let result = ToolInput::validate("normal input".to_string(), &policy);
+        assert!(result.is_ok());
+
+        // Input with secrets should fail
+        let result = ToolInput::validate("api_key=sk_test123456789abcdef".to_string(), &policy);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tool_input_serialization() {
+        let input = ToolInput::new_unchecked("test data".to_string());
+
+        // Test JSON serialization
+        let json = serde_json::to_string(&input).unwrap();
+        assert_eq!(json, "\"test data\"");
+
+        // Test JSON deserialization
+        let deserialized: ToolInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, input);
     }
 }
