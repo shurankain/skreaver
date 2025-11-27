@@ -60,17 +60,15 @@ impl RedisMemory {
         // Create stateful connection manager
         let connection_manager = RedisPoolUtils::create_connection_manager(pool.clone());
 
-        let health = Arc::new(RwLock::new(RedisHealth {
-            healthy: false,
-            last_ping: None,
+        let health = Arc::new(RwLock::new(RedisHealth::Unhealthy {
+            error: "Not yet initialized".to_string(),
+            last_successful_ping: None,
             pool_stats: PoolStats {
                 total_connections: 0,
                 idle_connections: 0,
                 active_connections: 0,
                 created_at: Instant::now(),
             },
-            server_info: None,
-            error: None,
         }));
 
         let metrics = Arc::new(Mutex::new(ConnectionMetrics::default()));

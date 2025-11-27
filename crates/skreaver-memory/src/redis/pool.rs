@@ -184,25 +184,39 @@ impl RedisPoolUtils {
 
         let mut health_guard = health.write().await;
 
-        match result {
-            Ok(_) => {
-                health_guard.healthy = true;
-                health_guard.last_ping = Some(start);
-                health_guard.error = None;
+        // Get the created_at timestamp from existing pool_stats
+        let created_at = health_guard.pool_stats().created_at;
 
+        *health_guard = match result {
+            Ok(_) => {
                 // Update pool stats
-                health_guard.pool_stats = PoolStats {
+                let pool_stats = PoolStats {
                     total_connections: config.pool_size(),
                     idle_connections: config.pool_size(), // Simplified
                     active_connections: 0,
-                    created_at: health_guard.pool_stats.created_at,
+                    created_at,
                 };
+
+                RedisHealth::Healthy {
+                    last_ping: start,
+                    pool_stats,
+                    server_info: None,
+                }
             }
             Err(e) => {
-                health_guard.healthy = false;
-                health_guard.error = Some(Self::sanitize_error(&e));
+                // Preserve last successful ping if we had one
+                let last_successful_ping = health_guard.last_ping();
+
+                // Keep current pool stats
+                let pool_stats = health_guard.pool_stats().clone();
+
+                RedisHealth::Unhealthy {
+                    error: Self::sanitize_error(&e),
+                    last_successful_ping,
+                    pool_stats,
+                }
             }
-        }
+        };
 
         Ok(health_guard.clone())
     }
