@@ -52,8 +52,8 @@ pub struct SecurityConfig {
     pub csp: ContentSecurityPolicy,
     /// Input validation configuration
     pub input_validation: InputValidationConfig,
-    /// Security headers configuration
-    pub security_headers: SecurityHeadersConfig,
+    /// Security headers policy
+    pub security_headers: SecurityHeadersPolicy,
 }
 
 /// Secure wrapper for sensitive data
@@ -369,54 +369,130 @@ impl InputValidationConfig {
     }
 }
 
-/// Security headers configuration
-#[derive(Debug, Clone)]
-pub struct SecurityHeadersConfig {
-    pub enable_hsts: bool,
-    pub enable_frame_options: bool,
-    pub enable_content_type_options: bool,
-    pub enable_xss_protection: bool,
-    pub enable_referrer_policy: bool,
-    pub enable_permissions_policy: bool,
+/// Security headers policy levels.
+///
+/// This enum provides preset security header configurations that follow
+/// security best practices. Using an enum instead of individual boolean
+/// flags prevents misconfiguration (e.g., accidentally disabling only HSTS).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityHeadersPolicy {
+    /// All security headers enabled (recommended for production).
+    ///
+    /// Includes:
+    /// - HSTS with 1 year max-age and includeSubDomains
+    /// - X-Frame-Options: DENY
+    /// - X-Content-Type-Options: nosniff
+    /// - X-XSS-Protection: 1; mode=block
+    /// - Referrer-Policy: strict-origin-when-cross-origin
+    /// - Permissions-Policy: restrictive defaults
+    Strict,
+
+    /// Basic security headers only.
+    ///
+    /// Includes essential headers but omits some modern protections.
+    /// Useful for compatibility with older clients.
+    /// Includes: HSTS, X-Frame-Options, X-Content-Type-Options
+    Basic,
+
+    /// Custom header selection.
+    ///
+    /// Allows fine-grained control over which headers are enabled.
+    /// Use this only if you have specific requirements that Strict/Basic don't meet.
+    Custom {
+        hsts: bool,
+        frame_options: bool,
+        content_type_options: bool,
+        xss_protection: bool,
+        referrer_policy: bool,
+        permissions_policy: bool,
+    },
+
+    /// No security headers (not recommended).
+    ///
+    /// Only use this for development/testing environments where security
+    /// headers interfere with tooling or debugging.
+    Disabled,
 }
 
-impl Default for SecurityHeadersConfig {
+impl Default for SecurityHeadersPolicy {
     fn default() -> Self {
-        Self {
-            enable_hsts: true,
-            enable_frame_options: true,
-            enable_content_type_options: true,
-            enable_xss_protection: true,
-            enable_referrer_policy: true,
-            enable_permissions_policy: true,
-        }
+        // Secure by default
+        Self::Strict
     }
 }
 
-impl SecurityHeadersConfig {
-    /// Get all security headers as key-value pairs
+impl SecurityHeadersPolicy {
+    /// Create a strict policy (all headers enabled).
+    pub fn strict() -> Self {
+        Self::Strict
+    }
+
+    /// Create a basic policy (essential headers only).
+    pub fn basic() -> Self {
+        Self::Basic
+    }
+
+    /// Create a disabled policy (no security headers).
+    pub fn disabled() -> Self {
+        Self::Disabled
+    }
+
+    /// Create a custom policy with specific headers enabled.
+    pub fn custom(
+        hsts: bool,
+        frame_options: bool,
+        content_type_options: bool,
+        xss_protection: bool,
+        referrer_policy: bool,
+        permissions_policy: bool,
+    ) -> Self {
+        Self::Custom {
+            hsts,
+            frame_options,
+            content_type_options,
+            xss_protection,
+            referrer_policy,
+            permissions_policy,
+        }
+    }
+
+    /// Get all security headers as key-value pairs.
     pub fn to_headers(&self) -> Vec<(&'static str, &'static str)> {
         let mut headers = Vec::new();
 
-        if self.enable_hsts {
+        let (hsts, frame_options, content_type_options, xss_protection, referrer_policy, permissions_policy) = match self {
+            Self::Strict => (true, true, true, true, true, true),
+            Self::Basic => (true, true, true, false, false, false),
+            Self::Custom {
+                hsts,
+                frame_options,
+                content_type_options,
+                xss_protection,
+                referrer_policy,
+                permissions_policy,
+            } => (*hsts, *frame_options, *content_type_options, *xss_protection, *referrer_policy, *permissions_policy),
+            Self::Disabled => (false, false, false, false, false, false),
+        };
+
+        if hsts {
             headers.push((
                 "Strict-Transport-Security",
                 "max-age=31536000; includeSubDomains",
             ));
         }
-        if self.enable_frame_options {
+        if frame_options {
             headers.push(("X-Frame-Options", "DENY"));
         }
-        if self.enable_content_type_options {
+        if content_type_options {
             headers.push(("X-Content-Type-Options", "nosniff"));
         }
-        if self.enable_xss_protection {
+        if xss_protection {
             headers.push(("X-XSS-Protection", "1; mode=block"));
         }
-        if self.enable_referrer_policy {
+        if referrer_policy {
             headers.push(("Referrer-Policy", "strict-origin-when-cross-origin"));
         }
-        if self.enable_permissions_policy {
+        if permissions_policy {
             headers.push((
                 "Permissions-Policy",
                 "camera=(), microphone=(), geolocation=(), payment=()",
@@ -426,6 +502,16 @@ impl SecurityHeadersConfig {
         headers
     }
 }
+
+/// Legacy type alias for backward compatibility.
+///
+/// This type has been deprecated in favor of `SecurityHeadersPolicy`.
+/// The new enum-based approach prevents security misconfigurations.
+#[deprecated(
+    since = "0.5.1",
+    note = "Use SecurityHeadersPolicy instead. SecurityHeadersConfig's boolean flags can lead to misconfiguration."
+)]
+pub type SecurityHeadersConfig = SecurityHeadersPolicy;
 
 impl Default for SecurityConfig {
     fn default() -> Self {
@@ -448,7 +534,7 @@ impl Default for SecurityConfig {
             })),
             csp: ContentSecurityPolicy::default(),
             input_validation: InputValidationConfig::default(),
-            security_headers: SecurityHeadersConfig::default(),
+            security_headers: SecurityHeadersPolicy::default(),
         }
     }
 }
@@ -461,7 +547,7 @@ impl SecurityConfig {
             api_keys: Arc::new(RwLock::new(HashMap::new())), // No default keys in production
             csp: ContentSecurityPolicy::default(),
             input_validation: InputValidationConfig::default(),
-            security_headers: SecurityHeadersConfig::default(),
+            security_headers: SecurityHeadersPolicy::default(),
         }
     }
 
@@ -572,5 +658,66 @@ mod tests {
 
         assert!(!sanitized.contains("<script>"));
         assert!(sanitized.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn test_security_headers_policy_strict() {
+        let policy = SecurityHeadersPolicy::strict();
+        let headers = policy.to_headers();
+
+        assert_eq!(headers.len(), 6);
+        assert!(headers.contains(&("Strict-Transport-Security", "max-age=31536000; includeSubDomains")));
+        assert!(headers.contains(&("X-Frame-Options", "DENY")));
+        assert!(headers.contains(&("X-Content-Type-Options", "nosniff")));
+        assert!(headers.contains(&("X-XSS-Protection", "1; mode=block")));
+        assert!(headers.contains(&("Referrer-Policy", "strict-origin-when-cross-origin")));
+    }
+
+    #[test]
+    fn test_security_headers_policy_basic() {
+        let policy = SecurityHeadersPolicy::basic();
+        let headers = policy.to_headers();
+
+        // Basic should have 3 headers
+        assert_eq!(headers.len(), 3);
+        assert!(headers.contains(&("Strict-Transport-Security", "max-age=31536000; includeSubDomains")));
+        assert!(headers.contains(&("X-Frame-Options", "DENY")));
+        assert!(headers.contains(&("X-Content-Type-Options", "nosniff")));
+    }
+
+    #[test]
+    fn test_security_headers_policy_disabled() {
+        let policy = SecurityHeadersPolicy::disabled();
+        let headers = policy.to_headers();
+
+        assert_eq!(headers.len(), 0);
+    }
+
+    #[test]
+    fn test_security_headers_policy_custom() {
+        let policy = SecurityHeadersPolicy::custom(
+            true,  // hsts
+            true,  // frame_options
+            false, // content_type_options
+            false, // xss_protection
+            true,  // referrer_policy
+            false, // permissions_policy
+        );
+        let headers = policy.to_headers();
+
+        assert_eq!(headers.len(), 3);
+        assert!(headers.contains(&("Strict-Transport-Security", "max-age=31536000; includeSubDomains")));
+        assert!(headers.contains(&("X-Frame-Options", "DENY")));
+        assert!(headers.contains(&("Referrer-Policy", "strict-origin-when-cross-origin")));
+        assert!(!headers.iter().any(|(name, _)| *name == "X-Content-Type-Options"));
+    }
+
+    #[test]
+    fn test_security_headers_policy_default() {
+        let policy = SecurityHeadersPolicy::default();
+        let headers = policy.to_headers();
+
+        // Default should be strict (all 6 headers)
+        assert_eq!(headers.len(), 6);
     }
 }
