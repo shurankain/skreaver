@@ -15,8 +15,7 @@ pub struct CreateAgentResponse {
     #[schema(example = "simple_agent")]
     pub agent_type: String,
     /// Current status of the agent
-    #[schema(example = "running")]
-    pub status: String,
+    pub status: crate::runtime::agent_status::AgentStatusEnum,
 }
 
 /// Response from agent observation
@@ -42,8 +41,7 @@ pub struct AgentStatus {
     #[schema(example = "simple_agent")]
     pub agent_type: String,
     /// Current operational status
-    #[schema(example = "running")]
-    pub status: String,
+    pub status: crate::runtime::agent_status::AgentStatusEnum,
     /// Timestamp when the agent was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// Last activity timestamp

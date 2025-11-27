@@ -39,7 +39,7 @@ pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync + 'static>(
         agent_statuses.push(AgentStatus {
             agent_id: id.to_string(),
             agent_type: instance.coordinator.get_agent_type().to_string(),
-            status: "running".to_string(),
+            status: crate::runtime::agent_status::AgentStatusEnum::Ready,
             created_at: instance.created_at,
             last_activity: Some(instance.get_last_activity().await),
         });
@@ -77,7 +77,7 @@ pub async fn create_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
             Ok(Json(CreateAgentResponse {
                 agent_id: response.agent_id,
                 agent_type: response.spec.agent_type.to_string(),
-                status: response.status.simple_name().to_string(),
+                status: response.status,
             }))
         }
         Err(AgentFactoryError::UnknownAgentType(agent_type)) => Err((
@@ -158,7 +158,7 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync + 'static>(
             Ok(Json(AgentStatus {
                 agent_id, // No need to clone, we own it
                 agent_type: instance.coordinator.get_agent_type().to_string(),
-                status: "running".to_string(),
+                status: crate::runtime::agent_status::AgentStatusEnum::Ready,
                 created_at: instance.created_at,
                 last_activity: Some(last_activity),
             }))

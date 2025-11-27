@@ -198,7 +198,7 @@ async fn test_get_agent_status() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["agent_id"], "status-test-agent");
-    assert_eq!(json["status"], "running");
+    assert_eq!(json["status"], "ready");
     assert!(json["agent_type"].is_string());
 }
 
