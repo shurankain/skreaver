@@ -256,20 +256,20 @@ fn display_alerting_config(config: &SecurityConfig) {
 fn display_development_config(config: &SecurityConfig) {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     println!("🔧 Step 10: Development Configuration\n");
-    println!("   Enabled: {}", config.development.enabled);
-    if config.development.enabled {
+    println!("   Level: {:?}", config.development.level);
+    if config.development.is_enabled() {
         println!("   ⚠️  WARNING: Development mode is active!");
         println!(
             "   Skip Domain Validation: {}",
-            config.development.skip_domain_validation
+            config.development.skip_domain_validation()
         );
         println!(
             "   Skip Path Validation: {}",
-            config.development.skip_path_validation
+            config.development.skip_path_validation()
         );
         println!(
             "   Skip Resource Limits: {}",
-            config.development.skip_resource_limits
+            config.development.skip_resource_limits()
         );
         if !config.development.dev_allow_domains.is_empty() {
             println!("   Dev Allow Domains:");

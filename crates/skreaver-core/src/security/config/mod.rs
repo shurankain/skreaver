@@ -17,7 +17,9 @@ pub mod types;
 // Re-export commonly used types for backward compatibility
 pub use alerts::{AlertLevel, Alerting, AlertingConfig, LockdownTrigger};
 pub use audit::{Audit, AuditConfig};
-pub use emergency::{DevelopmentConfig, DevelopmentMode, Emergency, EmergencyConfig};
+pub use emergency::{
+    DevelopmentConfig, DevelopmentLevel, DevelopmentMode, Emergency, EmergencyConfig,
+};
 pub use logging::{LogFormat, LogLevel};
 pub use secrets::{Secret, SecretConfig};
 pub use types::{
@@ -136,8 +138,11 @@ impl SecurityConfig {
     /// Validate configuration for security issues (fail-fast on critical errors)
     pub fn validate(&self) -> Result<(), SecurityError> {
         // Check for development mode in production
-        if self.development.enabled {
-            tracing::warn!("Development mode is enabled - this should not be used in production");
+        if self.development.is_enabled() {
+            tracing::warn!(
+                "Development mode is enabled ({:?}) - this should not be used in production",
+                self.development.level
+            );
         }
 
         // Validate resource limits (CRITICAL - must fail)
@@ -200,7 +205,7 @@ impl SecurityConfig {
             ..
         } = &self.http.access
             && allow_list.is_empty()
-            && !self.development.enabled
+            && !self.development.is_enabled()
         {
             tracing::warn!("HTTP enabled with empty allow list (all domains will be blocked)");
         }
@@ -210,14 +215,14 @@ impl SecurityConfig {
             include_local: true,
             ..
         } = &self.http.access
-            && !self.development.enabled
+            && !self.development.is_enabled()
         {
             tracing::warn!(
                 "HTTP requests to localhost are allowed - this may be a security risk in production"
             );
         }
 
-        if self.network.allow_private_networks && !self.development.enabled {
+        if self.network.allow_private_networks && !self.development.is_enabled() {
             tracing::warn!(
                 "Network access to private IP ranges is allowed - this may be a security risk"
             );
@@ -393,10 +398,7 @@ alert_levels = ["HIGH", "CRITICAL"]
 email_recipients = []
 
 [development]
-enabled = false
-skip_domain_validation = false
-skip_path_validation = false
-skip_resource_limits = false
+level = "Production"
 dev_allow_domains = ["localhost"]
 
 [emergency]

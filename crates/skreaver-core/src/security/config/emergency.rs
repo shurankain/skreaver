@@ -100,23 +100,115 @@ impl DevelopmentMode<Production> {
     }
 }
 
+/// Development level for type-safe configuration
+///
+/// Represents different levels of development mode with clear security implications.
+/// Each level enables specific validation skips appropriate for that use case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "level")]
+pub enum DevelopmentLevel {
+    /// Production mode - all validations enabled, no skips
+    Production,
+
+    /// Light development - only domain validation relaxed (useful for local testing)
+    /// - Skips domain validation for dev_allow_domains
+    /// - All other validations active
+    Light,
+
+    /// Standard development - common validations relaxed
+    /// - Skips domain validation
+    /// - Skips path validation
+    /// - Resource limits still enforced
+    Standard,
+
+    /// Full development - all validations disabled (maximum flexibility, use with caution)
+    /// - Skips domain validation
+    /// - Skips path validation
+    /// - Skips resource limits
+    Full,
+}
+
+impl DevelopmentLevel {
+    /// Check if development mode is enabled (any level except Production)
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Production)
+    }
+
+    /// Check if domain validation should be skipped
+    pub fn skip_domain_validation(&self) -> bool {
+        matches!(self, Self::Light | Self::Standard | Self::Full)
+    }
+
+    /// Check if path validation should be skipped
+    pub fn skip_path_validation(&self) -> bool {
+        matches!(self, Self::Standard | Self::Full)
+    }
+
+    /// Check if resource limits should be skipped
+    pub fn skip_resource_limits(&self) -> bool {
+        matches!(self, Self::Full)
+    }
+}
+
+impl Default for DevelopmentLevel {
+    fn default() -> Self {
+        Self::Production
+    }
+}
+
 /// Backward compatible development configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DevelopmentConfig {
-    pub enabled: bool,
-    pub skip_domain_validation: bool,
-    pub skip_path_validation: bool,
-    pub skip_resource_limits: bool,
+    #[serde(flatten)]
+    pub level: DevelopmentLevel,
     pub dev_allow_domains: Vec<String>,
+}
+
+impl DevelopmentConfig {
+    /// Check if development mode is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.level.is_enabled()
+    }
+
+    /// Check if domain validation should be skipped
+    pub fn skip_domain_validation(&self) -> bool {
+        self.level.skip_domain_validation()
+    }
+
+    /// Check if path validation should be skipped
+    pub fn skip_path_validation(&self) -> bool {
+        self.level.skip_path_validation()
+    }
+
+    /// Check if resource limits should be skipped
+    pub fn skip_resource_limits(&self) -> bool {
+        self.level.skip_resource_limits()
+    }
+
+    /// Get development allowed domains
+    pub fn dev_allow_domains(&self) -> &[String] {
+        &self.dev_allow_domains
+    }
 }
 
 impl From<DevelopmentMode<Development>> for DevelopmentConfig {
     fn from(dev: DevelopmentMode<Development>) -> Self {
+        // Map boolean flags to appropriate level
+        let level = match (
+            dev.skip_domain_validation,
+            dev.skip_path_validation,
+            dev.skip_resource_limits,
+        ) {
+            (false, false, false) => DevelopmentLevel::Production,
+            (true, false, false) => DevelopmentLevel::Light,
+            (true, true, false) => DevelopmentLevel::Standard,
+            (true, true, true) => DevelopmentLevel::Full,
+            // Invalid combinations map to closest safe level
+            _ => DevelopmentLevel::Production,
+        };
+
         Self {
-            enabled: true,
-            skip_domain_validation: dev.skip_domain_validation,
-            skip_path_validation: dev.skip_path_validation,
-            skip_resource_limits: dev.skip_resource_limits,
+            level,
             dev_allow_domains: dev.dev_allow_domains,
         }
     }
@@ -125,10 +217,7 @@ impl From<DevelopmentMode<Development>> for DevelopmentConfig {
 impl From<DevelopmentMode<Production>> for DevelopmentConfig {
     fn from(dev: DevelopmentMode<Production>) -> Self {
         Self {
-            enabled: false,
-            skip_domain_validation: dev.skip_domain_validation,
-            skip_path_validation: dev.skip_path_validation,
-            skip_resource_limits: dev.skip_resource_limits,
+            level: DevelopmentLevel::Production,
             dev_allow_domains: dev.dev_allow_domains,
         }
     }
@@ -137,10 +226,7 @@ impl From<DevelopmentMode<Production>> for DevelopmentConfig {
 impl Default for DevelopmentConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
-            skip_domain_validation: false,
-            skip_path_validation: false,
-            skip_resource_limits: false,
+            level: DevelopmentLevel::Production,
             dev_allow_domains: vec!["localhost".to_string(), "127.0.0.1".to_string()],
         }
     }
@@ -272,5 +358,132 @@ impl Default for EmergencyConfig {
             security_contact: "security@example.com".to_string(),
             auto_lockdown_triggers: LockdownTrigger::defaults(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_development_level_production() {
+        let level = DevelopmentLevel::Production;
+        assert!(!level.is_enabled());
+        assert!(!level.skip_domain_validation());
+        assert!(!level.skip_path_validation());
+        assert!(!level.skip_resource_limits());
+    }
+
+    #[test]
+    fn test_development_level_light() {
+        let level = DevelopmentLevel::Light;
+        assert!(level.is_enabled());
+        assert!(level.skip_domain_validation());
+        assert!(!level.skip_path_validation());
+        assert!(!level.skip_resource_limits());
+    }
+
+    #[test]
+    fn test_development_level_standard() {
+        let level = DevelopmentLevel::Standard;
+        assert!(level.is_enabled());
+        assert!(level.skip_domain_validation());
+        assert!(level.skip_path_validation());
+        assert!(!level.skip_resource_limits());
+    }
+
+    #[test]
+    fn test_development_level_full() {
+        let level = DevelopmentLevel::Full;
+        assert!(level.is_enabled());
+        assert!(level.skip_domain_validation());
+        assert!(level.skip_path_validation());
+        assert!(level.skip_resource_limits());
+    }
+
+    #[test]
+    fn test_development_config_helper_methods() {
+        let config = DevelopmentConfig {
+            level: DevelopmentLevel::Standard,
+            dev_allow_domains: vec!["localhost".to_string()],
+        };
+
+        assert!(config.is_enabled());
+        assert!(config.skip_domain_validation());
+        assert!(config.skip_path_validation());
+        assert!(!config.skip_resource_limits());
+        assert_eq!(config.dev_allow_domains(), &["localhost"]);
+    }
+
+    #[test]
+    fn test_development_config_default() {
+        let config = DevelopmentConfig::default();
+        assert_eq!(config.level, DevelopmentLevel::Production);
+        assert!(!config.is_enabled());
+        assert_eq!(
+            config.dev_allow_domains,
+            vec!["localhost".to_string(), "127.0.0.1".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_development_level_serialization() {
+        let level = DevelopmentLevel::Standard;
+        let json = serde_json::to_string(&level).unwrap();
+        assert!(json.contains("Standard"));
+
+        let deserialized: DevelopmentLevel = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, level);
+    }
+
+    #[test]
+    fn test_development_config_serialization() {
+        let config = DevelopmentConfig {
+            level: DevelopmentLevel::Light,
+            dev_allow_domains: vec!["example.com".to_string()],
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: DevelopmentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.level, config.level);
+        assert_eq!(deserialized.dev_allow_domains, config.dev_allow_domains);
+    }
+
+    #[test]
+    fn test_development_mode_to_config_conversion() {
+        // Test Production mode conversion
+        let prod_mode = DevelopmentMode::<Production>::new_production();
+        let config: DevelopmentConfig = prod_mode.into();
+        assert_eq!(config.level, DevelopmentLevel::Production);
+
+        // Test Development mode with all flags enabled
+        let mut dev_mode = DevelopmentMode::<Development>::new_development();
+        dev_mode.skip_domain_validation = true;
+        dev_mode.skip_path_validation = true;
+        dev_mode.skip_resource_limits = true;
+        let config: DevelopmentConfig = dev_mode.into();
+        assert_eq!(config.level, DevelopmentLevel::Full);
+    }
+
+    #[test]
+    fn test_emergency_lockdown_active() {
+        let emergency = Emergency::<LockdownActive>::new_lockdown();
+        assert!(emergency.is_lockdown_enabled());
+        assert!(emergency.is_tool_allowed("memory"));
+        assert!(!emergency.is_tool_allowed("http"));
+    }
+
+    #[test]
+    fn test_emergency_normal_ops() {
+        let emergency = Emergency::<NormalOps>::new_normal();
+        assert!(!emergency.is_lockdown_enabled());
+    }
+
+    #[test]
+    fn test_emergency_config_default() {
+        let config = EmergencyConfig::default();
+        assert!(!config.lockdown_enabled);
+        assert_eq!(config.security_contact, "security@example.com");
+        assert!(!config.lockdown_allowed_tools.is_empty());
     }
 }
