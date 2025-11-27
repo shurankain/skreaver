@@ -460,7 +460,14 @@ impl SecurityHeadersPolicy {
     pub fn to_headers(&self) -> Vec<(&'static str, &'static str)> {
         let mut headers = Vec::new();
 
-        let (hsts, frame_options, content_type_options, xss_protection, referrer_policy, permissions_policy) = match self {
+        let (
+            hsts,
+            frame_options,
+            content_type_options,
+            xss_protection,
+            referrer_policy,
+            permissions_policy,
+        ) = match self {
             Self::Strict => (true, true, true, true, true, true),
             Self::Basic => (true, true, true, false, false, false),
             Self::Custom {
@@ -470,7 +477,14 @@ impl SecurityHeadersPolicy {
                 xss_protection,
                 referrer_policy,
                 permissions_policy,
-            } => (*hsts, *frame_options, *content_type_options, *xss_protection, *referrer_policy, *permissions_policy),
+            } => (
+                *hsts,
+                *frame_options,
+                *content_type_options,
+                *xss_protection,
+                *referrer_policy,
+                *permissions_policy,
+            ),
             Self::Disabled => (false, false, false, false, false, false),
         };
 
@@ -666,7 +680,10 @@ mod tests {
         let headers = policy.to_headers();
 
         assert_eq!(headers.len(), 6);
-        assert!(headers.contains(&("Strict-Transport-Security", "max-age=31536000; includeSubDomains")));
+        assert!(headers.contains(&(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains"
+        )));
         assert!(headers.contains(&("X-Frame-Options", "DENY")));
         assert!(headers.contains(&("X-Content-Type-Options", "nosniff")));
         assert!(headers.contains(&("X-XSS-Protection", "1; mode=block")));
@@ -680,7 +697,10 @@ mod tests {
 
         // Basic should have 3 headers
         assert_eq!(headers.len(), 3);
-        assert!(headers.contains(&("Strict-Transport-Security", "max-age=31536000; includeSubDomains")));
+        assert!(headers.contains(&(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains"
+        )));
         assert!(headers.contains(&("X-Frame-Options", "DENY")));
         assert!(headers.contains(&("X-Content-Type-Options", "nosniff")));
     }
@@ -706,10 +726,17 @@ mod tests {
         let headers = policy.to_headers();
 
         assert_eq!(headers.len(), 3);
-        assert!(headers.contains(&("Strict-Transport-Security", "max-age=31536000; includeSubDomains")));
+        assert!(headers.contains(&(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains"
+        )));
         assert!(headers.contains(&("X-Frame-Options", "DENY")));
         assert!(headers.contains(&("Referrer-Policy", "strict-origin-when-cross-origin")));
-        assert!(!headers.iter().any(|(name, _)| *name == "X-Content-Type-Options"));
+        assert!(
+            !headers
+                .iter()
+                .any(|(name, _)| *name == "X-Content-Type-Options")
+        );
     }
 
     #[test]

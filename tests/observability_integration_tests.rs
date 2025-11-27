@@ -4,7 +4,7 @@
 //! in end-to-end scenarios as specified in DEVELOPMENT_PLAN.md Phase 0.3.
 
 use skreaver_observability::{
-    ObservabilityConfig, init_observability,
+    ObservabilityConfig, ObservabilityMode, init_observability,
     metrics::MetricsRegistry,
     tags::{AgentId, CardinalTags, ErrorKind, MemoryOp, SessionId, ToolName},
 };
@@ -14,9 +14,7 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_observability_initialization() {
     let config = ObservabilityConfig {
-        metrics_enabled: false, // Disable metrics to avoid singleton conflicts
-        tracing_enabled: false, // Disable tracing to avoid conflicts
-        health_enabled: true,   // Health is safe
+        mode: ObservabilityMode::HealthOnly, // Health only to avoid singleton conflicts
         otel_endpoint: None,
         namespace: "test_obs".to_string(),
         ..Default::default()

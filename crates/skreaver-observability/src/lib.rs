@@ -49,15 +49,73 @@ pub const LATENCY_BUCKETS: &[f64] = &[
     10.0,  // 10s
 ];
 
+/// Observability mode for controlling which features are enabled.
+///
+/// This enum provides clear, predefined observability configurations that
+/// prevent invalid combinations (e.g., metrics enabled but health disabled).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObservabilityMode {
+    /// Full observability with all features enabled.
+    ///
+    /// Includes:
+    /// - Metrics collection (Prometheus)
+    /// - Distributed tracing (OpenTelemetry)
+    /// - Health checks
+    ///
+    /// Recommended for production environments.
+    Full,
+
+    /// Metrics and health checks only (no distributed tracing).
+    ///
+    /// Includes:
+    /// - Metrics collection
+    /// - Health checks
+    ///
+    /// Lower overhead than Full mode, suitable when tracing isn't needed.
+    MetricsOnly,
+
+    /// Health checks only (minimal overhead).
+    ///
+    /// Only includes health check endpoints.
+    /// Minimal performance impact, suitable for resource-constrained environments.
+    HealthOnly,
+
+    /// All observability features disabled.
+    ///
+    /// No metrics, tracing, or health checks.
+    /// Not recommended for production - only use for testing/benchmarking.
+    Disabled,
+}
+
+impl Default for ObservabilityMode {
+    fn default() -> Self {
+        // Full observability by default for maximum visibility
+        Self::Full
+    }
+}
+
+impl ObservabilityMode {
+    /// Check if metrics collection is enabled.
+    pub fn metrics_enabled(&self) -> bool {
+        matches!(self, Self::Full | Self::MetricsOnly)
+    }
+
+    /// Check if distributed tracing is enabled.
+    pub fn tracing_enabled(&self) -> bool {
+        matches!(self, Self::Full)
+    }
+
+    /// Check if health checks are enabled.
+    pub fn health_enabled(&self) -> bool {
+        matches!(self, Self::Full | Self::MetricsOnly | Self::HealthOnly)
+    }
+}
+
 /// Observability configuration
 #[derive(Debug, Clone)]
 pub struct ObservabilityConfig {
-    /// Enable metrics collection
-    pub metrics_enabled: bool,
-    /// Enable distributed tracing
-    pub tracing_enabled: bool,
-    /// Enable health checks
-    pub health_enabled: bool,
+    /// Observability mode controlling which features are enabled
+    pub mode: ObservabilityMode,
     /// OpenTelemetry endpoint (optional)
     pub otel_endpoint: Option<String>,
     /// Metrics namespace prefix
@@ -82,9 +140,7 @@ pub struct LogSamplingConfig {
 impl Default for ObservabilityConfig {
     fn default() -> Self {
         Self {
-            metrics_enabled: true,
-            tracing_enabled: true,
-            health_enabled: true,
+            mode: ObservabilityMode::default(),
             otel_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(),
             namespace: "skreaver".to_string(),
             log_sampling: LogSamplingConfig::default(),
@@ -107,17 +163,17 @@ impl Default for LogSamplingConfig {
 /// Initialize observability framework
 pub fn init_observability(config: ObservabilityConfig) -> Result<(), ObservabilityError> {
     #[cfg(feature = "metrics")]
-    if config.metrics_enabled {
+    if config.mode.metrics_enabled() {
         metrics::init_metrics_registry(&config.namespace)?;
     }
 
     #[cfg(feature = "tracing")]
-    if config.tracing_enabled {
+    if config.mode.tracing_enabled() {
         trace::init_tracing(&config)?;
     }
 
     #[cfg(feature = "health")]
-    if config.health_enabled {
+    if config.mode.health_enabled() {
         health::init_health_checks()?;
     }
 

@@ -142,8 +142,9 @@ fn test_env_config_observability() {
         .build()
         .expect("should build valid config");
 
-    assert!(!config.observability.metrics_enabled);
-    assert!(config.observability.tracing_enabled);
+    // With metrics=false, tracing=true, should enable Full mode (tracing needs metrics)
+    assert!(config.observability.mode.metrics_enabled());
+    assert!(config.observability.mode.tracing_enabled());
     assert_eq!(config.observability.namespace, "my-service");
 
     clear_env("SKREAVER_OBSERVABILITY_ENABLE_METRICS");
@@ -351,8 +352,9 @@ fn test_env_config_comprehensive() {
     );
     assert_eq!(config.backpressure.target_processing_time_ms, 500);
     assert_eq!(config.backpressure.load_threshold, 0.7);
-    assert!(config.observability.metrics_enabled);
-    assert!(!config.observability.tracing_enabled);
+    // With metrics=true, tracing=false, should be MetricsOnly mode
+    assert!(config.observability.mode.metrics_enabled());
+    assert!(!config.observability.mode.tracing_enabled());
     assert_eq!(config.observability.namespace, "test-service");
 
     // Clean up

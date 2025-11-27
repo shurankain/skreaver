@@ -48,7 +48,7 @@ use crate::runtime::{
     HttpRuntimeConfig, backpressure::BackpressureConfig, connection_limits::ConnectionLimitConfig,
     rate_limit::RateLimitConfig,
 };
-use skreaver_observability::ObservabilityConfig;
+use skreaver_observability::{ObservabilityConfig, ObservabilityMode};
 use std::{env, path::PathBuf, time::Duration};
 
 /// Error type for configuration loading
@@ -218,15 +218,30 @@ impl HttpRuntimeConfigBuilder {
 
         // Observability
         let mut observability = ObservabilityConfig::default();
-        if let Some(enable) = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_METRICS")? {
-            observability.metrics_enabled = enable;
-        }
-        if let Some(enable) = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_TRACING")? {
-            observability.tracing_enabled = enable;
-        }
-        if let Some(enable) = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_HEALTH")? {
-            observability.health_enabled = enable;
-        }
+
+        // Read individual feature flags from environment
+        let metrics = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_METRICS")?.unwrap_or(true);
+        let tracing = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_TRACING")?.unwrap_or(true);
+        let health = get_env_bool("SKREAVER_OBSERVABILITY_ENABLE_HEALTH")?.unwrap_or(true);
+
+        // Determine observability mode from feature flags
+        observability.mode = match (metrics, tracing, health) {
+            (true, true, true) => ObservabilityMode::Full,
+            (true, false, true) => ObservabilityMode::MetricsOnly,
+            (false, false, true) => ObservabilityMode::HealthOnly,
+            (false, false, false) => ObservabilityMode::Disabled,
+            // If tracing is enabled, metrics should also be enabled (tracing depends on metrics)
+            (false, true, _) => {
+                tracing::warn!("Tracing enabled without metrics - enabling Full mode");
+                ObservabilityMode::Full
+            }
+            // Other combinations default to what's requested, but may not be ideal
+            (true, false, false) | (true, true, false) => {
+                tracing::warn!("Unusual observability configuration - health checks disabled");
+                ObservabilityMode::MetricsOnly
+            }
+        };
+
         if let Some(endpoint) = get_env_string("SKREAVER_OBSERVABILITY_OTEL_ENDPOINT") {
             observability.otel_endpoint = Some(endpoint);
         }
