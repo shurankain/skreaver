@@ -508,7 +508,7 @@ impl WsMessage {
         }
     }
 
-    pub fn event(channel: &str, data: serde_json::Value) -> Self {
+    pub fn event(channel: &protocol::Channel, data: serde_json::Value) -> Self {
         Self::Event {
             channel: channel.to_string(),
             data,
@@ -809,7 +809,7 @@ mod tests {
         let success = WsMessage::success("test success");
         assert!(matches!(success, WsMessage::Success { .. }));
 
-        let event = WsMessage::event("test", serde_json::json!({"key": "value"}));
+        let event = WsMessage::event(&"test".into(), serde_json::json!({"key": "value"}));
         assert!(matches!(event, WsMessage::Event { .. }));
     }
 
@@ -830,7 +830,7 @@ mod tests {
         let json = serde_json::to_string(&ping).unwrap();
         assert!(json.contains("\"type\":\"ping\""));
 
-        let event = WsMessage::event("test", serde_json::json!({"data": "value"}));
+        let event = WsMessage::event(&"test".into(), serde_json::json!({"data": "value"}));
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"event\""));
         assert!(json.contains("\"channel\":\"test\""));

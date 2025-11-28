@@ -181,7 +181,7 @@ impl<State> InfoAccessMut for super::ConnectionInfo<State> {
 #[derive(Debug, Clone)]
 pub struct ChannelEvent {
     /// Channel name
-    pub channel: String,
+    pub channel: crate::websocket::protocol::Channel,
     /// Event data
     pub data: serde_json::Value,
     /// Target user ID (optional, for user-specific events)
@@ -692,9 +692,9 @@ impl WebSocketManager {
     }
 
     /// Broadcast message to channel
-    pub async fn broadcast_to_channel(&self, channel: &str, data: serde_json::Value) {
+    pub async fn broadcast_to_channel(&self, channel: &crate::websocket::protocol::Channel, data: serde_json::Value) {
         let event = ChannelEvent {
-            channel: channel.to_string(),
+            channel: channel.clone(),
             data,
             user_id: None,
         };
@@ -705,9 +705,9 @@ impl WebSocketManager {
     }
 
     /// Send message to specific user
-    pub async fn send_to_user(&self, user_id: &str, channel: &str, data: serde_json::Value) {
+    pub async fn send_to_user(&self, user_id: &str, channel: &crate::websocket::protocol::Channel, data: serde_json::Value) {
         let event = ChannelEvent {
-            channel: channel.to_string(),
+            channel: channel.clone(),
             data,
             user_id: Some(user_id.to_string()),
         };
@@ -895,7 +895,7 @@ impl WebSocketManager {
         let subscribers_with_senders = {
             let guard = self.locks.level3_read().await;
 
-            if let Some(subscribers) = guard.subscriptions.get(&event.channel) {
+            if let Some(subscribers) = guard.subscriptions.get(&event.channel.to_string()) {
                 subscribers
                     .iter()
                     .filter_map(|&conn_id| {

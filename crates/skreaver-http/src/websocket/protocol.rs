@@ -9,7 +9,90 @@ pub const PROTOCOL_VERSION: &str = "1.0";
 /// Maximum message size (1MB)
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
-/// Standard channel names
+/// Type-safe WebSocket channel names
+///
+/// Represents the available channels for WebSocket subscriptions.
+/// Using an enum ensures compile-time validation of channel names.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Channel {
+    /// System events (server status, maintenance, etc.)
+    System,
+    /// Agent events (lifecycle, status changes, etc.)
+    Agents,
+    /// Task events (creation, updates, completion, etc.)
+    Tasks,
+    /// User-specific notifications
+    Notifications,
+    /// Real-time metrics and monitoring
+    Metrics,
+    /// Debug and development events
+    Debug,
+    /// Custom channel (for extensibility)
+    #[serde(untagged)]
+    Custom(String),
+}
+
+impl Channel {
+    /// Get the canonical string name for this channel
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::System => "system",
+            Self::Agents => "agents",
+            Self::Tasks => "tasks",
+            Self::Notifications => "notifications",
+            Self::Metrics => "metrics",
+            Self::Debug => "debug",
+            Self::Custom(name) => name,
+        }
+    }
+
+    /// Check if this is a custom channel
+    pub fn is_custom(&self) -> bool {
+        matches!(self, Self::Custom(_))
+    }
+
+    /// Check if this channel requires admin privileges
+    pub fn requires_admin(&self) -> bool {
+        matches!(self, Self::System | Self::Metrics | Self::Debug)
+    }
+}
+
+impl std::fmt::Display for Channel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for Channel {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "system" => Self::System,
+            "agents" => Self::Agents,
+            "tasks" => Self::Tasks,
+            "notifications" => Self::Notifications,
+            "metrics" => Self::Metrics,
+            "debug" => Self::Debug,
+            other => Self::Custom(other.to_string()),
+        })
+    }
+}
+
+impl From<&str> for Channel {
+    fn from(s: &str) -> Self {
+        s.parse().unwrap() // Infallible
+    }
+}
+
+impl From<String> for Channel {
+    fn from(s: String) -> Self {
+        s.parse().unwrap() // Infallible
+    }
+}
+
+/// Standard channel names (for backward compatibility)
 pub mod channels {
     /// System events (server status, maintenance, etc.)
     pub const SYSTEM: &str = "system";
@@ -171,7 +254,7 @@ pub enum SubscriptionAction {
 #[serde(rename_all = "camelCase")]
 pub struct ChannelSubscription {
     /// Channel name
-    pub channel: String,
+    pub channel: Channel,
     /// Optional filters
     pub filters: Option<HashMap<String, serde_json::Value>>,
     /// Quality of service level
@@ -201,7 +284,7 @@ impl Default for QosLevel {
 #[serde(rename_all = "camelCase")]
 pub struct EventData {
     /// Event source channel
-    pub channel: String,
+    pub channel: Channel,
     /// Event type
     pub event_type: String,
     /// Event payload
@@ -373,7 +456,7 @@ impl MessageEnvelope {
         let channel_subs = channels
             .into_iter()
             .map(|channel| ChannelSubscription {
-                channel,
+                channel: channel.into(),
                 filters: None,
                 qos: QosLevel::default(),
             })
@@ -386,9 +469,9 @@ impl MessageEnvelope {
     }
 
     /// Create an event message
-    pub fn event(channel: &str, event_type: &str, data: serde_json::Value) -> Self {
+    pub fn event(channel: Channel, event_type: &str, data: serde_json::Value) -> Self {
         Self::new(MessagePayload::Event(EventData {
-            channel: channel.to_string(),
+            channel,
             event_type: event_type.to_string(),
             data,
             metadata: None,
@@ -498,7 +581,7 @@ mod tests {
         if let MessagePayload::Subscribe(data) = envelope.payload {
             assert!(matches!(data.action, SubscriptionAction::Subscribe));
             assert_eq!(data.channels.len(), 1);
-            assert_eq!(data.channels[0].channel, "test-channel");
+            assert_eq!(data.channels[0].channel, "test-channel".into());
         } else {
             panic!("Expected Subscribe payload");
         }
@@ -507,10 +590,10 @@ mod tests {
     #[test]
     fn test_event_message() {
         let data = serde_json::json!({"key": "value"});
-        let envelope = MessageEnvelope::event("test-channel", "test-event", data.clone());
+        let envelope = MessageEnvelope::event("test-channel".into(), "test-event", data.clone());
 
         if let MessagePayload::Event(event_data) = envelope.payload {
-            assert_eq!(event_data.channel, "test-channel");
+            assert_eq!(event_data.channel, "test-channel".into());
             assert_eq!(event_data.event_type, "test-event");
             assert_eq!(event_data.data, data);
         } else {
@@ -601,7 +684,7 @@ mod tests {
     #[test]
     fn test_serialization() {
         let envelope = MessageEnvelope::event(
-            "test-channel",
+            "test-channel".into(),
             "test-event",
             serde_json::json!({"data": "test"}),
         );
@@ -611,6 +694,72 @@ mod tests {
 
         assert_eq!(envelope.version, deserialized.version);
         assert_eq!(envelope.message_id, deserialized.message_id);
+    }
+
+    #[test]
+    fn test_channel_enum_standard() {
+        assert_eq!(Channel::System.as_str(), "system");
+        assert_eq!(Channel::Agents.as_str(), "agents");
+        assert_eq!(Channel::Tasks.as_str(), "tasks");
+        assert_eq!(Channel::Notifications.as_str(), "notifications");
+        assert_eq!(Channel::Metrics.as_str(), "metrics");
+        assert_eq!(Channel::Debug.as_str(), "debug");
+    }
+
+    #[test]
+    fn test_channel_enum_custom() {
+        let custom = Channel::Custom("my-channel".to_string());
+        assert_eq!(custom.as_str(), "my-channel");
+        assert!(custom.is_custom());
+        assert!(!Channel::System.is_custom());
+    }
+
+    #[test]
+    fn test_channel_enum_from_str() {
+        assert_eq!("system".parse::<Channel>().unwrap(), Channel::System);
+        assert_eq!("agents".parse::<Channel>().unwrap(), Channel::Agents);
+        assert_eq!("custom-channel".parse::<Channel>().unwrap(), Channel::Custom("custom-channel".to_string()));
+    }
+
+    #[test]
+    fn test_channel_enum_admin_check() {
+        assert!(Channel::System.requires_admin());
+        assert!(Channel::Metrics.requires_admin());
+        assert!(Channel::Debug.requires_admin());
+        assert!(!Channel::Agents.requires_admin());
+        assert!(!Channel::Tasks.requires_admin());
+        assert!(!Channel::Notifications.requires_admin());
+    }
+
+    #[test]
+    fn test_channel_enum_display() {
+        assert_eq!(Channel::System.to_string(), "system");
+        assert_eq!(Channel::Agents.to_string(), "agents");
+        let custom = Channel::Custom("test".to_string());
+        assert_eq!(custom.to_string(), "test");
+    }
+
+    #[test]
+    fn test_channel_enum_serialization() {
+        let channel = Channel::Agents;
+        let json = serde_json::to_string(&channel).unwrap();
+        assert_eq!(json, "\"agents\"");
+
+        let deserialized: Channel = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, Channel::Agents);
+    }
+
+    #[test]
+    fn test_channel_subscription_with_enum() {
+        let subscription = ChannelSubscription {
+            channel: Channel::Agents,
+            filters: None,
+            qos: QosLevel::default(),
+        };
+
+        let json = serde_json::to_string(&subscription).unwrap();
+        let deserialized: ChannelSubscription = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.channel, Channel::Agents);
     }
 }
 

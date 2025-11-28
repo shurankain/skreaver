@@ -2,7 +2,7 @@
 
 use super::{
     ConnectionInfo, WebSocketManager, WsError, WsMessage,
-    protocol::{MessageEnvelope, MessagePayload, ResponseData, channels, events},
+    protocol::{Channel, MessageEnvelope, MessagePayload, ResponseData, events},
 };
 use axum::{
     Json,
@@ -119,19 +119,19 @@ async fn handle_websocket_connection(
 
     // Send welcome message
     let welcome = MessageEnvelope::event(
-        channels::SYSTEM,
+        Channel::System,
         events::SERVER_STARTED,
         serde_json::json!({
             "connectionId": conn_id,
             "serverVersion": env!("CARGO_PKG_VERSION"),
             "protocolVersion": super::protocol::PROTOCOL_VERSION,
             "availableChannels": [
-                channels::SYSTEM,
-                channels::AGENTS,
-                channels::TASKS,
-                channels::NOTIFICATIONS,
-                channels::METRICS,
-                channels::DEBUG
+                Channel::System.as_str(),
+                Channel::Agents.as_str(),
+                Channel::Tasks.as_str(),
+                Channel::Notifications.as_str(),
+                Channel::Metrics.as_str(),
+                Channel::Debug.as_str()
             ]
         }),
     );
@@ -243,7 +243,7 @@ async fn handle_protocol_message(
             manager.handle_message(conn_id, ws_msg).await
         }
         MessagePayload::Subscribe(data) => {
-            let channels = data.channels.into_iter().map(|sub| sub.channel).collect();
+            let channels = data.channels.into_iter().map(|sub| sub.channel.to_string()).collect();
             let ws_msg = WsMessage::Subscribe { channels };
             manager.handle_message(conn_id, ws_msg).await
         }
@@ -329,7 +329,7 @@ async fn send_protocol_message(
     // TODO: Update manager to handle MessageEnvelope directly
     let legacy_msg = match envelope.payload {
         MessagePayload::Event(data) => WsMessage::Event {
-            channel: data.channel,
+            channel: data.channel.to_string(),
             data: data.data,
             timestamp: envelope.timestamp,
         },
@@ -379,12 +379,12 @@ pub async fn websocket_status_handler(
         websocket_url: "/ws".to_string(),
         protocol_version: super::protocol::PROTOCOL_VERSION.to_string(),
         available_channels: vec![
-            channels::SYSTEM.to_string(),
-            channels::AGENTS.to_string(),
-            channels::TASKS.to_string(),
-            channels::NOTIFICATIONS.to_string(),
-            channels::METRICS.to_string(),
-            channels::DEBUG.to_string(),
+            Channel::System.to_string(),
+            Channel::Agents.to_string(),
+            Channel::Tasks.to_string(),
+            Channel::Notifications.to_string(),
+            Channel::Metrics.to_string(),
+            Channel::Debug.to_string(),
         ],
         stats: WsStats {
             active_connections: stats.total_connections,
@@ -401,7 +401,7 @@ pub async fn websocket_status_handler(
 #[derive(Debug, Deserialize)]
 pub struct BroadcastRequest {
     /// Target channel
-    pub channel: String,
+    pub channel: crate::websocket::protocol::Channel,
     /// Event type
     pub event_type: String,
     /// Event data
@@ -505,13 +505,13 @@ mod tests {
     #[test]
     fn test_broadcast_request() {
         let request = BroadcastRequest {
-            channel: "test".to_string(),
+            channel: "test".into(),
             event_type: "test-event".to_string(),
             data: serde_json::json!({"key": "value"}),
             user_id: None,
         };
 
-        assert_eq!(request.channel, "test");
+        assert_eq!(request.channel, "test".into());
         assert_eq!(request.event_type, "test-event");
         assert_eq!(request.data["key"], "value");
         assert!(request.user_id.is_none());

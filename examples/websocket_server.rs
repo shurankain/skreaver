@@ -163,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Create update message
                 let _message = WsMessage::event(
-                    "agent-updates",
+                    &"agent-updates".into(),
                     serde_json::json!({
                         "type": "agent-update",
                         "counter": counter,
