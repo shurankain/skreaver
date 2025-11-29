@@ -271,12 +271,12 @@ where
     M: MemoryReader + MemoryWriter,
 {
     fn parse_result(&self, result: &ExecutionResult) -> (String, f32, Vec<String>) {
-        let parsed: Option<RichResult> = serde_json::from_str(result.output()).ok();
+        let parsed: Option<RichResult> = serde_json::from_str(&result.output()).ok();
         match parsed {
             Some(rr) => (rr.summary, rr.confidence, rr.evidence),
             None => (
                 result.output().to_string(),
-                self.extract_confidence(result.output()),
+                self.extract_confidence(&result.output()),
                 vec![],
             ),
         }
