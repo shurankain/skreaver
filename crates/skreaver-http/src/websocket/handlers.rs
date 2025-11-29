@@ -243,7 +243,11 @@ async fn handle_protocol_message(
             manager.handle_message(conn_id, ws_msg).await
         }
         MessagePayload::Subscribe(data) => {
-            let channels = data.channels.into_iter().map(|sub| sub.channel.to_string()).collect();
+            let channels = data
+                .channels
+                .into_iter()
+                .map(|sub| sub.channel.to_string())
+                .collect();
             let ws_msg = WsMessage::Subscribe { channels };
             manager.handle_message(conn_id, ws_msg).await
         }

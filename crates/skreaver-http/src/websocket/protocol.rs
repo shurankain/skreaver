@@ -718,7 +718,10 @@ mod tests {
     fn test_channel_enum_from_str() {
         assert_eq!("system".parse::<Channel>().unwrap(), Channel::System);
         assert_eq!("agents".parse::<Channel>().unwrap(), Channel::Agents);
-        assert_eq!("custom-channel".parse::<Channel>().unwrap(), Channel::Custom("custom-channel".to_string()));
+        assert_eq!(
+            "custom-channel".parse::<Channel>().unwrap(),
+            Channel::Custom("custom-channel".to_string())
+        );
     }
 
     #[test]

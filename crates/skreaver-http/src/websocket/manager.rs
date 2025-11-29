@@ -692,7 +692,11 @@ impl WebSocketManager {
     }
 
     /// Broadcast message to channel
-    pub async fn broadcast_to_channel(&self, channel: &crate::websocket::protocol::Channel, data: serde_json::Value) {
+    pub async fn broadcast_to_channel(
+        &self,
+        channel: &crate::websocket::protocol::Channel,
+        data: serde_json::Value,
+    ) {
         let event = ChannelEvent {
             channel: channel.clone(),
             data,
@@ -705,7 +709,12 @@ impl WebSocketManager {
     }
 
     /// Send message to specific user
-    pub async fn send_to_user(&self, user_id: &str, channel: &crate::websocket::protocol::Channel, data: serde_json::Value) {
+    pub async fn send_to_user(
+        &self,
+        user_id: &str,
+        channel: &crate::websocket::protocol::Channel,
+        data: serde_json::Value,
+    ) {
         let event = ChannelEvent {
             channel: channel.clone(),
             data,
