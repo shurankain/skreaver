@@ -11,30 +11,121 @@ use thiserror::Error;
 
 use super::{ApiError, ApiResponse, ValidationError};
 
+/// Validation level for type-safe configuration
+///
+/// Represents different validation strictness levels with clear behavior.
+/// Each level enables specific validation features appropriate for that use case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValidationLevel {
+    /// No validation - all checks disabled (maximum performance)
+    /// - Request body validation: disabled
+    /// - Parameter validation: disabled
+    /// - Response validation: disabled
+    /// - Strict mode: disabled
+    None,
+
+    /// Basic validation - only request body (production default)
+    /// - Request body validation: enabled
+    /// - Parameter validation: disabled
+    /// - Response validation: disabled
+    /// - Strict mode: disabled
+    Basic,
+
+    /// Standard validation - request body and parameters
+    /// - Request body validation: enabled
+    /// - Parameter validation: enabled
+    /// - Response validation: disabled
+    /// - Strict mode: disabled
+    Standard,
+
+    /// Strict validation - all validations with strict mode (development/testing)
+    /// - Request body validation: enabled
+    /// - Parameter validation: enabled
+    /// - Response validation: enabled
+    /// - Strict mode: enabled
+    Strict,
+}
+
+impl ValidationLevel {
+    /// Check if request body validation is enabled
+    pub fn validate_request_body(&self) -> bool {
+        matches!(self, Self::Basic | Self::Standard | Self::Strict)
+    }
+
+    /// Check if parameter validation is enabled
+    pub fn validate_parameters(&self) -> bool {
+        matches!(self, Self::Standard | Self::Strict)
+    }
+
+    /// Check if response validation is enabled
+    pub fn validate_response(&self) -> bool {
+        matches!(self, Self::Strict)
+    }
+
+    /// Check if strict mode is enabled
+    pub fn strict_mode(&self) -> bool {
+        matches!(self, Self::Strict)
+    }
+
+    /// Get human-readable description
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::None => "No validation",
+            Self::Basic => "Basic request validation",
+            Self::Standard => "Request and parameter validation",
+            Self::Strict => "Full validation with strict mode",
+        }
+    }
+}
+
+impl Default for ValidationLevel {
+    fn default() -> Self {
+        Self::Basic
+    }
+}
+
 /// Request validation configuration
 #[derive(Debug, Clone)]
 pub struct ValidationConfig {
-    /// Enable request body validation
-    pub validate_request_body: bool,
-    /// Enable request parameters validation
-    pub validate_parameters: bool,
-    /// Enable response validation
-    pub validate_response: bool,
-    /// Strict mode (fail on unknown fields)
-    pub strict_mode: bool,
+    /// Validation level
+    pub level: ValidationLevel,
     /// Maximum request body size (bytes)
     pub max_body_size: usize,
 }
 
-impl Default for ValidationConfig {
-    fn default() -> Self {
+impl ValidationConfig {
+    /// Create config with specific validation level
+    pub fn with_level(level: ValidationLevel) -> Self {
         Self {
-            validate_request_body: true,
-            validate_parameters: true,
-            validate_response: false, // Usually disabled in production
-            strict_mode: false,
+            level,
             max_body_size: 1024 * 1024, // 1MB
         }
+    }
+
+    /// Check if request body validation is enabled
+    pub fn validate_request_body(&self) -> bool {
+        self.level.validate_request_body()
+    }
+
+    /// Check if parameter validation is enabled
+    pub fn validate_parameters(&self) -> bool {
+        self.level.validate_parameters()
+    }
+
+    /// Check if response validation is enabled
+    pub fn validate_response(&self) -> bool {
+        self.level.validate_response()
+    }
+
+    /// Check if strict mode is enabled
+    pub fn strict_mode(&self) -> bool {
+        self.level.strict_mode()
+    }
+}
+
+impl Default for ValidationConfig {
+    fn default() -> Self {
+        Self::with_level(ValidationLevel::default())
     }
 }
 
@@ -61,7 +152,7 @@ impl RequestValidator {
 
     /// Validate request body against schema
     pub fn validate_body(&self, body: &Value, schema_name: &str) -> Result<(), ValidationErrors> {
-        if !self.config.validate_request_body {
+        if !self.config.validate_request_body() {
             return Ok(());
         }
 
@@ -83,7 +174,7 @@ impl RequestValidator {
         params: &HashMap<String, String>,
         schema: &Value,
     ) -> Result<(), ValidationErrors> {
-        if !self.config.validate_parameters {
+        if !self.config.validate_parameters() {
             return Ok(());
         }
 
@@ -285,7 +376,7 @@ impl ResponseValidator {
         body: &Value,
         schema_name: &str,
     ) -> Result<(), ValidationErrors> {
-        if !self.config.validate_response {
+        if !self.config.validate_response() {
             return Ok(());
         }
 
@@ -434,11 +525,62 @@ mod tests {
     #[test]
     fn test_validation_config_default() {
         let config = ValidationConfig::default();
-        assert!(config.validate_request_body);
-        assert!(config.validate_parameters);
-        assert!(!config.validate_response);
-        assert!(!config.strict_mode);
+        assert_eq!(config.level, ValidationLevel::Basic);
+        assert!(config.validate_request_body());
+        assert!(!config.validate_parameters());
+        assert!(!config.validate_response());
+        assert!(!config.strict_mode());
         assert_eq!(config.max_body_size, 1024 * 1024);
+    }
+
+    #[test]
+    fn test_validation_level_none() {
+        let level = ValidationLevel::None;
+        assert!(!level.validate_request_body());
+        assert!(!level.validate_parameters());
+        assert!(!level.validate_response());
+        assert!(!level.strict_mode());
+        assert_eq!(level.description(), "No validation");
+    }
+
+    #[test]
+    fn test_validation_level_basic() {
+        let level = ValidationLevel::Basic;
+        assert!(level.validate_request_body());
+        assert!(!level.validate_parameters());
+        assert!(!level.validate_response());
+        assert!(!level.strict_mode());
+        assert_eq!(level.description(), "Basic request validation");
+    }
+
+    #[test]
+    fn test_validation_level_standard() {
+        let level = ValidationLevel::Standard;
+        assert!(level.validate_request_body());
+        assert!(level.validate_parameters());
+        assert!(!level.validate_response());
+        assert!(!level.strict_mode());
+        assert_eq!(level.description(), "Request and parameter validation");
+    }
+
+    #[test]
+    fn test_validation_level_strict() {
+        let level = ValidationLevel::Strict;
+        assert!(level.validate_request_body());
+        assert!(level.validate_parameters());
+        assert!(level.validate_response());
+        assert!(level.strict_mode());
+        assert_eq!(level.description(), "Full validation with strict mode");
+    }
+
+    #[test]
+    fn test_validation_config_with_level() {
+        let config = ValidationConfig::with_level(ValidationLevel::Strict);
+        assert_eq!(config.level, ValidationLevel::Strict);
+        assert!(config.validate_request_body());
+        assert!(config.validate_parameters());
+        assert!(config.validate_response());
+        assert!(config.strict_mode());
     }
 
     #[test]
@@ -606,10 +748,7 @@ mod tests {
 
     #[test]
     fn test_response_validator() {
-        let config = ValidationConfig {
-            validate_response: true,
-            ..Default::default()
-        };
+        let config = ValidationConfig::with_level(ValidationLevel::Strict);
         let mut validator = ResponseValidator::new(config);
 
         let schema = json!({

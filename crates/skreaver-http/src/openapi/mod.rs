@@ -16,7 +16,7 @@ pub use generator::{ApiDocGenerator, OpenApiGenerator};
 pub use ui::{ApiSpecResponse, ApiUiConfig, RapiDocUi, SwaggerUi};
 pub use validation::{
     RequestValidator, ResponseValidator, ValidatedJson, ValidationConfig, ValidationErrors,
-    validation_middleware,
+    ValidationLevel, validation_middleware,
 };
 
 /// OpenAPI specification configuration
