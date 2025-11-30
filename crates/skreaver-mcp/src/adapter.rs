@@ -47,7 +47,9 @@ impl ToolAdapter {
                     }))
                 })
             }
-            ExecutionResult::Failure { error, .. } => Err(McpError::ToolExecutionFailed(error)),
+            ExecutionResult::Failure { reason, .. } => {
+                Err(McpError::ToolExecutionFailed(reason.to_string()))
+            }
         }
     }
 

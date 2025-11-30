@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(result1.output(), "response1");
 
         assert!(!result2.is_success());
-        assert_eq!(result2.output(), "error2");
+        assert_eq!(result2.output(), "Internal error: error2");
 
         assert!(result3.is_success());
         assert_eq!(result3.output(), "default response");

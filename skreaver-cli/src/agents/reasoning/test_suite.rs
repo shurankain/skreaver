@@ -39,7 +39,7 @@ mod tests {
         let result = tool.call("test input".into());
 
         // Should be valid JSON
-        let parsed: RichResult = serde_json::from_str(result.output()).unwrap();
+        let parsed: RichResult = serde_json::from_str(&result.output()).unwrap();
         assert_eq!(parsed.confidence, 0.95);
         assert_eq!(parsed.evidence, vec!["test evidence"]);
         assert!(parsed.summary.contains("Test summary for: test input"));
@@ -51,7 +51,7 @@ mod tests {
         let result = tool.call("test input".into());
 
         // Should fail to parse as JSON
-        let parsed: Result<RichResult, _> = serde_json::from_str(result.output());
+        let parsed: Result<RichResult, _> = serde_json::from_str(&result.output());
         assert!(parsed.is_err());
 
         // Should contain plain text

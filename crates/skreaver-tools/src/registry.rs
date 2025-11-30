@@ -429,8 +429,8 @@ mod tests {
 
         // Second result should be an error
         match &results.tail()[0] {
-            ExecutionResult::Failure { error } => {
-                assert!(error.contains("Tool not found: nonexistent"));
+            ExecutionResult::Failure { reason } => {
+                assert!(reason.to_string().contains("Tool not found: nonexistent"));
             }
             _ => panic!("Expected failure result"),
         }

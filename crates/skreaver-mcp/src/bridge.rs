@@ -236,11 +236,13 @@ impl Tool for BridgedTool {
         );
 
         ExecutionResult::Failure {
-            error: format!(
-                "MCP bridge not yet fully implemented for tool '{}'. \
-                See bridge.rs for implementation guide.",
-                self.name
-            ),
+            reason: skreaver_core::FailureReason::InternalError {
+                message: format!(
+                    "MCP bridge not yet fully implemented for tool '{}'. \
+                    See bridge.rs for implementation guide.",
+                    self.name
+                ),
+            },
         }
     }
 }

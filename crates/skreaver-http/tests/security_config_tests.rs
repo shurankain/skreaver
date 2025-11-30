@@ -154,7 +154,7 @@ async fn test_security_config_policy_enforcement_flags() {
 
     // Development mode configuration exists (may be enabled or disabled)
     // Just verify the field is accessible
-    let _dev_enabled = security_config.development.enabled;
+    let _dev_enabled = security_config.development.is_enabled();
 
     // Verify emergency/lockdown configuration exists
     // Values depend on config file, just verify accessibility

@@ -286,7 +286,7 @@ async fn test_broadcast_without_deadlock() {
         let handle = tokio::spawn(async move {
             manager_clone
                 .broadcast_to_channel(
-                    "test_channel",
+                    &"test_channel".into(),
                     serde_json::json!({"message": format!("test_{}", i)}),
                 )
                 .await;

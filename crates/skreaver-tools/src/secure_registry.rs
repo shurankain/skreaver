@@ -368,9 +368,10 @@ mod tests {
 
         assert!(result.is_some());
         match result.unwrap() {
-            ExecutionResult::Failure { error } => {
-                assert!(error.contains("Permission denied"));
-                assert!(error.contains("blocked_tool"));
+            ExecutionResult::Failure { reason } => {
+                let msg = reason.to_string();
+                assert!(msg.contains("Permission denied"));
+                assert!(msg.contains("blocked_tool"));
             }
             _ => panic!("Expected failure due to permissions"),
         }
@@ -401,9 +402,10 @@ mod tests {
         let blocked_result = secure_registry
             .dispatch(ToolCall::new("blocked_tool", "hello").expect("Valid tool name"));
         match blocked_result.unwrap() {
-            ExecutionResult::Failure { error } => {
-                assert!(error.contains("emergency lockdown"));
-                assert!(error.contains("blocked_tool"));
+            ExecutionResult::Failure { reason } => {
+                let msg = reason.to_string();
+                assert!(msg.contains("emergency lockdown"));
+                assert!(msg.contains("blocked_tool"));
             }
             _ => panic!("Expected failure due to lockdown"),
         }
@@ -444,8 +446,8 @@ mod tests {
 
         // Second should fail due to permissions
         match &results.tail()[0] {
-            ExecutionResult::Failure { error } => {
-                assert!(error.contains("Permission denied"));
+            ExecutionResult::Failure { reason } => {
+                assert!(reason.to_string().contains("Permission denied"));
             }
             _ => panic!("Expected permission failure for blocked_tool"),
         }

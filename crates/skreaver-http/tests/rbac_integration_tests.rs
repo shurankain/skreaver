@@ -167,9 +167,10 @@ async fn test_secure_registry_logs_blocked_attempts() {
     // Should return a failure result, not None
     assert!(result.is_some());
     match result.unwrap() {
-        ExecutionResult::Failure { error } => {
-            assert!(error.contains("Permission denied"));
-            assert!(error.contains("test_tool"));
+        ExecutionResult::Failure { reason } => {
+            let msg = reason.to_string();
+            assert!(msg.contains("Permission denied"));
+            assert!(msg.contains("test_tool"));
         }
         _ => panic!("Expected permission denied failure"),
     }
@@ -220,8 +221,9 @@ async fn test_rbac_blocks_admin_only_tools() {
     // Should be denied because Agent role cannot access shell_* tools
     assert!(result.is_some());
     match result.unwrap() {
-        ExecutionResult::Failure { error } => {
-            assert!(error.contains("requires higher privileges") || error.contains("admin"));
+        ExecutionResult::Failure { reason } => {
+            let msg = reason.to_string();
+            assert!(msg.contains("requires higher privileges") || msg.contains("admin"));
         }
         _ => panic!("Expected failure result for admin-only tool"),
     }
@@ -248,8 +250,8 @@ async fn test_rbac_allows_agent_tools() {
         ExecutionResult::Success { .. } => {
             // Success expected
         }
-        ExecutionResult::Failure { error } => {
-            panic!("Expected success but got failure: {}", error);
+        ExecutionResult::Failure { reason } => {
+            panic!("Expected success but got failure: {}", reason);
         }
     }
 }
@@ -279,8 +281,9 @@ async fn test_rbac_viewer_role_blocks_tool_execution() {
     // Should be denied because Viewer role lacks ExecuteTool permission
     assert!(result.is_some());
     match result.unwrap() {
-        ExecutionResult::Failure { error } => {
-            assert!(error.contains("requires higher privileges") || error.contains("permission"));
+        ExecutionResult::Failure { reason } => {
+            let msg = reason.to_string();
+            assert!(msg.contains("requires higher privileges") || msg.contains("permission"));
         }
         _ => panic!("Expected failure result for Viewer role"),
     }

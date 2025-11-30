@@ -690,7 +690,7 @@ impl std::fmt::Display for ToolInput {
 /// # Example
 ///
 /// ```rust
-/// use skreaver_core::tool::{Tool, ExecutionResult};
+/// use skreaver_core::tool::{Tool, ExecutionResult, FailureReason};
 ///
 /// struct CalculatorTool;
 ///
@@ -703,7 +703,11 @@ impl std::fmt::Display for ToolInput {
 ///         if let Ok(num) = input.parse::<f64>() {
 ///             ExecutionResult::Success { output: (num * 2.0).to_string() }
 ///         } else {
-///             ExecutionResult::Failure { error: "Invalid number".to_string() }
+///             ExecutionResult::Failure {
+///                 reason: FailureReason::InvalidInput {
+///                     message: "Invalid number".to_string()
+///                 }
+///             }
 ///         }
 ///     }
 /// }

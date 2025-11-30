@@ -223,18 +223,13 @@ email_recipients = [
 # Development Configuration (⚠️ DISABLE IN PRODUCTION)
 # ----------------------------------------------------------------------------
 [development]
-# Enable development mode (⚠️ Relaxes security constraints)
-# NEVER set this to true in production!
-enabled = false
-
-# Skip domain validation for HTTP requests
-skip_domain_validation = false
-
-# Skip file path validation
-skip_path_validation = false
-
-# Skip resource limits (memory, CPU, etc.)
-skip_resource_limits = false
+# Development level (⚠️ Higher levels relax security constraints)
+# Options: "Production", "Light", "Standard", "Full"
+# - Production: All validations enabled (use in production)
+# - Light: Only domain validation relaxed (local testing)
+# - Standard: Domain + path validation relaxed
+# - Full: All validations disabled (maximum flexibility, use with caution)
+level = "Production"
 
 # Additional allowed domains during development
 dev_allow_domains = ["localhost"]
