@@ -10,6 +10,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 /// Backpressure configuration
+///
+/// Use `Option<BackpressureConfig>` to enable/disable:
+/// - `None` = backpressure disabled (no monitoring)
+/// - `Some(config)` = backpressure enabled with given config
 #[derive(Debug, Clone)]
 pub struct BackpressureConfig {
     /// Queue depth threshold for warning (soft limit)
@@ -18,8 +22,6 @@ pub struct BackpressureConfig {
     pub blocking_threshold: usize,
     /// How often to check queue depth (seconds)
     pub check_interval_secs: u64,
-    /// Enable backpressure monitoring
-    pub enabled: bool,
 }
 
 impl Default for BackpressureConfig {
@@ -28,7 +30,26 @@ impl Default for BackpressureConfig {
             warning_threshold: 1000,
             blocking_threshold: 5000,
             check_interval_secs: 5,
-            enabled: true,
+        }
+    }
+}
+
+impl BackpressureConfig {
+    /// Create a strict configuration with lower thresholds
+    pub fn strict() -> Self {
+        Self {
+            warning_threshold: 100,
+            blocking_threshold: 500,
+            check_interval_secs: 1,
+        }
+    }
+
+    /// Create a relaxed configuration with higher thresholds
+    pub fn relaxed() -> Self {
+        Self {
+            warning_threshold: 5000,
+            blocking_threshold: 10000,
+            check_interval_secs: 10,
         }
     }
 }
@@ -61,14 +82,16 @@ pub struct BackpressureStats {
 
 /// Backpressure monitor for mesh operations
 pub struct BackpressureMonitor {
-    config: BackpressureConfig,
+    config: Option<BackpressureConfig>,
     stats: Arc<RwLock<BackpressureStats>>,
     current_signal: Arc<RwLock<BackpressureSignal>>,
 }
 
 impl BackpressureMonitor {
-    /// Create a new backpressure monitor
-    pub fn new(config: BackpressureConfig) -> Self {
+    /// Create a new backpressure monitor with configuration
+    ///
+    /// Pass `Some(config)` to enable backpressure, `None` to disable
+    pub fn new(config: Option<BackpressureConfig>) -> Self {
         Self {
             config,
             stats: Arc::new(RwLock::new(BackpressureStats::default())),
@@ -76,16 +99,26 @@ impl BackpressureMonitor {
         }
     }
 
-    /// Create a monitor with default configuration
+    /// Create a monitor with default configuration (enabled)
     pub fn with_defaults() -> Self {
-        Self::new(BackpressureConfig::default())
+        Self::new(Some(BackpressureConfig::default()))
+    }
+
+    /// Create a disabled monitor
+    pub fn disabled() -> Self {
+        Self::new(None)
+    }
+
+    /// Check if backpressure monitoring is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.is_some()
     }
 
     /// Update queue depth and calculate backpressure signal
     pub async fn update_depth(&self, depth: usize) -> BackpressureSignal {
-        if !self.config.enabled {
+        let Some(config) = &self.config else {
             return BackpressureSignal::Normal;
-        }
+        };
 
         let mut stats = self.stats.write().await;
         let mut signal = self.current_signal.write().await;
@@ -98,18 +131,18 @@ impl BackpressureMonitor {
         }
 
         // Calculate new signal
-        let new_signal = if depth >= self.config.blocking_threshold {
+        let new_signal = if depth >= config.blocking_threshold {
             stats.critical_count += 1;
             warn!(
                 "Backpressure CRITICAL: depth {} >= threshold {}",
-                depth, self.config.blocking_threshold
+                depth, config.blocking_threshold
             );
             BackpressureSignal::Critical
-        } else if depth >= self.config.warning_threshold {
+        } else if depth >= config.warning_threshold {
             stats.warning_count += 1;
             debug!(
                 "Backpressure WARNING: depth {} >= threshold {}",
-                depth, self.config.warning_threshold
+                depth, config.warning_threshold
             );
             BackpressureSignal::Warning
         } else {
@@ -176,11 +209,23 @@ pub struct BackpressureQueue<T> {
 
 impl<T> BackpressureQueue<T> {
     /// Create a new backpressure-aware queue
-    pub fn new(config: BackpressureConfig) -> Self {
+    ///
+    /// Pass `Some(config)` to enable backpressure, `None` to disable
+    pub fn new(config: Option<BackpressureConfig>) -> Self {
         Self {
             queue: Arc::new(RwLock::new(Vec::new())),
             monitor: Arc::new(BackpressureMonitor::new(config)),
         }
+    }
+
+    /// Create queue with default backpressure configuration (enabled)
+    pub fn with_defaults() -> Self {
+        Self::new(Some(BackpressureConfig::default()))
+    }
+
+    /// Create queue without backpressure monitoring (disabled)
+    pub fn disabled() -> Self {
+        Self::new(None)
     }
 
     /// Push an item to the queue with backpressure check
@@ -242,11 +287,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_backpressure_warning() {
-        let config = BackpressureConfig {
+        let config = Some(BackpressureConfig {
             warning_threshold: 100,
             blocking_threshold: 200,
             ..Default::default()
-        };
+        });
         let monitor = BackpressureMonitor::new(config);
 
         let signal = monitor.update_depth(150).await;
@@ -255,16 +300,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_backpressure_critical() {
-        let config = BackpressureConfig {
+        let config = Some(BackpressureConfig {
             warning_threshold: 100,
             blocking_threshold: 200,
             ..Default::default()
-        };
+        });
         let monitor = BackpressureMonitor::new(config);
 
         let signal = monitor.update_depth(250).await;
         assert_eq!(signal, BackpressureSignal::Critical);
         assert!(monitor.should_block().await);
+    }
+
+    #[tokio::test]
+    async fn test_backpressure_disabled() {
+        let monitor = BackpressureMonitor::disabled();
+
+        assert!(!monitor.is_enabled());
+
+        // Should always return Normal when disabled
+        let signal = monitor.update_depth(10000).await;
+        assert_eq!(signal, BackpressureSignal::Normal);
+        assert!(!monitor.should_block().await);
     }
 
     #[tokio::test]
@@ -283,11 +340,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_backpressure_queue() {
-        let config = BackpressureConfig {
+        let config = Some(BackpressureConfig {
             warning_threshold: 2,
             blocking_threshold: 4,
             ..Default::default()
-        };
+        });
         let queue: BackpressureQueue<String> = BackpressureQueue::new(config);
 
         // Add first item - should be normal
@@ -317,11 +374,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_wait_for_capacity_timeout() {
-        let config = BackpressureConfig {
+        let config = Some(BackpressureConfig {
             warning_threshold: 1,
             blocking_threshold: 2,
             ..Default::default()
-        };
+        });
         let monitor = BackpressureMonitor::new(config);
 
         // Set to critical

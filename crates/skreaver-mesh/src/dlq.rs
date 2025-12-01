@@ -12,6 +12,10 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 /// Configuration for Dead Letter Queue
+///
+/// Use `Option<DlqConfig>` to enable/disable:
+/// - `None` = DLQ disabled (failed messages are dropped)
+/// - `Some(config)` = DLQ enabled with given config
 #[derive(Debug, Clone)]
 pub struct DlqConfig {
     /// Maximum number of messages in DLQ
@@ -20,8 +24,6 @@ pub struct DlqConfig {
     pub default_ttl_secs: u64,
     /// Maximum retry attempts before permanent failure
     pub max_retries: u32,
-    /// Enable DLQ (if false, failed messages are dropped)
-    pub enabled: bool,
 }
 
 impl Default for DlqConfig {
@@ -30,7 +32,26 @@ impl Default for DlqConfig {
             max_size: 10_000,
             default_ttl_secs: 86400, // 24 hours
             max_retries: 3,
-            enabled: true,
+        }
+    }
+}
+
+impl DlqConfig {
+    /// Create a configuration for high-volume scenarios
+    pub fn high_volume() -> Self {
+        Self {
+            max_size: 100_000,
+            default_ttl_secs: 86400 * 7, // 7 days
+            max_retries: 5,
+        }
+    }
+
+    /// Create a configuration for low-latency scenarios with quick cleanup
+    pub fn low_latency() -> Self {
+        Self {
+            max_size: 1_000,
+            default_ttl_secs: 3600, // 1 hour
+            max_retries: 1,
         }
     }
 }
@@ -102,14 +123,16 @@ pub struct DlqStats {
 
 /// Dead Letter Queue for failed messages
 pub struct DeadLetterQueue {
-    config: DlqConfig,
+    config: Option<DlqConfig>,
     queue: Arc<RwLock<VecDeque<DlqEntry>>>,
     stats: Arc<RwLock<DlqStats>>,
 }
 
 impl DeadLetterQueue {
     /// Create a new Dead Letter Queue
-    pub fn new(config: DlqConfig) -> Self {
+    ///
+    /// Pass `Some(config)` to enable DLQ, `None` to disable (drops failed messages)
+    pub fn new(config: Option<DlqConfig>) -> Self {
         Self {
             config,
             queue: Arc::new(RwLock::new(VecDeque::new())),
@@ -117,29 +140,39 @@ impl DeadLetterQueue {
         }
     }
 
-    /// Create a DLQ with default configuration
+    /// Create a DLQ with default configuration (enabled)
     pub fn with_defaults() -> Self {
-        Self::new(DlqConfig::default())
+        Self::new(Some(DlqConfig::default()))
+    }
+
+    /// Create a disabled DLQ (failed messages will be dropped)
+    pub fn disabled() -> Self {
+        Self::new(None)
+    }
+
+    /// Check if DLQ is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.is_some()
     }
 
     /// Add a message to the DLQ
     pub async fn add(&self, message: Message, failure_reason: impl Into<String>) -> MeshResult<()> {
-        if !self.config.enabled {
+        let Some(config) = &self.config else {
             debug!("DLQ disabled, dropping failed message");
             return Ok(());
-        }
+        };
 
         let mut queue = self.queue.write().await;
         let mut stats = self.stats.write().await;
 
         // Check size limit
-        if queue.len() >= self.config.max_size {
+        if queue.len() >= config.max_size {
             warn!("DLQ size limit reached, dropping oldest message");
             queue.pop_front();
         }
 
         // Create DLQ entry
-        let entry = DlqEntry::new(message, self.config.default_ttl_secs, failure_reason.into());
+        let entry = DlqEntry::new(message, config.default_ttl_secs, failure_reason.into());
 
         queue.push_back(entry);
         stats.total_added += 1;
@@ -157,12 +190,14 @@ impl DeadLetterQueue {
 
     /// Get messages that are ready for retry
     pub async fn get_retriable(&self, limit: usize) -> Vec<DlqEntry> {
+        let Some(config) = &self.config else {
+            return Vec::new();
+        };
+
         let queue = self.queue.read().await;
         queue
             .iter()
-            .filter(|entry| {
-                !entry.is_expired() && !entry.has_exhausted_retries(self.config.max_retries)
-            })
+            .filter(|entry| !entry.is_expired() && !entry.has_exhausted_retries(config.max_retries))
             .take(limit)
             .cloned()
             .collect()
@@ -223,11 +258,15 @@ impl DeadLetterQueue {
 
     /// Clean up messages that exhausted retries
     pub async fn cleanup_exhausted(&self) -> MeshResult<usize> {
+        let Some(config) = &self.config else {
+            return Ok(0);
+        };
+
         let mut queue = self.queue.write().await;
         let mut stats = self.stats.write().await;
 
         let initial_len = queue.len();
-        queue.retain(|entry| !entry.has_exhausted_retries(self.config.max_retries));
+        queue.retain(|entry| !entry.has_exhausted_retries(config.max_retries));
         let removed = initial_len - queue.len();
 
         if removed > 0 {
@@ -301,10 +340,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_dlq_size_limit() {
-        let config = DlqConfig {
+        let config = Some(DlqConfig {
             max_size: 3,
             ..Default::default()
-        };
+        });
         let dlq = DeadLetterQueue::new(config);
 
         // Add 5 messages, should keep only last 3
@@ -318,10 +357,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_dlq_expiry() {
-        let config = DlqConfig {
+        let config = Some(DlqConfig {
             default_ttl_secs: 1, // 1 second TTL
             ..Default::default()
-        };
+        });
         let dlq = DeadLetterQueue::new(config);
 
         let msg = Message::new("expiring message");
@@ -337,10 +376,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_dlq_retry_limit() {
-        let config = DlqConfig {
+        let config = Some(DlqConfig {
             max_retries: 2,
             ..Default::default()
-        };
+        });
         let dlq = DeadLetterQueue::new(config);
 
         let msg = Message::new("retry test");
@@ -373,5 +412,19 @@ mod tests {
         let stats = dlq.stats().await;
         assert_eq!(stats.total_added, 2);
         assert_eq!(stats.current_size, 2);
+    }
+
+    #[tokio::test]
+    async fn test_dlq_disabled() {
+        let dlq = DeadLetterQueue::disabled();
+
+        assert!(!dlq.is_enabled());
+
+        // Should drop messages when disabled
+        dlq.add(Message::new("msg1"), "test").await.unwrap();
+        assert_eq!(dlq.size().await, 0);
+
+        let stats = dlq.stats().await;
+        assert_eq!(stats.total_added, 0);
     }
 }
