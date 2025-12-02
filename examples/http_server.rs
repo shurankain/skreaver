@@ -120,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "   - Max body size: {} MB",
         config.max_body_size / (1024 * 1024)
     );
-    println!("   - CORS enabled: {}", config.enable_cors);
+    println!("   - CORS enabled: {}", config.cors.is_some());
     println!(
         "   - Rate limit (global): {} req/min",
         config.rate_limit.global_rpm

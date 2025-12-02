@@ -69,8 +69,8 @@ pub struct HttpRuntimeConfigBuilder {
     connection_limits: ConnectionLimitConfig,
     request_timeout_secs: u64,
     max_body_size: usize,
-    enable_cors: bool,
-    enable_openapi: bool,
+    cors: Option<crate::runtime::http::CorsConfig>,
+    openapi: Option<crate::runtime::http::OpenApiConfig>,
     observability: ObservabilityConfig,
     security_config_path: Option<PathBuf>,
 }
@@ -83,8 +83,8 @@ impl Default for HttpRuntimeConfigBuilder {
             connection_limits: ConnectionLimitConfig::default(),
             request_timeout_secs: 30,
             max_body_size: 16 * 1024 * 1024, // 16MB
-            enable_cors: true,
-            enable_openapi: true,
+            cors: Some(crate::runtime::http::CorsConfig::default()),
+            openapi: Some(crate::runtime::http::OpenApiConfig::default()),
             observability: ObservabilityConfig::default(),
             security_config_path: None,
         }
@@ -115,10 +115,18 @@ impl HttpRuntimeConfigBuilder {
             builder = builder.max_body_size(max_size);
         }
         if let Some(cors) = get_env_bool("SKREAVER_ENABLE_CORS")? {
-            builder = builder.enable_cors(cors);
+            builder = builder.cors(if cors {
+                Some(crate::runtime::http::CorsConfig::default())
+            } else {
+                None
+            });
         }
         if let Some(openapi) = get_env_bool("SKREAVER_ENABLE_OPENAPI")? {
-            builder = builder.enable_openapi(openapi);
+            builder = builder.openapi(if openapi {
+                Some(crate::runtime::http::OpenApiConfig::default())
+            } else {
+                None
+            });
         }
         if let Some(path) = get_env_string("SKREAVER_SECURITY_CONFIG_PATH") {
             builder = builder.security_config_path(PathBuf::from(path));
@@ -288,18 +296,46 @@ impl HttpRuntimeConfigBuilder {
         self
     }
 
-    /// Enable or disable CORS
+    /// Set CORS configuration (None = disabled, Some = enabled)
     #[must_use]
-    pub fn enable_cors(mut self, enable: bool) -> Self {
-        self.enable_cors = enable;
+    pub fn cors(mut self, cors: Option<crate::runtime::http::CorsConfig>) -> Self {
+        self.cors = cors;
         self
     }
 
-    /// Enable or disable `OpenAPI` documentation
+    /// Set OpenAPI configuration (None = disabled, Some = enabled)
     #[must_use]
-    pub fn enable_openapi(mut self, enable: bool) -> Self {
-        self.enable_openapi = enable;
+    pub fn openapi(mut self, openapi: Option<crate::runtime::http::OpenApiConfig>) -> Self {
+        self.openapi = openapi;
         self
+    }
+
+    /// Enable or disable CORS (backward compatibility)
+    #[must_use]
+    #[deprecated(
+        since = "0.5.1",
+        note = "Use `cors()` method with Option pattern instead"
+    )]
+    pub fn enable_cors(self, enable: bool) -> Self {
+        self.cors(if enable {
+            Some(crate::runtime::http::CorsConfig::default())
+        } else {
+            None
+        })
+    }
+
+    /// Enable or disable OpenAPI documentation (backward compatibility)
+    #[must_use]
+    #[deprecated(
+        since = "0.5.1",
+        note = "Use `openapi()` method with Option pattern instead"
+    )]
+    pub fn enable_openapi(self, enable: bool) -> Self {
+        self.openapi(if enable {
+            Some(crate::runtime::http::OpenApiConfig::default())
+        } else {
+            None
+        })
     }
 
     /// Set observability configuration
@@ -331,8 +367,8 @@ impl HttpRuntimeConfigBuilder {
             connection_limits: self.connection_limits,
             request_timeout_secs: self.request_timeout_secs,
             max_body_size: self.max_body_size,
-            enable_cors: self.enable_cors,
-            enable_openapi: self.enable_openapi,
+            cors: self.cors,
+            openapi: self.openapi,
             observability: self.observability,
             security_config_path: self.security_config_path,
         })
@@ -497,8 +533,8 @@ mod tests {
         let config = HttpRuntimeConfigBuilder::new().build().unwrap();
         assert_eq!(config.request_timeout_secs, 30);
         assert_eq!(config.max_body_size, 16 * 1024 * 1024);
-        assert!(config.enable_cors);
-        assert!(config.enable_openapi);
+        assert!(config.cors.is_some());
+        assert!(config.openapi.is_some());
     }
 
     #[test]
@@ -569,14 +605,27 @@ mod tests {
         let config = HttpRuntimeConfigBuilder::new()
             .request_timeout_secs(60)
             .max_body_size(32 * 1024 * 1024)
-            .enable_cors(false)
-            .enable_openapi(false)
+            .cors(None)
+            .openapi(None)
             .build()
             .unwrap();
 
         assert_eq!(config.request_timeout_secs, 60);
         assert_eq!(config.max_body_size, 32 * 1024 * 1024);
-        assert!(!config.enable_cors);
-        assert!(!config.enable_openapi);
+        assert!(config.cors.is_none());
+        assert!(config.openapi.is_none());
+    }
+
+    #[test]
+    fn test_builder_deprecated_methods() {
+        #[allow(deprecated)]
+        let config = HttpRuntimeConfigBuilder::new()
+            .enable_cors(false)
+            .enable_openapi(false)
+            .build()
+            .unwrap();
+
+        assert!(config.cors.is_none());
+        assert!(config.openapi.is_none());
     }
 }

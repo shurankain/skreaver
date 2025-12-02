@@ -31,8 +31,8 @@ fn test_env_config_default_when_no_vars_set() {
 
     assert_eq!(config.request_timeout_secs, 30);
     assert_eq!(config.max_body_size, 16 * 1024 * 1024);
-    assert!(config.enable_cors);
-    assert!(config.enable_openapi);
+    assert!(config.cors.is_some());
+    assert!(config.openapi.is_some());
     assert_eq!(config.rate_limit.global_rpm, 1000);
     assert_eq!(config.rate_limit.per_ip_rpm, 60);
 }
@@ -80,7 +80,7 @@ fn test_env_config_cors_disabled() {
         .build()
         .expect("should build valid config");
 
-    assert!(!config.enable_cors);
+    assert!(config.cors.is_none());
 
     clear_env("SKREAVER_ENABLE_CORS");
 }
@@ -287,7 +287,7 @@ fn test_env_config_bool_variants() {
             .unwrap()
             .build()
             .unwrap();
-        assert!(config.enable_cors, "Failed for value: {}", true_val);
+        assert!(config.cors.is_some(), "Failed for value: {}", true_val);
     }
 
     // Test "false" variants
@@ -297,7 +297,7 @@ fn test_env_config_bool_variants() {
             .unwrap()
             .build()
             .unwrap();
-        assert!(!config.enable_cors, "Failed for value: {}", false_val);
+        assert!(config.cors.is_none(), "Failed for value: {}", false_val);
     }
 
     clear_env("SKREAVER_ENABLE_CORS");
@@ -336,8 +336,8 @@ fn test_env_config_comprehensive() {
     // Verify all values
     assert_eq!(config.request_timeout_secs, 45);
     assert_eq!(config.max_body_size, 10 * 1024 * 1024);
-    assert!(!config.enable_cors);
-    assert!(!config.enable_openapi);
+    assert!(config.cors.is_none());
+    assert!(config.openapi.is_none());
     assert_eq!(config.rate_limit.global_rpm, 500);
     assert_eq!(config.rate_limit.per_ip_rpm, 30);
     assert_eq!(config.rate_limit.per_user_rpm, 50);

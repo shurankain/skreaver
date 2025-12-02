@@ -101,13 +101,16 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             connection_limit_middleware,
         ));
 
-        // Add CORS if enabled
-        if config.enable_cors {
+        // Add CORS if configured
+        if let Some(_cors_config) = &config.cors {
+            // TODO: Use cors_config to configure CORS layer properly
+            // For now, use permissive mode
             router = router.layer(CorsLayer::permissive());
         }
 
-        // Add OpenAPI documentation if enabled
-        if config.enable_openapi {
+        // Add OpenAPI documentation if configured
+        if let Some(_openapi_config) = &config.openapi {
+            // TODO: Use openapi_config to configure routes
             router = router.merge(create_openapi_router());
         }
 

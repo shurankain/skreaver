@@ -10,7 +10,7 @@ mod config;
 #[cfg(test)]
 mod tests;
 
-pub use config::HttpRuntimeConfig;
+pub use config::{CorsConfig, HttpRuntimeConfig, OpenApiConfig};
 
 use crate::runtime::{
     Coordinator,

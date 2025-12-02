@@ -249,8 +249,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         connection_limits: ConnectionLimitConfig::default(),
         request_timeout_secs: 30,
         max_body_size: 16 * 1024 * 1024, // 16MB
-        enable_cors: true,
-        enable_openapi: true,
+        cors: Some(skreaver_http::runtime::http::CorsConfig::default()),
+        openapi: Some(skreaver_http::runtime::http::OpenApiConfig::default()),
         observability: Default::default(),
         security_config_path: None, // Use default security config
     };
