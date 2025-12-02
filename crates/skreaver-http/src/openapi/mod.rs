@@ -127,28 +127,37 @@ pub struct ExternalDocs {
 }
 
 /// Standard API response wrapper
+///
+/// Type-safe response handling using enum variants to prevent invalid states.
+/// This eliminates impossible states like `success=true` with `error=Some(...)`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiResponse<T> {
-    /// Response data
-    pub data: Option<T>,
-    /// Success indicator
-    pub success: bool,
-    /// Error message if any
-    pub error: Option<String>,
-    /// Request timestamp
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    /// Request ID for tracing
-    pub request_id: String,
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ApiResponse<T> {
+    /// Successful response with data
+    Success {
+        /// Response data
+        data: T,
+        /// Request timestamp
+        timestamp: chrono::DateTime<chrono::Utc>,
+        /// Request ID for tracing
+        request_id: String,
+    },
+    /// Error response
+    Error {
+        /// Error message
+        error: String,
+        /// Request timestamp
+        timestamp: chrono::DateTime<chrono::Utc>,
+        /// Request ID for tracing
+        request_id: String,
+    },
 }
 
 impl<T> ApiResponse<T> {
     /// Create a successful response
     pub fn success(data: T) -> Self {
-        Self {
-            data: Some(data),
-            success: true,
-            error: None,
+        Self::Success {
+            data,
             timestamp: chrono::Utc::now(),
             request_id: uuid::Uuid::new_v4().to_string(),
         }
@@ -156,12 +165,44 @@ impl<T> ApiResponse<T> {
 
     /// Create an error response
     pub fn error(message: String) -> Self {
-        Self {
-            data: None,
-            success: false,
-            error: Some(message),
+        Self::Error {
+            error: message,
             timestamp: chrono::Utc::now(),
             request_id: uuid::Uuid::new_v4().to_string(),
+        }
+    }
+
+    /// Check if response is successful
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success { .. })
+    }
+
+    /// Check if response is an error
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Error { .. })
+    }
+
+    /// Convert to Result
+    pub fn into_result(self) -> Result<T, String> {
+        match self {
+            Self::Success { data, .. } => Ok(data),
+            Self::Error { error, .. } => Err(error),
+        }
+    }
+
+    /// Get the request ID
+    pub fn request_id(&self) -> &str {
+        match self {
+            Self::Success { request_id, .. } => request_id,
+            Self::Error { request_id, .. } => request_id,
+        }
+    }
+
+    /// Get the timestamp
+    pub fn timestamp(&self) -> chrono::DateTime<chrono::Utc> {
+        match self {
+            Self::Success { timestamp, .. } => *timestamp,
+            Self::Error { timestamp, .. } => *timestamp,
         }
     }
 }
@@ -192,9 +233,10 @@ pub struct PaginatedResponse<T> {
     pub items: Vec<T>,
     /// Pagination information
     pub pagination: PaginationInfo,
-    /// Request metadata
-    #[serde(flatten)]
-    pub meta: ApiResponse<()>,
+    /// Request timestamp
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Request ID for tracing
+    pub request_id: String,
 }
 
 impl<T> PaginatedResponse<T> {
@@ -212,13 +254,8 @@ impl<T> PaginatedResponse<T> {
                 has_next: page < total_pages,
                 has_prev: page > 1,
             },
-            meta: ApiResponse {
-                data: None,
-                success: true,
-                error: None,
-                timestamp: chrono::Utc::now(),
-                request_id: uuid::Uuid::new_v4().to_string(),
-            },
+            timestamp: chrono::Utc::now(),
+            request_id: uuid::Uuid::new_v4().to_string(),
         }
     }
 }
@@ -302,17 +339,41 @@ mod tests {
     #[test]
     fn test_api_response_success() {
         let response = ApiResponse::success("test data");
-        assert!(response.success);
-        assert_eq!(response.data, Some("test data"));
-        assert!(response.error.is_none());
+        assert!(response.is_success());
+        assert!(!response.is_error());
+
+        match response {
+            ApiResponse::Success { data, .. } => assert_eq!(data, "test data"),
+            _ => panic!("Expected Success variant"),
+        }
     }
 
     #[test]
     fn test_api_response_error() {
         let response: ApiResponse<String> = ApiResponse::error("test error".to_string());
-        assert!(!response.success);
-        assert!(response.data.is_none());
-        assert_eq!(response.error, Some("test error".to_string()));
+        assert!(!response.is_success());
+        assert!(response.is_error());
+
+        match response {
+            ApiResponse::Error { error, .. } => assert_eq!(error, "test error"),
+            _ => panic!("Expected Error variant"),
+        }
+    }
+
+    #[test]
+    fn test_api_response_into_result() {
+        let success_response = ApiResponse::success("data");
+        assert_eq!(success_response.into_result(), Ok("data"));
+
+        let error_response: ApiResponse<String> = ApiResponse::error("error".to_string());
+        assert_eq!(error_response.into_result(), Err("error".to_string()));
+    }
+
+    #[test]
+    fn test_api_response_accessors() {
+        let response = ApiResponse::success("test");
+        assert!(!response.request_id().is_empty());
+        assert!(response.timestamp() <= chrono::Utc::now());
     }
 
     #[test]
