@@ -208,6 +208,8 @@ impl<T> ApiResponse<T> {
 }
 
 /// Pagination information for list responses
+///
+/// Uses computed methods for `has_next` and `has_prev` to avoid redundant state.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginationInfo {
@@ -219,10 +221,18 @@ pub struct PaginationInfo {
     pub total_items: u64,
     /// Total number of pages
     pub total_pages: u64,
-    /// Whether there are more pages
-    pub has_next: bool,
-    /// Whether there are previous pages
-    pub has_prev: bool,
+}
+
+impl PaginationInfo {
+    /// Check if there are more pages after the current one
+    pub fn has_next(&self) -> bool {
+        self.page < self.total_pages
+    }
+
+    /// Check if there are pages before the current one
+    pub fn has_prev(&self) -> bool {
+        self.page > 1
+    }
 }
 
 /// Paginated API response
@@ -251,8 +261,6 @@ impl<T> PaginatedResponse<T> {
                 page_size,
                 total_items,
                 total_pages,
-                has_next: page < total_pages,
-                has_prev: page > 1,
             },
             timestamp: chrono::Utc::now(),
             request_id: uuid::Uuid::new_v4().to_string(),
@@ -386,8 +394,51 @@ mod tests {
         assert_eq!(response.pagination.page_size, 2);
         assert_eq!(response.pagination.total_items, 5);
         assert_eq!(response.pagination.total_pages, 3);
-        assert!(response.pagination.has_next);
-        assert!(!response.pagination.has_prev);
+        assert!(response.pagination.has_next());
+        assert!(!response.pagination.has_prev());
+    }
+
+    #[test]
+    fn test_pagination_info_computed_methods() {
+        // First page
+        let first_page = PaginationInfo {
+            page: 1,
+            page_size: 10,
+            total_items: 50,
+            total_pages: 5,
+        };
+        assert!(first_page.has_next());
+        assert!(!first_page.has_prev());
+
+        // Middle page
+        let middle_page = PaginationInfo {
+            page: 3,
+            page_size: 10,
+            total_items: 50,
+            total_pages: 5,
+        };
+        assert!(middle_page.has_next());
+        assert!(middle_page.has_prev());
+
+        // Last page
+        let last_page = PaginationInfo {
+            page: 5,
+            page_size: 10,
+            total_items: 50,
+            total_pages: 5,
+        };
+        assert!(!last_page.has_next());
+        assert!(last_page.has_prev());
+
+        // Only page
+        let only_page = PaginationInfo {
+            page: 1,
+            page_size: 10,
+            total_items: 5,
+            total_pages: 1,
+        };
+        assert!(!only_page.has_next());
+        assert!(!only_page.has_prev());
     }
 
     #[test]
