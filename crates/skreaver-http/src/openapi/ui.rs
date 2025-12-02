@@ -9,23 +9,102 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// UI feature flag for interactive testing
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TryItOutMode {
+    /// Interactive testing enabled
+    Enabled,
+    /// Interactive testing disabled (read-only)
+    Disabled,
+}
+
+impl TryItOutMode {
+    /// Check if try-it-out is enabled
+    pub fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+impl Default for TryItOutMode {
+    fn default() -> Self {
+        Self::Enabled
+    }
+}
+
+/// Validation mode for API requests/responses
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationMode {
+    /// Client-side validation enabled
+    Enabled,
+    /// Client-side validation disabled
+    Disabled,
+}
+
+impl ValidationMode {
+    /// Check if validation is enabled
+    pub fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+impl Default for ValidationMode {
+    fn default() -> Self {
+        Self::Enabled
+    }
+}
+
+/// Header visibility configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HeaderVisibility {
+    /// Show both request and response headers
+    Both,
+    /// Show only request headers
+    RequestOnly,
+    /// Show only response headers
+    ResponseOnly,
+    /// Hide all headers
+    None,
+}
+
+impl HeaderVisibility {
+    /// Check if request headers should be shown
+    pub fn show_request(self) -> bool {
+        matches!(self, Self::Both | Self::RequestOnly)
+    }
+
+    /// Check if response headers should be shown
+    pub fn show_response(self) -> bool {
+        matches!(self, Self::Both | Self::ResponseOnly)
+    }
+}
+
+impl Default for HeaderVisibility {
+    fn default() -> Self {
+        Self::Both
+    }
+}
+
 /// API documentation UI configuration
+///
+/// Uses type-safe enums instead of booleans to make feature flags more explicit
+/// and prevent invalid combinations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiUiConfig {
     /// UI title
     pub title: String,
     /// API specification URL
     pub spec_url: String,
-    /// Enable try-it-out functionality
-    pub enable_try_it_out: bool,
-    /// Enable request/response validation
-    pub enable_validation: bool,
+    /// Interactive testing mode
+    pub try_it_out: TryItOutMode,
+    /// Request/response validation mode
+    pub validation: ValidationMode,
     /// Default expanded depth
     pub default_expanded_depth: u32,
-    /// Show request headers
-    pub show_request_headers: bool,
-    /// Show response headers
-    pub show_response_headers: bool,
+    /// Header visibility configuration
+    pub headers: HeaderVisibility,
     /// Custom CSS URL
     pub custom_css: Option<String>,
     /// Custom JS URL
@@ -37,13 +116,44 @@ impl Default for ApiUiConfig {
         Self {
             title: "Skreaver API Documentation".to_string(),
             spec_url: "/openapi.json".to_string(),
-            enable_try_it_out: true,
-            enable_validation: true,
+            try_it_out: TryItOutMode::default(),
+            validation: ValidationMode::default(),
             default_expanded_depth: 1,
-            show_request_headers: true,
-            show_response_headers: true,
+            headers: HeaderVisibility::default(),
             custom_css: None,
             custom_js: None,
+        }
+    }
+}
+
+impl ApiUiConfig {
+    /// Create a read-only configuration (no interactive testing)
+    pub fn read_only() -> Self {
+        Self {
+            try_it_out: TryItOutMode::Disabled,
+            validation: ValidationMode::Disabled,
+            headers: HeaderVisibility::None,
+            ..Default::default()
+        }
+    }
+
+    /// Create a minimal configuration (no headers, no validation)
+    pub fn minimal() -> Self {
+        Self {
+            validation: ValidationMode::Disabled,
+            headers: HeaderVisibility::None,
+            ..Default::default()
+        }
+    }
+
+    /// Create a development-friendly configuration (all features enabled)
+    pub fn development() -> Self {
+        Self {
+            try_it_out: TryItOutMode::Enabled,
+            validation: ValidationMode::Enabled,
+            headers: HeaderVisibility::Both,
+            default_expanded_depth: 2,
+            ..Default::default()
         }
     }
 }
@@ -147,15 +257,15 @@ impl SwaggerUi {
 </html>"#,
             title = self.config.title,
             spec_url = self.config.spec_url,
-            try_it_out = self.config.enable_try_it_out,
-            validator_url = if self.config.enable_validation {
+            try_it_out = self.config.try_it_out.is_enabled(),
+            validator_url = if self.config.validation.is_enabled() {
                 "null"
             } else {
                 "false"
             },
             expanded_depth = self.config.default_expanded_depth,
-            show_request_headers = self.config.show_request_headers,
-            show_response_headers = self.config.show_response_headers,
+            show_request_headers = self.config.headers.show_request(),
+            show_response_headers = self.config.headers.show_response(),
             custom_css = self
                 .config
                 .custom_css
@@ -398,8 +508,55 @@ mod tests {
         let config = ApiUiConfig::default();
         assert_eq!(config.title, "Skreaver API Documentation");
         assert_eq!(config.spec_url, "/openapi.json");
-        assert!(config.enable_try_it_out);
-        assert!(config.enable_validation);
+        assert_eq!(config.try_it_out, TryItOutMode::Enabled);
+        assert_eq!(config.validation, ValidationMode::Enabled);
+        assert_eq!(config.headers, HeaderVisibility::Both);
+    }
+
+    #[test]
+    fn test_try_it_out_mode() {
+        assert!(TryItOutMode::Enabled.is_enabled());
+        assert!(!TryItOutMode::Disabled.is_enabled());
+    }
+
+    #[test]
+    fn test_validation_mode() {
+        assert!(ValidationMode::Enabled.is_enabled());
+        assert!(!ValidationMode::Disabled.is_enabled());
+    }
+
+    #[test]
+    fn test_header_visibility() {
+        assert!(HeaderVisibility::Both.show_request());
+        assert!(HeaderVisibility::Both.show_response());
+
+        assert!(HeaderVisibility::RequestOnly.show_request());
+        assert!(!HeaderVisibility::RequestOnly.show_response());
+
+        assert!(!HeaderVisibility::ResponseOnly.show_request());
+        assert!(HeaderVisibility::ResponseOnly.show_response());
+
+        assert!(!HeaderVisibility::None.show_request());
+        assert!(!HeaderVisibility::None.show_response());
+    }
+
+    #[test]
+    fn test_api_ui_config_presets() {
+        let read_only = ApiUiConfig::read_only();
+        assert_eq!(read_only.try_it_out, TryItOutMode::Disabled);
+        assert_eq!(read_only.validation, ValidationMode::Disabled);
+        assert_eq!(read_only.headers, HeaderVisibility::None);
+
+        let minimal = ApiUiConfig::minimal();
+        assert_eq!(minimal.try_it_out, TryItOutMode::Enabled);
+        assert_eq!(minimal.validation, ValidationMode::Disabled);
+        assert_eq!(minimal.headers, HeaderVisibility::None);
+
+        let dev = ApiUiConfig::development();
+        assert_eq!(dev.try_it_out, TryItOutMode::Enabled);
+        assert_eq!(dev.validation, ValidationMode::Enabled);
+        assert_eq!(dev.headers, HeaderVisibility::Both);
+        assert_eq!(dev.default_expanded_depth, 2);
     }
 
     #[test]
