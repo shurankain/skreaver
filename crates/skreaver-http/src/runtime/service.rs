@@ -26,13 +26,54 @@ pub struct AgentService {
     metrics: Arc<ServiceMetrics>,
 }
 
+/// Metrics collection mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetricsMode {
+    /// No metrics collection
+    Disabled,
+    /// Basic metrics only (minimal overhead)
+    Basic,
+    /// Standard metrics set (balanced)
+    Standard,
+    /// Detailed metrics with performance impact
+    Detailed,
+}
+
+impl MetricsMode {
+    /// Check if metrics are enabled
+    pub fn is_enabled(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    /// Check if using detailed metrics
+    pub fn is_detailed(self) -> bool {
+        matches!(self, Self::Detailed)
+    }
+
+    /// Check if basic or higher
+    pub fn includes_basic(self) -> bool {
+        matches!(self, Self::Basic | Self::Standard | Self::Detailed)
+    }
+
+    /// Check if standard or higher
+    pub fn includes_standard(self) -> bool {
+        matches!(self, Self::Standard | Self::Detailed)
+    }
+}
+
+impl Default for MetricsMode {
+    fn default() -> Self {
+        Self::Standard
+    }
+}
+
 /// Configuration for agent service
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
     /// Default execution timeout
     pub default_timeout_secs: u32,
-    /// Enable detailed metrics collection
-    pub enable_metrics: bool,
+    /// Metrics collection mode
+    pub metrics: MetricsMode,
     /// Maximum number of concurrent agent operations
     pub max_concurrent_operations: usize,
 }
@@ -41,8 +82,34 @@ impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
             default_timeout_secs: 30,
-            enable_metrics: true,
+            metrics: MetricsMode::default(),
             max_concurrent_operations: 100,
+        }
+    }
+}
+
+impl ServiceConfig {
+    /// Create config with no metrics
+    pub fn minimal() -> Self {
+        Self {
+            metrics: MetricsMode::Disabled,
+            ..Default::default()
+        }
+    }
+
+    /// Create config with basic metrics
+    pub fn basic() -> Self {
+        Self {
+            metrics: MetricsMode::Basic,
+            ..Default::default()
+        }
+    }
+
+    /// Create config with detailed metrics
+    pub fn detailed() -> Self {
+        Self {
+            metrics: MetricsMode::Detailed,
+            ..Default::default()
         }
     }
 }

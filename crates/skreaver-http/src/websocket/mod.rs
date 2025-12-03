@@ -34,6 +34,35 @@ pub use handlers::*;
 pub use manager::*;
 pub use protocol::*;
 
+/// WebSocket message compression mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressionMode {
+    /// No compression
+    Disabled,
+    /// Default compression settings (balanced)
+    Default,
+    /// Aggressive compression (higher CPU, better compression ratio)
+    Aggressive,
+}
+
+impl CompressionMode {
+    /// Check if compression is enabled
+    pub fn is_enabled(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    /// Check if using aggressive compression
+    pub fn is_aggressive(self) -> bool {
+        matches!(self, Self::Aggressive)
+    }
+}
+
+impl Default for CompressionMode {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
 /// WebSocket configuration
 #[derive(Debug, Clone)]
 pub struct WebSocketConfig {
@@ -47,8 +76,8 @@ pub struct WebSocketConfig {
     pub pong_timeout: Duration,
     /// Maximum message size in bytes
     pub max_message_size: usize,
-    /// Enable message compression
-    pub enable_compression: bool,
+    /// Message compression mode
+    pub compression: CompressionMode,
     /// Buffer size for incoming messages
     pub buffer_size: usize,
     /// Maximum subscriptions per connection
@@ -69,7 +98,7 @@ impl Default for WebSocketConfig {
             ping_interval: Duration::from_secs(30),
             pong_timeout: Duration::from_secs(10),
             max_message_size: 64 * 1024, // 64KB
-            enable_compression: true,
+            compression: CompressionMode::default(),
             buffer_size: 100,
             max_subscriptions_per_connection: 50,
             max_subscribers_per_channel: 10000,
@@ -89,7 +118,7 @@ pub struct WebSocketConfigBuilder {
     ping_interval: Option<Duration>,
     pong_timeout: Option<Duration>,
     max_message_size: Option<usize>,
-    enable_compression: bool,
+    compression: CompressionMode,
     buffer_size: Option<usize>,
     max_subscriptions_per_connection: Option<usize>,
     max_subscribers_per_channel: Option<usize>,
@@ -135,7 +164,7 @@ impl WebSocketConfigBuilder {
             ping_interval: None,
             pong_timeout: None,
             max_message_size: None,
-            enable_compression: true,
+            compression: CompressionMode::default(),
             buffer_size: None,
             max_subscriptions_per_connection: None,
             max_subscribers_per_channel: None,
@@ -224,9 +253,23 @@ impl WebSocketConfigBuilder {
         Ok(self)
     }
 
-    /// Enable or disable compression
+    /// Set compression mode
+    pub fn compression(mut self, mode: CompressionMode) -> Self {
+        self.compression = mode;
+        self
+    }
+
+    /// Enable or disable compression (backward compatibility)
+    #[deprecated(
+        since = "0.5.1",
+        note = "Use `compression()` method with CompressionMode enum instead"
+    )]
     pub fn enable_compression(mut self, enable: bool) -> Self {
-        self.enable_compression = enable;
+        self.compression = if enable {
+            CompressionMode::Default
+        } else {
+            CompressionMode::Disabled
+        };
         self
     }
 
@@ -325,7 +368,7 @@ impl WebSocketConfigBuilder {
             ping_interval: self.ping_interval.unwrap_or(defaults.ping_interval),
             pong_timeout: self.pong_timeout.unwrap_or(defaults.pong_timeout),
             max_message_size: self.max_message_size.unwrap_or(defaults.max_message_size),
-            enable_compression: self.enable_compression,
+            compression: self.compression,
             buffer_size: self.buffer_size.unwrap_or(defaults.buffer_size),
             max_subscriptions_per_connection: self
                 .max_subscriptions_per_connection
@@ -760,7 +803,7 @@ mod tests {
         assert_eq!(config.ping_interval, Duration::from_secs(30));
         assert_eq!(config.pong_timeout, Duration::from_secs(10));
         assert_eq!(config.max_message_size, 64 * 1024);
-        assert!(config.enable_compression);
+        assert_eq!(config.compression, CompressionMode::Default);
         assert_eq!(config.buffer_size, 100);
         assert_eq!(config.max_subscriptions_per_connection, 50);
         assert_eq!(config.max_subscribers_per_channel, 10000);

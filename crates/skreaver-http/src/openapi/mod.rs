@@ -14,13 +14,53 @@ pub mod validation;
 
 pub use generator::{ApiDocGenerator, OpenApiGenerator};
 pub use ui::{
-    ApiSpecResponse, ApiUiConfig, HeaderVisibility, RapiDocUi, SwaggerUi, TryItOutMode,
-    ValidationMode,
+    ApiSpecResponse, ApiUiConfig, HeaderVisibility, RapiDocTheme, RapiDocUi, SwaggerUi,
+    TryItOutMode, ValidationMode,
 };
 pub use validation::{
     RequestValidator, ResponseValidator, ValidatedJson, ValidationConfig, ValidationErrors,
     ValidationLevel, validation_middleware,
 };
+
+/// OpenAPI UI selection
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum OpenApiUi {
+    /// UI disabled - only serve OpenAPI spec JSON
+    Disabled,
+    /// Swagger UI with configuration
+    Swagger { config: ApiUiConfig },
+    /// RapiDoc UI with configuration and theme
+    RapiDoc {
+        config: ApiUiConfig,
+        theme: RapiDocTheme,
+    },
+}
+
+impl OpenApiUi {
+    /// Check if UI is enabled
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    /// Check if using Swagger UI
+    pub fn is_swagger(&self) -> bool {
+        matches!(self, Self::Swagger { .. })
+    }
+
+    /// Check if using RapiDoc UI
+    pub fn is_rapidoc(&self) -> bool {
+        matches!(self, Self::RapiDoc { .. })
+    }
+}
+
+impl Default for OpenApiUi {
+    fn default() -> Self {
+        Self::Swagger {
+            config: ApiUiConfig::default(),
+        }
+    }
+}
 
 /// OpenAPI specification configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,8 +81,8 @@ pub struct OpenApiConfig {
     pub servers: Vec<ApiServer>,
     /// External documentation
     pub external_docs: Option<ExternalDocs>,
-    /// Enable UI in development
-    pub enable_ui: bool,
+    /// UI configuration and selection
+    pub ui: OpenApiUi,
     /// UI path (default: /docs)
     pub ui_path: String,
     /// JSON spec path (default: /openapi.json)
@@ -71,9 +111,35 @@ impl Default for OpenApiConfig {
                 variables: HashMap::new(),
             }],
             external_docs: None,
-            enable_ui: true,
+            ui: OpenApiUi::default(),
             ui_path: "/docs".to_string(),
             spec_path: "/openapi.json".to_string(),
+        }
+    }
+}
+
+impl OpenApiConfig {
+    /// Create config with UI disabled (spec-only)
+    pub fn spec_only() -> Self {
+        Self {
+            ui: OpenApiUi::Disabled,
+            ..Default::default()
+        }
+    }
+
+    /// Create config with Swagger UI
+    pub fn with_swagger(config: ApiUiConfig) -> Self {
+        Self {
+            ui: OpenApiUi::Swagger { config },
+            ..Default::default()
+        }
+    }
+
+    /// Create config with RapiDoc UI
+    pub fn with_rapidoc(config: ApiUiConfig, theme: RapiDocTheme) -> Self {
+        Self {
+            ui: OpenApiUi::RapiDoc { config, theme },
+            ..Default::default()
         }
     }
 }
@@ -449,7 +515,8 @@ mod tests {
         let config = OpenApiConfig::default();
         assert_eq!(config.title, "Skreaver API");
         assert_eq!(config.version, "0.5.0");
-        assert!(config.enable_ui);
+        assert!(config.ui.is_enabled());
+        assert!(config.ui.is_swagger());
         assert_eq!(config.ui_path, "/docs");
         assert_eq!(config.spec_path, "/openapi.json");
     }

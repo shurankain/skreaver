@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ping_interval: Duration::from_secs(30),
         pong_timeout: Duration::from_secs(10),
         max_message_size: 64 * 1024, // 64KB
-        enable_compression: true,
+        compression: skreaver_http::websocket::CompressionMode::Default,
         buffer_size: 100,
         max_subscriptions_per_connection: 50,
         max_subscribers_per_channel: 1000,
