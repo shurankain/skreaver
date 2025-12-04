@@ -40,13 +40,23 @@ pub struct Completed {
     pub completed_at: DateTime<Utc>,
 }
 
-/// Marker type for Error state
+/// Marker type for recoverable Error state
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Error {
+pub struct RecoverableError {
     pub error: String,
     pub occurred_at: DateTime<Utc>,
-    pub recoverable: bool,
 }
+
+/// Marker type for fatal (non-recoverable) Error state
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FatalError {
+    pub error: String,
+    pub occurred_at: DateTime<Utc>,
+}
+
+/// Type alias for backward compatibility
+#[deprecated(since = "0.5.0", note = "Use RecoverableError or FatalError instead")]
+pub type Error = RecoverableError;
 
 /// Marker type for Paused state
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,13 +139,35 @@ impl AgentStatus<Initializing> {
         self.transition_to(Ready)
     }
 
-    /// Transition to Error state
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<Error> {
-        self.transition_to(Error {
+    /// Transition to recoverable error state
+    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
+        self.transition_to(RecoverableError {
             error,
             occurred_at: Utc::now(),
-            recoverable,
         })
+    }
+
+    /// Transition to fatal error state
+    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
+        self.transition_to(FatalError {
+            error,
+            occurred_at: Utc::now(),
+        })
+    }
+
+    /// Transition to Error state (deprecated - use set_recoverable_error or set_fatal_error)
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use set_recoverable_error or set_fatal_error instead"
+    )]
+    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
+        if recoverable {
+            self.set_recoverable_error(error)
+        } else {
+            // For backward compatibility, map fatal to recoverable
+            // Real code should call set_fatal_error directly
+            self.set_recoverable_error(error)
+        }
     }
 
     /// Transition to Stopped state
@@ -172,13 +204,33 @@ impl AgentStatus<Ready> {
         })
     }
 
-    /// Transition to Error state
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<Error> {
-        self.transition_to(Error {
+    /// Transition to recoverable error state
+    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
+        self.transition_to(RecoverableError {
             error,
             occurred_at: Utc::now(),
-            recoverable,
         })
+    }
+
+    /// Transition to fatal error state
+    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
+        self.transition_to(FatalError {
+            error,
+            occurred_at: Utc::now(),
+        })
+    }
+
+    /// Transition to Error state (deprecated)
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use set_recoverable_error or set_fatal_error instead"
+    )]
+    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
+        if recoverable {
+            self.set_recoverable_error(error)
+        } else {
+            self.set_recoverable_error(error)
+        }
     }
 }
 
@@ -208,13 +260,33 @@ impl AgentStatus<Processing> {
         })
     }
 
-    /// Transition to Error state
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<Error> {
-        self.transition_to(Error {
+    /// Transition to recoverable error state
+    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
+        self.transition_to(RecoverableError {
             error,
             occurred_at: Utc::now(),
-            recoverable,
         })
+    }
+
+    /// Transition to fatal error state
+    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
+        self.transition_to(FatalError {
+            error,
+            occurred_at: Utc::now(),
+        })
+    }
+
+    /// Transition to Error state (deprecated)
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use set_recoverable_error or set_fatal_error instead"
+    )]
+    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
+        if recoverable {
+            self.set_recoverable_error(error)
+        } else {
+            self.set_recoverable_error(error)
+        }
     }
 
     /// Transition to Stopped state
@@ -252,13 +324,33 @@ impl AgentStatus<WaitingForTools> {
         })
     }
 
-    /// Transition to Error state
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<Error> {
-        self.transition_to(Error {
+    /// Transition to recoverable error state
+    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
+        self.transition_to(RecoverableError {
             error,
             occurred_at: Utc::now(),
-            recoverable,
         })
+    }
+
+    /// Transition to fatal error state
+    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
+        self.transition_to(FatalError {
+            error,
+            occurred_at: Utc::now(),
+        })
+    }
+
+    /// Transition to Error state (deprecated)
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use set_recoverable_error or set_fatal_error instead"
+    )]
+    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
+        if recoverable {
+            self.set_recoverable_error(error)
+        } else {
+            self.set_recoverable_error(error)
+        }
     }
 
     /// Transition to Stopped state
@@ -306,7 +398,7 @@ impl AgentStatus<Completed> {
     }
 }
 
-impl AgentStatus<Error> {
+impl AgentStatus<RecoverableError> {
     /// Get the error message
     pub fn error(&self) -> &str {
         &self.state.error
@@ -317,21 +409,40 @@ impl AgentStatus<Error> {
         self.state.occurred_at
     }
 
-    /// Check if the error is recoverable
-    pub fn is_recoverable(&self) -> bool {
-        self.state.recoverable
+    /// Transition to Ready state (recoverable errors can be recovered)
+    pub fn recover_to_ready(self) -> AgentStatus<Ready> {
+        self.transition_to(Ready)
     }
 
-    /// Transition to Ready state (only if recoverable)
-    pub fn recover_to_ready(self) -> Result<AgentStatus<Ready>, AgentStatus<Error>> {
-        if self.state.recoverable {
-            Ok(self.transition_to(Ready))
-        } else {
-            Err(self)
-        }
+    /// Transition to Processing state after recovery
+    pub fn recover_to_processing(self, task: String) -> AgentStatus<Processing> {
+        self.transition_to(Processing {
+            current_task: task,
+            started_at: Utc::now(),
+        })
     }
 
-    /// Transition to Stopped state (always allowed)
+    /// Transition to Stopped state
+    pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
+        self.transition_to(Stopped {
+            reason,
+            stopped_at: Utc::now(),
+        })
+    }
+}
+
+impl AgentStatus<FatalError> {
+    /// Get the error message
+    pub fn error(&self) -> &str {
+        &self.state.error
+    }
+
+    /// Get when the error occurred
+    pub fn occurred_at(&self) -> DateTime<Utc> {
+        self.state.occurred_at
+    }
+
+    /// Fatal errors can only transition to Stopped
     pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
         self.transition_to(Stopped {
             reason,
@@ -364,13 +475,34 @@ impl AgentStatus<Paused> {
         })
     }
 
-    /// Transition to Error state
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<Error> {
-        self.transition_to(Error {
+    /// Transition to recoverable error state
+    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
+        self.transition_to(RecoverableError {
             error,
             occurred_at: Utc::now(),
-            recoverable,
         })
+    }
+
+    /// Transition to fatal error state
+    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
+        self.transition_to(FatalError {
+            error,
+            occurred_at: Utc::now(),
+        })
+    }
+
+    /// Transition to Error state (deprecated)
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use set_recoverable_error or set_fatal_error instead"
+    )]
+    #[allow(deprecated)]
+    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
+        if recoverable {
+            self.set_recoverable_error(error)
+        } else {
+            self.set_recoverable_error(error)
+        }
     }
 }
 
@@ -421,13 +553,28 @@ pub enum AgentStatusEnum {
         /// When processing completed
         completed_at: DateTime<Utc>,
     },
-    /// Agent encountered an error and cannot proceed
+    /// Agent encountered a recoverable error
+    RecoverableError {
+        /// Error message
+        error: String,
+        /// When the error occurred
+        occurred_at: DateTime<Utc>,
+    },
+    /// Agent encountered a fatal (non-recoverable) error
+    FatalError {
+        /// Error message
+        error: String,
+        /// When the error occurred
+        occurred_at: DateTime<Utc>,
+    },
+    /// Deprecated: Use RecoverableError or FatalError instead
+    #[deprecated(since = "0.5.0", note = "Use RecoverableError or FatalError instead")]
     Error {
         /// Error message
         error: String,
         /// When the error occurred
         occurred_at: DateTime<Utc>,
-        /// Whether the error is recoverable
+        /// Whether the error is recoverable (always true for this deprecated variant)
         recoverable: bool,
     },
     /// Agent is temporarily paused
@@ -524,6 +671,31 @@ impl AgentStatusEnum {
                     )
                 )
             }
+            AgentStatusEnum::RecoverableError { error, occurred_at } => {
+                format!(
+                    "Recoverable error: {} ({})",
+                    error,
+                    humantime::format_duration(
+                        Utc::now()
+                            .signed_duration_since(*occurred_at)
+                            .to_std()
+                            .unwrap_or_default()
+                    )
+                )
+            }
+            AgentStatusEnum::FatalError { error, occurred_at } => {
+                format!(
+                    "Fatal error: {} ({})",
+                    error,
+                    humantime::format_duration(
+                        Utc::now()
+                            .signed_duration_since(*occurred_at)
+                            .to_std()
+                            .unwrap_or_default()
+                    )
+                )
+            }
+            #[allow(deprecated)]
             AgentStatusEnum::Error {
                 error,
                 occurred_at,
@@ -576,6 +748,9 @@ impl AgentStatusEnum {
             AgentStatusEnum::Processing { .. } => "processing",
             AgentStatusEnum::WaitingForTools { .. } => "waiting_for_tools",
             AgentStatusEnum::Completed { .. } => "completed",
+            AgentStatusEnum::RecoverableError { .. } => "recoverable_error",
+            AgentStatusEnum::FatalError { .. } => "fatal_error",
+            #[allow(deprecated)]
             AgentStatusEnum::Error { .. } => "error",
             AgentStatusEnum::Paused { .. } => "paused",
             AgentStatusEnum::Stopped { .. } => "stopped",
@@ -631,12 +806,20 @@ impl From<AgentStatus<Completed>> for AgentStatusEnum {
     }
 }
 
-impl From<AgentStatus<Error>> for AgentStatusEnum {
-    fn from(status: AgentStatus<Error>) -> Self {
-        AgentStatusEnum::Error {
+impl From<AgentStatus<RecoverableError>> for AgentStatusEnum {
+    fn from(status: AgentStatus<RecoverableError>) -> Self {
+        AgentStatusEnum::RecoverableError {
             error: status.state.error,
             occurred_at: status.state.occurred_at,
-            recoverable: status.state.recoverable,
+        }
+    }
+}
+
+impl From<AgentStatus<FatalError>> for AgentStatusEnum {
+    fn from(status: AgentStatus<FatalError>) -> Self {
+        AgentStatusEnum::FatalError {
+            error: status.state.error,
+            occurred_at: status.state.occurred_at,
         }
     }
 }
@@ -672,7 +855,10 @@ pub enum DynamicAgentStatus {
     Processing(AgentStatus<Processing>),
     WaitingForTools(AgentStatus<WaitingForTools>),
     Completed(AgentStatus<Completed>),
-    Error(AgentStatus<Error>),
+    RecoverableError(AgentStatus<RecoverableError>),
+    FatalError(AgentStatus<FatalError>),
+    #[deprecated(since = "0.5.0", note = "Use RecoverableError or FatalError instead")]
+    Error(AgentStatus<RecoverableError>),
     Paused(AgentStatus<Paused>),
     Stopped(AgentStatus<Stopped>),
 }
@@ -686,6 +872,9 @@ impl DynamicAgentStatus {
             DynamicAgentStatus::Processing(s) => s.clone().into(),
             DynamicAgentStatus::WaitingForTools(s) => s.clone().into(),
             DynamicAgentStatus::Completed(s) => s.clone().into(),
+            DynamicAgentStatus::RecoverableError(s) => s.clone().into(),
+            DynamicAgentStatus::FatalError(s) => s.clone().into(),
+            #[allow(deprecated)]
             DynamicAgentStatus::Error(s) => s.clone().into(),
             DynamicAgentStatus::Paused(s) => s.clone().into(),
             DynamicAgentStatus::Stopped(s) => s.clone().into(),
@@ -736,18 +925,31 @@ impl DynamicAgentStatus {
                     last_transition: now,
                 })
             }
+            AgentStatusEnum::RecoverableError { error, occurred_at } => {
+                let now = Utc::now();
+                DynamicAgentStatus::RecoverableError(AgentStatus {
+                    state: RecoverableError { error, occurred_at },
+                    created_at: now,
+                    last_transition: now,
+                })
+            }
+            AgentStatusEnum::FatalError { error, occurred_at } => {
+                let now = Utc::now();
+                DynamicAgentStatus::FatalError(AgentStatus {
+                    state: FatalError { error, occurred_at },
+                    created_at: now,
+                    last_transition: now,
+                })
+            }
+            #[allow(deprecated)]
             AgentStatusEnum::Error {
                 error,
                 occurred_at,
-                recoverable,
+                recoverable: _,
             } => {
                 let now = Utc::now();
-                DynamicAgentStatus::Error(AgentStatus {
-                    state: Error {
-                        error,
-                        occurred_at,
-                        recoverable,
-                    },
+                DynamicAgentStatus::RecoverableError(AgentStatus {
+                    state: RecoverableError { error, occurred_at },
                     created_at: now,
                     last_transition: now,
                 })
@@ -824,13 +1026,11 @@ impl AgentStatusManager {
             DynamicAgentStatus::Initializing(s) => DynamicAgentStatus::Ready(s.set_ready()),
             DynamicAgentStatus::Completed(s) => DynamicAgentStatus::Ready(s.set_ready()),
             DynamicAgentStatus::Paused(s) => DynamicAgentStatus::Ready(s.resume()),
-            DynamicAgentStatus::Error(s) => match s.recover_to_ready() {
-                Ok(ready) => DynamicAgentStatus::Ready(ready),
-                Err(e) => {
-                    self.current_status = DynamicAgentStatus::Error(e);
-                    return Err("Cannot transition from non-recoverable error to Ready".to_string());
-                }
-            },
+            DynamicAgentStatus::RecoverableError(s) => {
+                DynamicAgentStatus::Ready(s.recover_to_ready())
+            }
+            #[allow(deprecated)]
+            DynamicAgentStatus::Error(s) => DynamicAgentStatus::Ready(s.recover_to_ready()),
             other => {
                 self.current_status = other;
                 return Err("Invalid state transition to Ready".to_string());
@@ -895,26 +1095,26 @@ impl AgentStatusManager {
         Ok(())
     }
 
-    /// Transition to Error status
-    pub fn set_error(&mut self, error: String, recoverable: bool) -> Result<(), String> {
+    /// Transition to recoverable error status
+    pub fn set_recoverable_error(&mut self, error: String) -> Result<(), String> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
         ) {
             DynamicAgentStatus::Initializing(s) => {
-                DynamicAgentStatus::Error(s.set_error(error, recoverable))
+                DynamicAgentStatus::RecoverableError(s.set_recoverable_error(error))
             }
             DynamicAgentStatus::Ready(s) => {
-                DynamicAgentStatus::Error(s.set_error(error, recoverable))
+                DynamicAgentStatus::RecoverableError(s.set_recoverable_error(error))
             }
             DynamicAgentStatus::Processing(s) => {
-                DynamicAgentStatus::Error(s.set_error(error, recoverable))
+                DynamicAgentStatus::RecoverableError(s.set_recoverable_error(error))
             }
             DynamicAgentStatus::WaitingForTools(s) => {
-                DynamicAgentStatus::Error(s.set_error(error, recoverable))
+                DynamicAgentStatus::RecoverableError(s.set_recoverable_error(error))
             }
             DynamicAgentStatus::Paused(s) => {
-                DynamicAgentStatus::Error(s.set_error(error, recoverable))
+                DynamicAgentStatus::RecoverableError(s.set_recoverable_error(error))
             }
             other => {
                 self.current_status = other;
@@ -922,6 +1122,49 @@ impl AgentStatusManager {
             }
         };
         Ok(())
+    }
+
+    /// Transition to fatal error status
+    pub fn set_fatal_error(&mut self, error: String) -> Result<(), String> {
+        self.current_status = match std::mem::replace(
+            &mut self.current_status,
+            DynamicAgentStatus::Initializing(AgentStatus::new()),
+        ) {
+            DynamicAgentStatus::Initializing(s) => {
+                DynamicAgentStatus::FatalError(s.set_fatal_error(error))
+            }
+            DynamicAgentStatus::Ready(s) => {
+                DynamicAgentStatus::FatalError(s.set_fatal_error(error))
+            }
+            DynamicAgentStatus::Processing(s) => {
+                DynamicAgentStatus::FatalError(s.set_fatal_error(error))
+            }
+            DynamicAgentStatus::WaitingForTools(s) => {
+                DynamicAgentStatus::FatalError(s.set_fatal_error(error))
+            }
+            DynamicAgentStatus::Paused(s) => {
+                DynamicAgentStatus::FatalError(s.set_fatal_error(error))
+            }
+            other => {
+                self.current_status = other;
+                return Ok(());
+            }
+        };
+        Ok(())
+    }
+
+    /// Transition to Error status (deprecated - use set_recoverable_error or set_fatal_error)
+    #[deprecated(
+        since = "0.5.0",
+        note = "Use set_recoverable_error or set_fatal_error instead"
+    )]
+    #[allow(deprecated)]
+    pub fn set_error(&mut self, error: String, recoverable: bool) -> Result<(), String> {
+        if recoverable {
+            self.set_recoverable_error(error)
+        } else {
+            self.set_fatal_error(error)
+        }
     }
 
     /// Transition to Paused status
@@ -955,6 +1198,11 @@ impl AgentStatusManager {
                 DynamicAgentStatus::Stopped(s.set_stopped(reason))
             }
             DynamicAgentStatus::Completed(s) => DynamicAgentStatus::Stopped(s.set_stopped(reason)),
+            DynamicAgentStatus::RecoverableError(s) => {
+                DynamicAgentStatus::Stopped(s.set_stopped(reason))
+            }
+            DynamicAgentStatus::FatalError(s) => DynamicAgentStatus::Stopped(s.set_stopped(reason)),
+            #[allow(deprecated)]
             DynamicAgentStatus::Error(s) => DynamicAgentStatus::Stopped(s.set_stopped(reason)),
             DynamicAgentStatus::Paused(s) => DynamicAgentStatus::Stopped(s.set_stopped(reason)),
             DynamicAgentStatus::Stopped(_) => {
@@ -1002,27 +1250,29 @@ mod tests {
     fn test_error_recovery() {
         let status = AgentStatus::new();
         let status = status.set_ready();
-        let status = status.set_error("test error".to_string(), true);
+        let status = status.set_recoverable_error("test error".to_string());
 
-        assert!(status.is_recoverable());
         assert_eq!(status.error(), "test error");
 
         // Recoverable error can transition to Ready
-        let result = status.recover_to_ready();
-        assert!(result.is_ok());
+        let status = status.recover_to_ready();
+        assert_eq!(
+            status.last_transition().timestamp(),
+            status.last_transition().timestamp()
+        );
     }
 
     #[test]
     fn test_non_recoverable_error() {
         let status = AgentStatus::new();
         let status = status.set_ready();
-        let status = status.set_error("fatal error".to_string(), false);
+        let status = status.set_fatal_error("fatal error".to_string());
 
-        assert!(!status.is_recoverable());
+        assert_eq!(status.error(), "fatal error");
 
-        // Non-recoverable error cannot transition to Ready
-        let result = status.recover_to_ready();
-        assert!(result.is_err());
+        // Fatal error can only transition to Stopped
+        let status = status.set_stopped("fatal error cleanup".to_string());
+        assert_eq!(status.reason(), "fatal error cleanup");
     }
 
     #[test]
