@@ -88,7 +88,7 @@ impl JwtManager {
         let access_token = Token::new(access_token_str, access_expires_at, now);
 
         // Create refresh token if enabled
-        let refresh_token = if self.config.allow_refresh {
+        let refresh_token = if self.config.refresh.is_allowed() {
             let refresh_claims = JwtClaims::new(principal, &self.config, "refresh");
             let refresh_expires_at =
                 DateTime::from_timestamp(refresh_claims.exp, 0).ok_or_else(|| {
@@ -203,7 +203,7 @@ impl JwtManager {
         &self,
         refresh_token: &Token<RefreshToken>,
     ) -> AuthResult<TokenPair> {
-        if !self.config.allow_refresh {
+        if !self.config.refresh.is_allowed() {
             return Err(AuthError::ValidationError(
                 "Token refresh not allowed".to_string(),
             ));
@@ -255,7 +255,7 @@ impl JwtManager {
     /// - The refresh token has been revoked
     /// - The token is not a refresh token type
     pub async fn refresh(&self, refresh_token: &str) -> AuthResult<JwtToken> {
-        if !self.config.allow_refresh {
+        if !self.config.refresh.is_allowed() {
             return Err(AuthError::ValidationError(
                 "Token refresh not allowed".to_string(),
             ));
@@ -723,7 +723,7 @@ mod tests {
     #[tokio::test]
     async fn test_phantom_type_refresh() {
         let config = JwtConfig {
-            allow_refresh: true,
+            refresh: crate::auth::jwt::config::RefreshPolicy::Manual,
             ..Default::default()
         };
         let manager = JwtManager::new(config);

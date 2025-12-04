@@ -7,61 +7,97 @@ use crate::runtime::{backpressure::BackpressureConfig, rate_limit::RateLimitConf
 use skreaver_observability::ObservabilityConfig;
 use std::path::PathBuf;
 
-/// CORS configuration
+/// CORS policy configuration
 ///
 /// Use `Option<CorsConfig>` to enable/disable CORS:
 /// - `None` = CORS disabled
-/// - `Some(config)` = CORS enabled with given configuration
+/// - `Some(config)` = CORS enabled with given policy
 #[derive(Debug, Clone)]
-pub struct CorsConfig {
-    /// Allow all origins (permissive mode)
-    pub permissive: bool,
-    /// Allowed origins (if not permissive)
-    pub allowed_origins: Vec<String>,
-    /// Allowed methods
-    pub allowed_methods: Vec<String>,
-    /// Allowed headers
-    pub allowed_headers: Vec<String>,
+pub enum CorsPolicy {
+    /// Allow all origins (development/permissive mode)
+    Permissive {
+        methods: Vec<String>,
+        headers: Vec<String>,
+    },
+    /// Restrict to specific origins (production mode)
+    Restrictive {
+        origins: Vec<String>,
+        methods: Vec<String>,
+        headers: Vec<String>,
+    },
 }
 
-impl CorsConfig {
-    /// Create a permissive CORS configuration (allows all origins)
+impl CorsPolicy {
+    /// Create permissive policy (allows all origins)
     pub fn permissive() -> Self {
-        Self {
-            permissive: true,
-            allowed_origins: vec![],
-            allowed_methods: vec![
+        Self::Permissive {
+            methods: vec![
                 "GET".into(),
                 "POST".into(),
                 "PUT".into(),
                 "DELETE".into(),
                 "OPTIONS".into(),
             ],
-            allowed_headers: vec!["*".into()],
+            headers: vec!["*".into()],
         }
     }
 
-    /// Create a restrictive CORS configuration with specific origins
+    /// Create restrictive policy with specific origins
     pub fn restrictive(origins: Vec<String>) -> Self {
-        Self {
-            permissive: false,
-            allowed_origins: origins,
-            allowed_methods: vec!["GET".into(), "POST".into()],
-            allowed_headers: vec!["content-type".into(), "authorization".into()],
+        Self::Restrictive {
+            origins,
+            methods: vec!["GET".into(), "POST".into()],
+            headers: vec!["content-type".into(), "authorization".into()],
         }
     }
 
-    /// Check if CORS is in permissive mode
+    /// Create custom restrictive policy with specific origins, methods, and headers
+    pub fn custom(origins: Vec<String>, methods: Vec<String>, headers: Vec<String>) -> Self {
+        Self::Restrictive {
+            origins,
+            methods,
+            headers,
+        }
+    }
+
+    /// Check if policy is permissive
     pub fn is_permissive(&self) -> bool {
-        self.permissive
+        matches!(self, Self::Permissive { .. })
+    }
+
+    /// Get allowed origins (None for permissive mode)
+    pub fn allowed_origins(&self) -> Option<&[String]> {
+        match self {
+            Self::Permissive { .. } => None,
+            Self::Restrictive { origins, .. } => Some(origins),
+        }
+    }
+
+    /// Get allowed methods
+    pub fn allowed_methods(&self) -> &[String] {
+        match self {
+            Self::Permissive { methods, .. } => methods,
+            Self::Restrictive { methods, .. } => methods,
+        }
+    }
+
+    /// Get allowed headers
+    pub fn allowed_headers(&self) -> &[String] {
+        match self {
+            Self::Permissive { headers, .. } => headers,
+            Self::Restrictive { headers, .. } => headers,
+        }
     }
 }
 
-impl Default for CorsConfig {
+impl Default for CorsPolicy {
     fn default() -> Self {
         Self::permissive()
     }
 }
+
+/// Type alias for backward compatibility
+pub type CorsConfig = CorsPolicy;
 
 /// OpenAPI documentation configuration
 ///
@@ -156,7 +192,7 @@ impl HttpRuntimeConfig {
     /// Create configuration for production (restrictive CORS, OpenAPI enabled)
     pub fn production(allowed_origins: Vec<String>) -> Self {
         Self {
-            cors: Some(CorsConfig::restrictive(allowed_origins)),
+            cors: Some(CorsPolicy::restrictive(allowed_origins)),
             openapi: Some(OpenApiConfig::default()),
             ..Default::default()
         }
@@ -165,7 +201,7 @@ impl HttpRuntimeConfig {
     /// Create configuration for development (permissive CORS, OpenAPI enabled)
     pub fn development() -> Self {
         Self {
-            cors: Some(CorsConfig::permissive()),
+            cors: Some(CorsPolicy::permissive()),
             openapi: Some(OpenApiConfig::default()),
             ..Default::default()
         }

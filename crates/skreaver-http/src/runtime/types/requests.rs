@@ -2,8 +2,38 @@
 //!
 //! This module contains all the request DTOs used by the HTTP runtime endpoints.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+/// Stream response mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamMode {
+    /// Complete response returned at once
+    Complete,
+    /// Stream response chunks as they become available
+    Streaming,
+    /// Stream with debug information included
+    Debug,
+}
+
+impl StreamMode {
+    /// Check if streaming is enabled
+    pub fn is_streaming(self) -> bool {
+        matches!(self, Self::Streaming | Self::Debug)
+    }
+
+    /// Check if debug mode is enabled
+    pub fn is_debug(self) -> bool {
+        matches!(self, Self::Debug)
+    }
+}
+
+impl Default for StreamMode {
+    fn default() -> Self {
+        Self::Complete
+    }
+}
 
 /// Request body for creating a new agent
 #[derive(Debug, Deserialize, ToSchema)]
@@ -22,10 +52,9 @@ pub struct ObserveRequest {
     /// Input observation for the agent
     #[schema(example = "Hello, agent!")]
     pub input: String,
-    /// Whether to stream the response in real-time
+    /// Response streaming mode
     #[serde(default)]
-    #[schema(default = false)]
-    pub stream: bool,
+    pub stream_mode: StreamMode,
     /// Priority for request processing (Low, Normal, High, Critical)
     #[serde(default)]
     #[schema(default = "Normal")]
@@ -51,9 +80,9 @@ pub struct CreateTokenRequest {
 pub struct StreamRequest {
     /// Optional input to send to the agent
     pub input: Option<String>,
-    /// Whether to include debug information in stream
+    /// Stream mode configuration
     #[serde(default)]
-    pub debug: bool,
+    pub stream_mode: StreamMode,
     /// Custom timeout in seconds for the operation
     pub timeout_seconds: Option<u64>,
 }
@@ -63,9 +92,9 @@ pub struct StreamRequest {
 pub struct BatchObserveRequest {
     /// List of inputs to process
     pub inputs: Vec<String>,
-    /// Whether to return results as stream
+    /// Response streaming mode
     #[serde(default)]
-    pub stream: bool,
+    pub stream_mode: StreamMode,
     /// Maximum parallel operations
     #[serde(default = "default_parallel_limit")]
     pub parallel_limit: usize,

@@ -9,6 +9,47 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// API Key rotation policy
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RotationPolicy {
+    /// Rotation disabled
+    Disabled,
+    /// Manual rotation allowed
+    Manual,
+    /// Automatic rotation with interval
+    Automatic {
+        /// Days between automatic rotations
+        interval_days: u32,
+    },
+}
+
+impl RotationPolicy {
+    /// Check if rotation is allowed
+    pub fn is_allowed(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    /// Check if automatic rotation is enabled
+    pub fn is_automatic(self) -> bool {
+        matches!(self, Self::Automatic { .. })
+    }
+
+    /// Get rotation interval in days (if automatic)
+    pub fn interval_days(self) -> Option<u32> {
+        match self {
+            Self::Automatic { interval_days } => Some(interval_days),
+            _ => None,
+        }
+    }
+}
+
+impl Default for RotationPolicy {
+    fn default() -> Self {
+        Self::Manual
+    }
+}
+
 /// API Key configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKeyConfig {
@@ -18,8 +59,8 @@ pub struct ApiKeyConfig {
     pub prefix: String,
     /// Default expiration duration in days (None for no expiration)
     pub default_expiry_days: Option<i64>,
-    /// Allow key rotation
-    pub allow_rotation: bool,
+    /// Key rotation policy
+    pub rotation: RotationPolicy,
     /// Maximum keys per principal
     pub max_keys_per_principal: usize,
 }
@@ -30,8 +71,26 @@ impl Default for ApiKeyConfig {
             min_length: 32,
             prefix: "sk_".to_string(),
             default_expiry_days: Some(365),
-            allow_rotation: true,
+            rotation: RotationPolicy::default(),
             max_keys_per_principal: 5,
+        }
+    }
+}
+
+impl ApiKeyConfig {
+    /// Create config with automatic rotation
+    pub fn with_auto_rotation(interval_days: u32) -> Self {
+        Self {
+            rotation: RotationPolicy::Automatic { interval_days },
+            ..Default::default()
+        }
+    }
+
+    /// Create config with rotation disabled
+    pub fn no_rotation() -> Self {
+        Self {
+            rotation: RotationPolicy::Disabled,
+            ..Default::default()
         }
     }
 }
@@ -714,7 +773,7 @@ impl ApiKeyManager {
 
     /// Rotate an API key (type-safe version)
     pub async fn rotate_key(&self, old_key: &str) -> AuthResult<Key<Active>> {
-        if !self.config.allow_rotation {
+        if !self.config.rotation.is_allowed() {
             return Err(AuthError::ValidationError(
                 "Key rotation not allowed".to_string(),
             ));

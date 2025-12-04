@@ -281,7 +281,7 @@ impl AgentService {
         };
         
         HealthStatus {
-            healthy: true, // Would implement actual health checks
+            state: HealthState::Healthy, // Would implement actual health checks
             uptime_seconds: 0, // Would track actual uptime
             active_agents: registry_metrics.lookups.load(std::sync::atomic::Ordering::Relaxed),
             service_metrics,
@@ -358,10 +358,67 @@ pub struct ListAgentsResult {
     pub limit: usize,
 }
 
+/// Service health state with detailed status information
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealthState {
+    /// Service is fully operational
+    Healthy,
+    /// Service is operational but degraded (e.g., high load)
+    Degraded { warning_count: u32 },
+    /// Service is experiencing issues but still running
+    Unhealthy { error_count: u32 },
+    /// Service is not operational
+    Down,
+}
+
+impl HealthState {
+    /// Check if service is healthy (fully operational or degraded)
+    pub fn is_healthy(self) -> bool {
+        matches!(self, Self::Healthy | Self::Degraded { .. })
+    }
+
+    /// Check if service is fully operational
+    pub fn is_fully_healthy(self) -> bool {
+        matches!(self, Self::Healthy)
+    }
+
+    /// Check if service is down
+    pub fn is_down(self) -> bool {
+        matches!(self, Self::Down)
+    }
+
+    /// Check if service is degraded
+    pub fn is_degraded(self) -> bool {
+        matches!(self, Self::Degraded { .. })
+    }
+
+    /// Get warning count if degraded
+    pub fn warning_count(self) -> Option<u32> {
+        match self {
+            Self::Degraded { warning_count } => Some(warning_count),
+            _ => None,
+        }
+    }
+
+    /// Get error count if unhealthy
+    pub fn error_count(self) -> Option<u32> {
+        match self {
+            Self::Unhealthy { error_count } => Some(error_count),
+            _ => None,
+        }
+    }
+}
+
+impl Default for HealthState {
+    fn default() -> Self {
+        Self::Healthy
+    }
+}
+
 /// Health status of the service
 #[derive(Debug)]
 pub struct HealthStatus {
-    pub healthy: bool,
+    pub state: HealthState,
     pub uptime_seconds: u64,
     pub active_agents: u64,
     pub service_metrics: ServiceMetrics,
@@ -563,7 +620,7 @@ mod tests {
 
         // Test health status
         let health = service.get_health_status();
-        assert!(health.healthy);
+        assert!(health.state.is_healthy());
     }
 
     #[tokio::test]

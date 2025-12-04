@@ -90,7 +90,7 @@ pub async fn stream_agent<T: ToolRegistry + Clone + Send + Sync>(
         // Use Arc<str> to avoid multiple String clones - just increment refcount
         let agent_id_arc: Arc<str> = Arc::from(agent_id.as_str());
         let parsed_id_clone = parsed_id.clone(); // AgentId is small, single clone OK
-        let debug = params.debug;
+        let debug = params.stream_mode.is_debug();
         let timeout = params.timeout_seconds.unwrap_or(300); // Default 5 minutes
 
         tokio::spawn(async move {

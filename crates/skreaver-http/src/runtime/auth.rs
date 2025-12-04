@@ -43,7 +43,7 @@ pub fn create_api_key_manager() -> Arc<ApiKeyManager> {
     let config = ApiKeyConfig {
         prefix: "sk-".to_string(),
         min_length: 32,
-        allow_rotation: true,
+        rotation: skreaver_core::auth::api_key::RotationPolicy::Manual,
         default_expiry_days: Some(90), // 90-day expiry by default
         max_keys_per_principal: 10,    // Max 10 keys per user/service
     };
