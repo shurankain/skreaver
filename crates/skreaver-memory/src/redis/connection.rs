@@ -51,18 +51,30 @@ impl ConnectionState for Disconnected {}
 
 // === Type-Safe Connection Wrapper ===
 
+/// Connection data holder based on state
+#[cfg(feature = "redis")]
+enum ConnectionData {
+    /// Disconnected state - no connection data
+    Disconnected {
+        attempt_count: usize,
+        last_activity: Option<Instant>,
+    },
+    /// Connected state - guaranteed valid connection
+    Connected {
+        connection: PooledConnection,
+        connected_at: Instant,
+        last_activity: Instant,
+        attempt_count: usize,
+    },
+}
+
 /// Type-safe Redis connection wrapper with state tracking
+///
+/// This uses an enum internally to ensure that Connected state always has
+/// a valid connection, making the typestate pattern truly compile-time safe.
 #[cfg(feature = "redis")]
 pub struct RedisConnection<State: ConnectionState> {
-    /// Underlying pooled connection (Some only for Connected state)
-    connection: Option<PooledConnection>,
-    /// Connection establishment timestamp
-    connected_at: Option<Instant>,
-    /// Last successful operation timestamp
-    last_activity: Option<Instant>,
-    /// Connection attempt count for retry logic
-    attempt_count: usize,
-    /// Phantom data for state tracking
+    data: ConnectionData,
     _state: PhantomData<State>,
 }
 
@@ -81,29 +93,37 @@ impl RedisConnection<Disconnected> {
     /// Create a new disconnected connection
     pub fn new_disconnected() -> Self {
         Self {
-            connection: None,
-            connected_at: None,
-            last_activity: None,
-            attempt_count: 0,
+            data: ConnectionData::Disconnected {
+                attempt_count: 0,
+                last_activity: None,
+            },
             _state: PhantomData,
         }
     }
 
     /// Attempt to establish connection from pool
     pub async fn connect(
-        mut self,
+        self,
         pool: &Pool,
     ) -> Result<RedisConnection<Connected>, (Self, MemoryError)> {
-        self.attempt_count += 1;
+        let (attempt_count, last_activity) = match self.data {
+            ConnectionData::Disconnected {
+                attempt_count,
+                last_activity,
+            } => (attempt_count + 1, last_activity),
+            _ => unreachable!("Disconnected state must have Disconnected data"),
+        };
 
         match pool.get().await {
             Ok(conn) => {
                 let now = Instant::now();
                 Ok(RedisConnection {
-                    connection: Some(conn),
-                    connected_at: Some(now),
-                    last_activity: Some(now),
-                    attempt_count: self.attempt_count,
+                    data: ConnectionData::Connected {
+                        connection: conn,
+                        connected_at: now,
+                        last_activity: now,
+                        attempt_count,
+                    },
                     _state: PhantomData,
                 })
             }
@@ -114,50 +134,85 @@ impl RedisConnection<Disconnected> {
                         backend_error: format!("Failed to get connection from pool: {}", e),
                     },
                 };
-                Err((self, error))
+                let disconnected = RedisConnection {
+                    data: ConnectionData::Disconnected {
+                        attempt_count,
+                        last_activity,
+                    },
+                    _state: PhantomData,
+                };
+                Err((disconnected, error))
             }
         }
     }
 
     /// Get connection attempt count for retry logic
     pub fn attempt_count(&self) -> usize {
-        self.attempt_count
+        match &self.data {
+            ConnectionData::Disconnected { attempt_count, .. } => *attempt_count,
+            _ => unreachable!("Disconnected state must have Disconnected data"),
+        }
     }
 
     /// Reset attempt count
-    pub fn reset_attempts(mut self) -> Self {
-        self.attempt_count = 0;
-        self
+    pub fn reset_attempts(self) -> Self {
+        let last_activity = match self.data {
+            ConnectionData::Disconnected { last_activity, .. } => last_activity,
+            _ => unreachable!("Disconnected state must have Disconnected data"),
+        };
+
+        Self {
+            data: ConnectionData::Disconnected {
+                attempt_count: 0,
+                last_activity,
+            },
+            _state: PhantomData,
+        }
     }
 }
 
 #[cfg(feature = "redis")]
 impl RedisConnection<Connected> {
-    /// Get the underlying connection (guaranteed to be available)
+    /// Get the underlying connection (guaranteed to be available via typestate)
     pub fn connection(&mut self) -> &mut PooledConnection {
-        self.connection.as_mut().expect(
-            "BUG: RedisConnection<Connected> has None connection (typestate invariant violated)",
-        )
+        match &mut self.data {
+            ConnectionData::Connected { connection, .. } => connection,
+            _ => unreachable!("Connected state must have Connected data"),
+        }
     }
 
     /// Get connection duration
-    pub fn connection_duration(&self) -> Option<Duration> {
-        self.connected_at.map(|start| start.elapsed())
+    pub fn connection_duration(&self) -> Duration {
+        match &self.data {
+            ConnectionData::Connected { connected_at, .. } => connected_at.elapsed(),
+            _ => unreachable!("Connected state must have Connected data"),
+        }
     }
 
     /// Get time since last activity
-    pub fn idle_duration(&self) -> Option<Duration> {
-        self.last_activity.map(|last| last.elapsed())
+    pub fn idle_duration(&self) -> Duration {
+        match &self.data {
+            ConnectionData::Connected { last_activity, .. } => last_activity.elapsed(),
+            _ => unreachable!("Connected state must have Connected data"),
+        }
     }
 
     /// Get attempt count that led to this connection
     pub fn attempt_count(&self) -> usize {
-        self.attempt_count
+        match &self.data {
+            ConnectionData::Connected { attempt_count, .. } => *attempt_count,
+            _ => unreachable!("Connected state must have Connected data"),
+        }
     }
 
     /// Update last activity timestamp
     fn update_activity(&mut self) {
-        self.last_activity = Some(Instant::now());
+        match &mut self.data {
+            ConnectionData::Connected { last_activity, .. } => {
+                *last_activity = Instant::now();
+            }
+            _ => unreachable!("Connected state must have Connected data"),
+        }
     }
 
     /// Perform a Redis command with automatic activity tracking
@@ -197,11 +252,19 @@ impl RedisConnection<Connected> {
                         details: format!("Ping failed: {}", redis_error),
                     },
                 };
+                let (attempt_count, last_activity) = match self.data {
+                    ConnectionData::Connected {
+                        attempt_count,
+                        last_activity,
+                        ..
+                    } => (attempt_count, Some(last_activity)),
+                    _ => unreachable!("Connected state must have Connected data"),
+                };
                 let disconnected = RedisConnection {
-                    connection: None,
-                    connected_at: None,
-                    last_activity: self.last_activity,
-                    attempt_count: self.attempt_count,
+                    data: ConnectionData::Disconnected {
+                        attempt_count,
+                        last_activity,
+                    },
                     _state: PhantomData,
                 };
                 Err((disconnected, error))
@@ -211,20 +274,26 @@ impl RedisConnection<Connected> {
 
     /// Gracefully disconnect the connection
     pub fn disconnect(self) -> RedisConnection<Disconnected> {
+        let (attempt_count, last_activity) = match self.data {
+            ConnectionData::Connected {
+                attempt_count,
+                last_activity,
+                ..
+            } => (attempt_count, Some(last_activity)),
+            _ => unreachable!("Connected state must have Connected data"),
+        };
         RedisConnection {
-            connection: None,
-            connected_at: None,
-            last_activity: self.last_activity,
-            attempt_count: self.attempt_count,
+            data: ConnectionData::Disconnected {
+                attempt_count,
+                last_activity,
+            },
             _state: PhantomData,
         }
     }
 
     /// Check if connection should be considered stale
     pub fn is_stale(&self, max_idle_duration: Duration) -> bool {
-        self.idle_duration()
-            .map(|idle| idle > max_idle_duration)
-            .unwrap_or(true)
+        self.idle_duration() > max_idle_duration
     }
 }
 

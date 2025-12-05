@@ -13,8 +13,11 @@ use super::config::PostgresConfig;
 use super::health::PostgresPoolHealth;
 
 /// A pooled PostgreSQL connection with RAII cleanup
+///
+/// This type uses ManuallyDrop to ensure the client is always valid.
+/// The client is only taken during Drop to return it to the pool.
 pub struct PooledConnection {
-    client: Option<Client>,
+    client: std::mem::ManuallyDrop<Client>,
     pool: Arc<Mutex<Vec<Client>>>,
     pool_size: usize,
 }
@@ -22,7 +25,7 @@ pub struct PooledConnection {
 impl PooledConnection {
     pub(crate) fn new(client: Client, pool: Arc<Mutex<Vec<Client>>>, pool_size: usize) -> Self {
         Self {
-            client: Some(client),
+            client: std::mem::ManuallyDrop::new(client),
             pool,
             pool_size,
         }
@@ -30,44 +33,39 @@ impl PooledConnection {
 }
 
 // Implement Deref to transparently access the Client
-// This is safe because:
-// 1. Client is always Some until Drop is called
-// 2. Drop consumes self, so no references can exist during Drop
-// 3. If somehow client is None (which shouldn't happen), we use a panic with clear message
+// This is safe because ManuallyDrop guarantees the client is always valid
+// until Drop explicitly takes ownership
 impl Deref for PooledConnection {
     type Target = Client;
 
     fn deref(&self) -> &Self::Target {
-        self.client
-            .as_ref()
-            .expect("BUG: PooledConnection client is None (this should never happen)")
+        &self.client
     }
 }
 
 impl DerefMut for PooledConnection {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.client
-            .as_mut()
-            .expect("BUG: PooledConnection client is None (this should never happen)")
+        &mut self.client
     }
 }
 
 impl Drop for PooledConnection {
     fn drop(&mut self) {
-        if let Some(client) = self.client.take() {
-            let pool = Arc::clone(&self.pool);
-            let pool_size = self.pool_size;
+        // SAFETY: We are in Drop, so this is the only place that takes ownership
+        // of the client. This is safe because Drop is only called once.
+        let client = unsafe { std::mem::ManuallyDrop::take(&mut self.client) };
 
-            // Return connection to pool synchronously using try_lock to avoid blocking
-            if let Ok(mut pool_guard) = pool.try_lock()
-                && pool_guard.len() < pool_size
-            {
-                pool_guard.push(client);
-            }
-            // If pool is full or locked, connection will be dropped
-            // If we can't get the lock immediately, just drop the connection
-            // This prevents deadlocks in Drop implementations
+        let pool = Arc::clone(&self.pool);
+        let pool_size = self.pool_size;
+
+        // Return connection to pool synchronously using try_lock to avoid blocking
+        if let Ok(mut pool_guard) = pool.try_lock()
+            && pool_guard.len() < pool_size
+        {
+            pool_guard.push(client);
         }
+        // If pool is full or locked, connection will be dropped here
+        // This prevents deadlocks in Drop implementations
     }
 }
 

@@ -155,12 +155,12 @@ pub enum RedisDeploymentV2 {
 
 // === Type-Safe Configuration ===
 
-/// Type-safe Redis configuration with phantom type validation
+/// Redis configuration builder (invalid state - being built)
 #[derive(Debug, Clone)]
-pub struct RedisConfigV2<State: ValidationState> {
-    /// Redis deployment configuration
+pub struct RedisConfigBuilder {
+    /// Redis deployment configuration (optional during building)
     pub deployment: Option<RedisDeploymentV2>,
-    /// Connection pool size
+    /// Connection pool size (optional during building)
     pub pool_size: Option<PoolSize>,
     /// Connection timeout
     pub connect_timeout: Duration,
@@ -180,15 +180,34 @@ pub struct RedisConfigV2<State: ValidationState> {
     pub database: DatabaseId,
     /// Key prefix for namespace isolation
     pub key_prefix: Option<NonEmptyString>,
-    /// Phantom data for state tracking
-    _state: PhantomData<State>,
 }
 
-/// Type alias for invalid configuration (being built)
-pub type RedisConfigBuilder = RedisConfigV2<Invalid>;
-
-/// Type alias for valid configuration (ready to use)
-pub type ValidRedisConfig = RedisConfigV2<Valid>;
+/// Valid Redis configuration (guaranteed to have all required fields)
+#[derive(Debug, Clone)]
+pub struct ValidRedisConfig {
+    /// Redis deployment configuration (guaranteed to be set)
+    deployment: RedisDeploymentV2,
+    /// Connection pool size (guaranteed to be valid)
+    pool_size: PoolSize,
+    /// Connection timeout
+    pub connect_timeout: Duration,
+    /// Command timeout
+    pub command_timeout: Duration,
+    /// Health check interval
+    pub health_check_interval: Duration,
+    /// Maximum retries for failed operations
+    pub max_retries: usize,
+    /// Username for AUTH (Redis 6+)
+    pub username: Option<NonEmptyString>,
+    /// Password for AUTH
+    pub password: Option<NonEmptyString>,
+    /// Enable TLS
+    pub tls: bool,
+    /// Database number (0-15)
+    pub database: DatabaseId,
+    /// Key prefix for namespace isolation
+    pub key_prefix: Option<NonEmptyString>,
+}
 
 impl Default for RedisConfigBuilder {
     fn default() -> Self {
@@ -204,7 +223,6 @@ impl Default for RedisConfigBuilder {
             tls: false,
             database: DatabaseId::default(),
             key_prefix: None,
-            _state: PhantomData,
         }
     }
 }
@@ -339,8 +357,8 @@ impl RedisConfigBuilder {
 
         // If we get here, all validation passed!
         Ok(ValidRedisConfig {
-            deployment: Some(deployment),
-            pool_size: Some(pool_size),
+            deployment,
+            pool_size,
             connect_timeout: self.connect_timeout,
             command_timeout: self.command_timeout,
             health_check_interval: self.health_check_interval,
@@ -350,26 +368,19 @@ impl RedisConfigBuilder {
             tls: self.tls,
             database: self.database,
             key_prefix: self.key_prefix,
-            _state: PhantomData,
         })
     }
 }
 
 impl ValidRedisConfig {
-    /// Get the deployment (guaranteed to be Some by build())
+    /// Get the deployment (guaranteed by typestate)
     pub fn deployment(&self) -> &RedisDeploymentV2 {
-        self.deployment.as_ref().expect(
-            "BUG: ValidRedisConfig deployment is None (only build() creates ValidRedisConfig)",
-        )
+        &self.deployment
     }
 
-    /// Get the pool size (guaranteed to be valid by build())
+    /// Get the pool size (guaranteed by typestate)
     pub fn pool_size(&self) -> usize {
-        self.pool_size
-            .expect(
-                "BUG: ValidRedisConfig pool_size is None (only build() creates ValidRedisConfig)",
-            )
-            .get()
+        self.pool_size.get()
     }
 
     /// Get database ID
@@ -418,14 +429,22 @@ impl ValidRedisConfig {
     }
 }
 
-// === Compile-time configuration constants ===
+// === Helper constructors ===
 
-impl RedisConfigBuilder {
-    /// Create a compile-time validated localhost config
-    pub const fn localhost() -> ValidRedisConfig {
-        ValidRedisConfig {
-            deployment: None, // Will be set properly in implementation
-            pool_size: None,  // Will be set properly in implementation
+impl ValidRedisConfig {
+    /// Create a localhost configuration with default settings
+    ///
+    /// This is a convenience method that creates a pre-validated configuration
+    /// for localhost:6379 with sensible defaults.
+    pub fn localhost() -> Self {
+        // Create a standalone deployment with required fields
+        let host = NonEmptyString::new("localhost").expect("localhost is valid");
+        let port = PortNumber::new(6379).expect("6379 is valid port");
+        let pool_size = PoolSize::new(10).expect("10 is valid pool size");
+
+        Self {
+            deployment: RedisDeploymentV2::Standalone(Standalone { host, port }),
+            pool_size,
             connect_timeout: Duration::from_secs(5),
             command_timeout: Duration::from_secs(30),
             health_check_interval: Duration::from_secs(60),
@@ -433,9 +452,8 @@ impl RedisConfigBuilder {
             username: None,
             password: None,
             tls: false,
-            database: DatabaseId(0),
+            database: DatabaseId::default(),
             key_prefix: None,
-            _state: PhantomData,
         }
     }
 }
