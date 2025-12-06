@@ -9,7 +9,7 @@ use governor::{
     state::{InMemoryState, NotKeyed, keyed::DefaultKeyedStateStore},
 };
 use serde::Serialize;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
 use tokio::sync::RwLock;
 
 /// Rate limiter for global requests
@@ -19,23 +19,39 @@ pub type GlobalRateLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 pub type IpRateLimiter =
     RateLimiter<std::net::IpAddr, DefaultKeyedStateStore<std::net::IpAddr>, DefaultClock>;
 
-/// Rate limiting configuration
+/// Rate limiting configuration with compile-time guarantees of non-zero values
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
-    /// Maximum requests per minute globally
-    pub global_rpm: u32,
-    /// Maximum requests per minute per IP
-    pub per_ip_rpm: u32,
-    /// Maximum requests per minute per authenticated user
-    pub per_user_rpm: u32,
+    /// Maximum requests per minute globally (guaranteed non-zero)
+    pub global_rpm: NonZeroU32,
+    /// Maximum requests per minute per IP (guaranteed non-zero)
+    pub per_ip_rpm: NonZeroU32,
+    /// Maximum requests per minute per authenticated user (guaranteed non-zero)
+    pub per_user_rpm: NonZeroU32,
+}
+
+impl RateLimitConfig {
+    /// Create a new rate limit configuration with type-safe non-zero values
+    pub const fn new(
+        global_rpm: NonZeroU32,
+        per_ip_rpm: NonZeroU32,
+        per_user_rpm: NonZeroU32,
+    ) -> Self {
+        Self {
+            global_rpm,
+            per_ip_rpm,
+            per_user_rpm,
+        }
+    }
 }
 
 impl Default for RateLimitConfig {
     fn default() -> Self {
+        // SAFETY: These values are constant and non-zero
         Self {
-            global_rpm: 1000,  // 1000 requests per minute globally
-            per_ip_rpm: 60,    // 60 requests per minute per IP
-            per_user_rpm: 120, // 120 requests per minute per authenticated user
+            global_rpm: unsafe { NonZeroU32::new_unchecked(1000) }, // 1000 requests per minute globally
+            per_ip_rpm: unsafe { NonZeroU32::new_unchecked(60) },   // 60 requests per minute per IP
+            per_user_rpm: unsafe { NonZeroU32::new_unchecked(120) }, // 120 requests per minute per authenticated user
         }
     }
 }
@@ -59,31 +75,23 @@ pub struct RateLimitError {
 impl RateLimitState {
     /// Create a new rate limit state with the given configuration
     ///
-    /// # Panics
-    ///
-    /// Panics if any rate limit value is 0. Use `try_new` for fallible construction.
+    /// This method cannot panic because RateLimitConfig guarantees non-zero values
+    /// through the type system (using NonZeroU32).
     pub fn new(config: RateLimitConfig) -> Self {
-        Self::try_new(config).expect("Rate limit configuration must have non-zero values")
-    }
-
-    /// Try to create a new rate limit state with the given configuration
-    ///
-    /// Returns None if any rate limit value is 0.
-    pub fn try_new(config: RateLimitConfig) -> Option<Self> {
-        // Create quota for global rate limiting (ensure non-zero)
-        let global_quota = Quota::per_minute(std::num::NonZeroU32::new(config.global_rpm)?);
+        // Create quota for global rate limiting (guaranteed non-zero by type)
+        let global_quota = Quota::per_minute(config.global_rpm);
         let global_limiter = RateLimiter::direct(global_quota);
 
-        // Create quota for per-IP rate limiting (ensure non-zero)
-        let ip_quota = Quota::per_minute(std::num::NonZeroU32::new(config.per_ip_rpm)?);
+        // Create quota for per-IP rate limiting (guaranteed non-zero by type)
+        let ip_quota = Quota::per_minute(config.per_ip_rpm);
         let ip_limiter = RateLimiter::keyed(ip_quota);
 
-        Some(Self {
+        Self {
             global_limiter,
             ip_limiter,
             user_limiters: Arc::new(RwLock::new(HashMap::new())),
             config,
-        })
+        }
     }
 
     /// Get or create a rate limiter for a specific user
@@ -93,11 +101,8 @@ impl RateLimitState {
         user_limiters
             .entry(user_id.to_string())
             .or_insert_with(|| {
-                // Safe: per_user_rpm was already validated in new()/try_new()
-                let quota = Quota::per_minute(
-                    std::num::NonZeroU32::new(self.config.per_user_rpm)
-                        .expect("per_user_rpm must be non-zero (validated at construction)"),
-                );
+                // Guaranteed non-zero by RateLimitConfig's type system
+                let quota = Quota::per_minute(self.config.per_user_rpm);
                 Arc::new(RateLimiter::direct(quota))
             })
             .clone()
@@ -191,11 +196,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limit_creation() {
-        let config = RateLimitConfig {
-            global_rpm: 100,
-            per_ip_rpm: 10,
-            per_user_rpm: 20,
-        };
+        let config = RateLimitConfig::new(
+            NonZeroU32::new(100).unwrap(),
+            NonZeroU32::new(10).unwrap(),
+            NonZeroU32::new(20).unwrap(),
+        );
 
         let state = RateLimitState::new(config);
 
@@ -203,6 +208,26 @@ mod tests {
         let client_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
         let result = state.check_rate_limit(client_ip, None).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_config_type_safety() {
+        // This test verifies that RateLimitConfig requires NonZeroU32 at compile time
+        let config = RateLimitConfig::new(
+            NonZeroU32::new(1000).unwrap(),
+            NonZeroU32::new(60).unwrap(),
+            NonZeroU32::new(120).unwrap(),
+        );
+
+        assert_eq!(config.global_rpm.get(), 1000);
+        assert_eq!(config.per_ip_rpm.get(), 60);
+        assert_eq!(config.per_user_rpm.get(), 120);
+
+        // Default config should also have non-zero values
+        let default_config = RateLimitConfig::default();
+        assert_eq!(default_config.global_rpm.get(), 1000);
+        assert_eq!(default_config.per_ip_rpm.get(), 60);
+        assert_eq!(default_config.per_user_rpm.get(), 120);
     }
 
     #[tokio::test]

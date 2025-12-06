@@ -33,8 +33,8 @@ fn test_env_config_default_when_no_vars_set() {
     assert_eq!(config.max_body_size, 16 * 1024 * 1024);
     assert!(config.cors.is_some());
     assert!(config.openapi.is_some());
-    assert_eq!(config.rate_limit.global_rpm, 1000);
-    assert_eq!(config.rate_limit.per_ip_rpm, 60);
+    assert_eq!(config.rate_limit.global_rpm.get(), 1000);
+    assert_eq!(config.rate_limit.per_ip_rpm.get(), 60);
 }
 
 #[test]
@@ -98,9 +98,9 @@ fn test_env_config_rate_limits() {
         .build()
         .expect("should build valid config");
 
-    assert_eq!(config.rate_limit.global_rpm, 2000);
-    assert_eq!(config.rate_limit.per_ip_rpm, 100);
-    assert_eq!(config.rate_limit.per_user_rpm, 200);
+    assert_eq!(config.rate_limit.global_rpm.get(), 2000);
+    assert_eq!(config.rate_limit.per_ip_rpm.get(), 100);
+    assert_eq!(config.rate_limit.per_user_rpm.get(), 200);
 
     clear_env("SKREAVER_RATE_LIMIT_GLOBAL_RPM");
     clear_env("SKREAVER_RATE_LIMIT_PER_IP_RPM");
@@ -338,9 +338,9 @@ fn test_env_config_comprehensive() {
     assert_eq!(config.max_body_size, 10 * 1024 * 1024);
     assert!(config.cors.is_none());
     assert!(config.openapi.is_none());
-    assert_eq!(config.rate_limit.global_rpm, 500);
-    assert_eq!(config.rate_limit.per_ip_rpm, 30);
-    assert_eq!(config.rate_limit.per_user_rpm, 50);
+    assert_eq!(config.rate_limit.global_rpm.get(), 500);
+    assert_eq!(config.rate_limit.per_ip_rpm.get(), 30);
+    assert_eq!(config.rate_limit.per_user_rpm.get(), 50);
     assert_eq!(config.backpressure.max_queue_size, 50);
     assert_eq!(config.backpressure.max_concurrent_requests, 5);
     assert_eq!(config.backpressure.global_max_concurrent, 250);

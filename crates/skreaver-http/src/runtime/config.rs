@@ -135,13 +135,19 @@ impl HttpRuntimeConfigBuilder {
         // Rate Limiting
         let mut rate_limit = RateLimitConfig::default();
         if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_GLOBAL_RPM")? {
-            rate_limit.global_rpm = rpm;
+            if let Some(non_zero) = std::num::NonZeroU32::new(rpm) {
+                rate_limit.global_rpm = non_zero;
+            }
         }
         if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_PER_IP_RPM")? {
-            rate_limit.per_ip_rpm = rpm;
+            if let Some(non_zero) = std::num::NonZeroU32::new(rpm) {
+                rate_limit.per_ip_rpm = non_zero;
+            }
         }
         if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_PER_USER_RPM")? {
-            rate_limit.per_user_rpm = rpm;
+            if let Some(non_zero) = std::num::NonZeroU32::new(rpm) {
+                rate_limit.per_user_rpm = non_zero;
+            }
         }
         builder = builder.rate_limit(rate_limit);
 
@@ -401,21 +407,7 @@ impl HttpRuntimeConfigBuilder {
         }
 
         // Rate limit validation
-        if self.rate_limit.global_rpm == 0 {
-            return Err(ConfigError::ValidationError(
-                "rate_limit.global_rpm must be greater than 0".to_string(),
-            ));
-        }
-        if self.rate_limit.per_ip_rpm == 0 {
-            return Err(ConfigError::ValidationError(
-                "rate_limit.per_ip_rpm must be greater than 0".to_string(),
-            ));
-        }
-        if self.rate_limit.per_user_rpm == 0 {
-            return Err(ConfigError::ValidationError(
-                "rate_limit.per_user_rpm must be greater than 0".to_string(),
-            ));
-        }
+        // No validation needed - NonZeroU32 guarantees non-zero values at compile time
 
         // Backpressure validation
         if self.backpressure.max_queue_size == 0 {

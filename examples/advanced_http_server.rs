@@ -235,12 +235,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_tool("text_uppercase", Arc::new(TextUppercaseTool::new()))
         .with_tool("json_parse", Arc::new(JsonParseTool::new()));
 
-    // Configure rate limiting
-    let rate_config = RateLimitConfig {
-        global_rpm: 1000,  // 1000 requests per minute globally
-        per_ip_rpm: 60,    // 60 requests per minute per IP
-        per_user_rpm: 120, // 120 requests per minute per authenticated user
-    };
+    // Configure rate limiting with type-safe non-zero values
+    let rate_config = RateLimitConfig::new(
+        std::num::NonZeroU32::new(1000).unwrap(), // 1000 requests per minute globally
+        std::num::NonZeroU32::new(60).unwrap(),   // 60 requests per minute per IP
+        std::num::NonZeroU32::new(120).unwrap(),  // 120 requests per minute per authenticated user
+    );
 
     // Create HTTP runtime configuration
     let http_config = HttpRuntimeConfig {
