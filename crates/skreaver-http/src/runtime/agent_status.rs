@@ -160,14 +160,12 @@ impl AgentStatus<Initializing> {
         since = "0.5.0",
         note = "Use set_recoverable_error or set_fatal_error instead"
     )]
+    #[allow(deprecated)]
     pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        if recoverable {
-            self.set_recoverable_error(error)
-        } else {
-            // For backward compatibility, map fatal to recoverable
-            // Real code should call set_fatal_error directly
-            self.set_recoverable_error(error)
-        }
+        // For backward compatibility, always returns RecoverableError
+        // Ignoring 'recoverable' parameter to maintain return type compatibility
+        let _ = recoverable;
+        self.set_recoverable_error(error)
     }
 
     /// Transition to Stopped state
@@ -225,12 +223,12 @@ impl AgentStatus<Ready> {
         since = "0.5.0",
         note = "Use set_recoverable_error or set_fatal_error instead"
     )]
+    #[allow(deprecated)]
     pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        if recoverable {
-            self.set_recoverable_error(error)
-        } else {
-            self.set_recoverable_error(error)
-        }
+        // For backward compatibility, always returns RecoverableError
+        // Ignoring 'recoverable' parameter to maintain return type compatibility
+        let _ = recoverable;
+        self.set_recoverable_error(error)
     }
 }
 
@@ -281,12 +279,12 @@ impl AgentStatus<Processing> {
         since = "0.5.0",
         note = "Use set_recoverable_error or set_fatal_error instead"
     )]
+    #[allow(deprecated)]
     pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        if recoverable {
-            self.set_recoverable_error(error)
-        } else {
-            self.set_recoverable_error(error)
-        }
+        // For backward compatibility, always returns RecoverableError
+        // Ignoring 'recoverable' parameter to maintain return type compatibility
+        let _ = recoverable;
+        self.set_recoverable_error(error)
     }
 
     /// Transition to Stopped state
@@ -345,12 +343,12 @@ impl AgentStatus<WaitingForTools> {
         since = "0.5.0",
         note = "Use set_recoverable_error or set_fatal_error instead"
     )]
+    #[allow(deprecated)]
     pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        if recoverable {
-            self.set_recoverable_error(error)
-        } else {
-            self.set_recoverable_error(error)
-        }
+        // For backward compatibility, always returns RecoverableError
+        // Ignoring 'recoverable' parameter to maintain return type compatibility
+        let _ = recoverable;
+        self.set_recoverable_error(error)
     }
 
     /// Transition to Stopped state
@@ -498,11 +496,10 @@ impl AgentStatus<Paused> {
     )]
     #[allow(deprecated)]
     pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        if recoverable {
-            self.set_recoverable_error(error)
-        } else {
-            self.set_recoverable_error(error)
-        }
+        // For backward compatibility, always returns RecoverableError
+        // Ignoring 'recoverable' parameter to maintain return type compatibility
+        let _ = recoverable;
+        self.set_recoverable_error(error)
     }
 }
 
@@ -611,14 +608,23 @@ impl AgentStatusEnum {
     }
 
     /// Check if the agent is in an error state
+    #[allow(deprecated)]
     pub fn is_error(&self) -> bool {
-        matches!(self, AgentStatusEnum::Error { .. })
+        matches!(
+            self,
+            AgentStatusEnum::RecoverableError { .. }
+                | AgentStatusEnum::FatalError { .. }
+                | AgentStatusEnum::Error { .. }
+        )
     }
 
     /// Check if the agent is operational (not stopped or in unrecoverable error)
     pub fn is_operational(&self) -> bool {
         match self {
             AgentStatusEnum::Stopped { .. } => false,
+            AgentStatusEnum::FatalError { .. } => false,
+            AgentStatusEnum::RecoverableError { .. } => true,
+            #[allow(deprecated)]
             AgentStatusEnum::Error { recoverable, .. } => *recoverable,
             _ => true,
         }
@@ -1324,6 +1330,7 @@ mod tests {
         assert!(!processing.is_error());
         assert!(processing.is_operational());
 
+        #[allow(deprecated)]
         let error = AgentStatusEnum::Error {
             error: "test error".to_string(),
             occurred_at: Utc::now(),
