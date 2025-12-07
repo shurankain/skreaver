@@ -125,6 +125,10 @@ impl AgentFactory {
     }
 
     /// Create a new agent from specification
+    ///
+    /// This method uses atomic check-and-insert to prevent TOCTOU race conditions.
+    /// All expensive operations (building coordinator, setting status, metadata) are
+    /// performed BEFORE acquiring the write lock, and the final insert is atomic.
     pub async fn create_agent(
         &self,
         spec: AgentSpec,
@@ -147,18 +151,11 @@ impl AgentFactory {
 
         let agent_id = AgentId::parse(&agent_id_str).map_err(AgentFactoryError::InvalidAgentId)?;
 
-        // Check if agent already exists
-        {
-            let agents = self.agents.read().await;
-            if agents.contains_key(&agent_id) {
-                return Err(AgentFactoryError::AgentAlreadyExists(agent_id_str));
-            }
-        }
-
-        // Build coordinator
+        // Build coordinator BEFORE acquiring any locks
+        // This is the most time-consuming operation and should be done outside the critical section
         let coordinator = builder.build_coordinator(&spec)?;
 
-        // Create agent instance
+        // Create agent instance with all metadata BEFORE acquiring write lock
         let agent_instance =
             AgentInstance::new(agent_id.clone(), spec.agent_type.to_string(), coordinator);
 
@@ -179,14 +176,26 @@ impl AgentFactory {
                 .await;
         }
 
+        // Capture values needed for response before moving agent_instance
         let created_at = agent_instance.created_at;
         let current_status = agent_instance.get_status().await;
 
-        // Store agent instance
+        // ATOMIC CHECK-AND-INSERT: Single write lock for the entire critical section
+        // This prevents TOCTOU race conditions where two threads could create the same agent
         {
             let mut agents = self.agents.write().await;
+
+            // Check for duplicates while holding the write lock
+            if agents.contains_key(&agent_id) {
+                // Agent was created by another thread while we were building
+                return Err(AgentFactoryError::AgentAlreadyExists(agent_id_str));
+            }
+
+            // Insert is guaranteed to succeed because we hold the write lock
             agents.insert(agent_id.clone(), agent_instance);
-        }
+
+            // Explicitly drop the lock to make the critical section clear
+        } // Lock released here
 
         // Create response
         Ok(CreateAgentResponse {
@@ -486,5 +495,57 @@ mod tests {
             result,
             Err(AgentFactoryError::AgentAlreadyExists(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_agent_creation_no_race() {
+        use std::sync::Arc;
+
+        let mut factory = AgentFactory::new();
+        factory.register_builder(Box::new(MockBuilder));
+        let factory = Arc::new(factory);
+
+        let spec = AgentSpec {
+            agent_type: AgentType::Echo,
+            name: None,
+            config: HashMap::new(),
+            limits: AgentLimits::default(),
+        };
+
+        // Spawn 10 concurrent tasks trying to create the same agent ID
+        let mut handles = vec![];
+        for _ in 0..10 {
+            let factory_clone = Arc::clone(&factory);
+            let spec_clone = spec.clone();
+            let handle = tokio::spawn(async move {
+                factory_clone
+                    .create_agent(spec_clone, Some("concurrent-test".to_string()))
+                    .await
+            });
+            handles.push(handle);
+        }
+
+        // Collect results
+        let mut results = vec![];
+        for handle in handles {
+            results.push(handle.await.unwrap());
+        }
+
+        // Exactly ONE should succeed, the rest should fail with AgentAlreadyExists
+        let successes = results.iter().filter(|r| r.is_ok()).count();
+        let failures = results
+            .iter()
+            .filter(|r| matches!(r, Err(AgentFactoryError::AgentAlreadyExists(_))))
+            .count();
+
+        assert_eq!(successes, 1, "Exactly one creation should succeed");
+        assert_eq!(
+            failures, 9,
+            "Nine creations should fail with duplicate error"
+        );
+
+        // Verify only one agent exists
+        assert_eq!(factory.agent_count().await, 1);
+        assert!(factory.has_agent("concurrent-test").await);
     }
 }
