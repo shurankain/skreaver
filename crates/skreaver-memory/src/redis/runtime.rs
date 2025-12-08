@@ -4,17 +4,7 @@
 //! wrapper functions around async Redis operations.
 
 use skreaver_core::error::MemoryError;
-use skreaver_core::memory::MemoryKey;
-use std::sync::OnceLock;
-
-/// Fallback memory key for runtime initialization
-static RUNTIME_KEY: OnceLock<MemoryKey> = OnceLock::new();
-
-fn runtime_key() -> &'static MemoryKey {
-    RUNTIME_KEY.get_or_init(|| {
-        MemoryKey::new("runtime").expect("BUG: 'runtime' should be a valid memory key")
-    })
-}
+use skreaver_core::memory::MemoryKeys;
 
 // Sync trait implementations using thread-local runtime
 #[cfg(feature = "redis")]
@@ -35,7 +25,7 @@ where
             *rt_ref =
                 Some(
                     tokio::runtime::Runtime::new().map_err(|e| MemoryError::LoadFailed {
-                        key: runtime_key().clone(),
+                        key: MemoryKeys::runtime(),
                         backend: skreaver_core::error::MemoryBackend::Redis,
                         kind: skreaver_core::error::MemoryErrorKind::InternalError {
                             backend_error: format!("Failed to create async runtime: {}", e),

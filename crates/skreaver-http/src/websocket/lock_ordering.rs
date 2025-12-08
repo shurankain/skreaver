@@ -40,10 +40,10 @@ impl LockLevel {
     }
 }
 
-/// Thread-local storage for tracking lock acquisition order
+// Thread-local storage for tracking lock acquisition order
 #[cfg(debug_assertions)]
 thread_local! {
-    static LOCK_ORDER: RefCell<Vec<LockLevel>> = RefCell::new(Vec::new());
+    static LOCK_ORDER: RefCell<Vec<LockLevel>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Assert that a lock can be acquired without violating ordering
@@ -54,18 +54,18 @@ fn assert_lock_order(lock_level: LockLevel) {
 
         // Check that we're acquiring locks in increasing order
         // Allow same-level locks (for multiple read locks at same level)
-        if let Some(&last_level) = current_order.last() {
-            if lock_level < last_level {
-                panic!(
-                    "Lock ordering violation detected! \
-                    Attempted to acquire {} (level {:?}) after {} (level {:?}). \
-                    Correct order: connections → ip_connections → subscriptions",
-                    lock_level.name(),
-                    lock_level as u8,
-                    last_level.name(),
-                    last_level as u8
-                );
-            }
+        if let Some(&last_level) = current_order.last()
+            && lock_level < last_level
+        {
+            panic!(
+                "Lock ordering violation detected! \
+                Attempted to acquire {} (level {:?}) after {} (level {:?}). \
+                Correct order: connections → ip_connections → subscriptions",
+                lock_level.name(),
+                lock_level as u8,
+                last_level.name(),
+                last_level as u8
+            );
         }
     });
 }

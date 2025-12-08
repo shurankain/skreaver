@@ -134,20 +134,20 @@ impl HttpRuntimeConfigBuilder {
 
         // Rate Limiting
         let mut rate_limit = RateLimitConfig::default();
-        if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_GLOBAL_RPM")? {
-            if let Some(non_zero) = std::num::NonZeroU32::new(rpm) {
-                rate_limit.global_rpm = non_zero;
-            }
+        if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_GLOBAL_RPM")?
+            && let Some(non_zero) = std::num::NonZeroU32::new(rpm)
+        {
+            rate_limit.global_rpm = non_zero;
         }
-        if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_PER_IP_RPM")? {
-            if let Some(non_zero) = std::num::NonZeroU32::new(rpm) {
-                rate_limit.per_ip_rpm = non_zero;
-            }
+        if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_PER_IP_RPM")?
+            && let Some(non_zero) = std::num::NonZeroU32::new(rpm)
+        {
+            rate_limit.per_ip_rpm = non_zero;
         }
-        if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_PER_USER_RPM")? {
-            if let Some(non_zero) = std::num::NonZeroU32::new(rpm) {
-                rate_limit.per_user_rpm = non_zero;
-            }
+        if let Some(rpm) = get_env_u32("SKREAVER_RATE_LIMIT_PER_USER_RPM")?
+            && let Some(non_zero) = std::num::NonZeroU32::new(rpm)
+        {
+            rate_limit.per_user_rpm = non_zero;
         }
         builder = builder.rate_limit(rate_limit);
 

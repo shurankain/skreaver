@@ -4,34 +4,13 @@
 //! management, making it impossible to use disconnected connections.
 
 use std::marker::PhantomData;
-use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "redis")]
 use deadpool_redis::{Connection as PooledConnection, Pool};
 
 use skreaver_core::error::MemoryError;
-use skreaver_core::memory::MemoryKey;
-
-// === Constants ===
-
-/// Fallback memory key for Redis operations
-static REDIS_OPERATION_KEY: OnceLock<MemoryKey> = OnceLock::new();
-
-fn redis_operation_key() -> &'static MemoryKey {
-    REDIS_OPERATION_KEY.get_or_init(|| {
-        MemoryKey::new("redis_operation")
-            .expect("BUG: 'redis_operation' should be a valid memory key")
-    })
-}
-
-/// Fallback memory key for ping operations
-static PING_KEY: OnceLock<MemoryKey> = OnceLock::new();
-
-fn ping_key() -> &'static MemoryKey {
-    PING_KEY
-        .get_or_init(|| MemoryKey::new("ping").expect("BUG: 'ping' should be a valid memory key"))
-}
+use skreaver_core::memory::MemoryKeys;
 
 // === Connection State Phantom Types ===
 
@@ -223,7 +202,7 @@ impl RedisConnection<Connected> {
     {
         let conn = self.connection();
         let result = f(conn).await.map_err(|e| MemoryError::LoadFailed {
-            key: redis_operation_key().clone(),
+            key: MemoryKeys::redis_operation(),
             backend: skreaver_core::error::MemoryBackend::Redis,
             kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                 details: format!("Redis operation failed: {}", e),
@@ -246,7 +225,7 @@ impl RedisConnection<Connected> {
             }
             Err(redis_error) => {
                 let error = MemoryError::LoadFailed {
-                    key: ping_key().clone(),
+                    key: MemoryKeys::ping(),
                     backend: skreaver_core::error::MemoryBackend::Redis,
                     kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                         details: format!("Ping failed: {}", redis_error),

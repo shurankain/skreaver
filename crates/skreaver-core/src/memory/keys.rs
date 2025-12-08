@@ -136,6 +136,37 @@ impl MemoryKeys {
     pub fn conversation_history() -> MemoryKey {
         MemoryKey::new_unchecked("conversation_history")
     }
+
+    // === Infrastructure Keys ===
+    // These keys are used internally by memory backends for operational purposes
+
+    /// Key for batch operations
+    ///
+    /// Used by SQLite backend for batch write operations.
+    pub fn batch() -> MemoryKey {
+        MemoryKey::new_unchecked("batch")
+    }
+
+    /// Key for ping/health check operations
+    ///
+    /// Used by Redis backend for connection health checks.
+    pub fn ping() -> MemoryKey {
+        MemoryKey::new_unchecked("ping")
+    }
+
+    /// Key for runtime operations
+    ///
+    /// Used by Redis backend for general runtime operations.
+    pub fn runtime() -> MemoryKey {
+        MemoryKey::new_unchecked("runtime")
+    }
+
+    /// Key for Redis-specific operations
+    ///
+    /// Used by Redis backend as fallback for generic operations.
+    pub fn redis_operation() -> MemoryKey {
+        MemoryKey::new_unchecked("redis_operation")
+    }
 }
 
 #[cfg(test)]
@@ -156,6 +187,10 @@ mod tests {
             MemoryKeys::user_preferences(),
             MemoryKeys::session_info(),
             MemoryKeys::conversation_history(),
+            MemoryKeys::batch(),
+            MemoryKeys::ping(),
+            MemoryKeys::runtime(),
+            MemoryKeys::redis_operation(),
         ];
 
         // All should be non-empty and valid
@@ -194,6 +229,10 @@ mod tests {
         let key8 = MemoryKeys::user_preferences();
         let key9 = MemoryKeys::session_info();
         let key10 = MemoryKeys::conversation_history();
+        let key11 = MemoryKeys::batch();
+        let key12 = MemoryKeys::ping();
+        let key13 = MemoryKeys::runtime();
+        let key14 = MemoryKeys::redis_operation();
 
         let keys = vec![
             key1.as_str(),
@@ -206,6 +245,10 @@ mod tests {
             key8.as_str(),
             key9.as_str(),
             key10.as_str(),
+            key11.as_str(),
+            key12.as_str(),
+            key13.as_str(),
+            key14.as_str(),
         ];
 
         let mut unique = std::collections::HashSet::new();

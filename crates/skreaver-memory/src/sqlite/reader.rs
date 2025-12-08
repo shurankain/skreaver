@@ -1,20 +1,11 @@
 //! MemoryReader implementation for SqliteMemory
 
 use rusqlite::{OptionalExtension, params};
-use std::sync::OnceLock;
 
 use skreaver_core::error::{MemoryBackend, MemoryError, MemoryErrorKind};
-use skreaver_core::memory::{MemoryKey, MemoryReader};
+use skreaver_core::memory::{MemoryKey, MemoryKeys, MemoryReader};
 
 use super::SqliteMemory;
-
-/// Fallback memory key for batch operations
-static BATCH_KEY: OnceLock<MemoryKey> = OnceLock::new();
-
-fn batch_key() -> &'static MemoryKey {
-    BATCH_KEY
-        .get_or_init(|| MemoryKey::new("batch").expect("BUG: 'batch' should be a valid memory key"))
-}
 
 impl MemoryReader for SqliteMemory {
     fn load(&self, key: &MemoryKey) -> Result<Option<String>, MemoryError> {
@@ -51,7 +42,7 @@ impl MemoryReader for SqliteMemory {
         );
 
         let mut stmt = conn.prepare(&query).map_err(|e| MemoryError::LoadFailed {
-            key: batch_key().clone(),
+            key: MemoryKeys::batch(),
             backend: MemoryBackend::Sqlite,
             kind: MemoryErrorKind::IoError {
                 details: e.to_string(),
@@ -69,7 +60,7 @@ impl MemoryReader for SqliteMemory {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(|e| MemoryError::LoadFailed {
-                key: batch_key().clone(),
+                key: MemoryKeys::batch(),
                 backend: MemoryBackend::Sqlite,
                 kind: MemoryErrorKind::IoError {
                     details: e.to_string(),
@@ -78,7 +69,7 @@ impl MemoryReader for SqliteMemory {
 
         for row in rows {
             let (k, v) = row.map_err(|e| MemoryError::LoadFailed {
-                key: batch_key().clone(),
+                key: MemoryKeys::batch(),
                 backend: MemoryBackend::Sqlite,
                 kind: MemoryErrorKind::IoError {
                     details: e.to_string(),
