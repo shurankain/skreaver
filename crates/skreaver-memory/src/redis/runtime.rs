@@ -6,11 +6,18 @@
 use skreaver_core::error::MemoryError;
 use skreaver_core::memory::MemoryKeys;
 
+/// Runtime state for type-safe initialization tracking
+#[cfg(feature = "redis")]
+enum RuntimeState {
+    Uninitialized,
+    Ready(tokio::runtime::Runtime),
+}
+
 // Sync trait implementations using thread-local runtime
 #[cfg(feature = "redis")]
 thread_local! {
-    pub static REDIS_RUNTIME: std::cell::RefCell<Option<tokio::runtime::Runtime>> =
-        const { std::cell::RefCell::new(None) };
+    pub static REDIS_RUNTIME: std::cell::RefCell<RuntimeState> =
+        const { std::cell::RefCell::new(RuntimeState::Uninitialized) };
 }
 
 /// Execute an async function using the thread-local runtime
@@ -21,21 +28,25 @@ where
 {
     REDIS_RUNTIME.with(|rt_cell| {
         let mut rt_ref = rt_cell.borrow_mut();
-        if rt_ref.is_none() {
-            *rt_ref =
-                Some(
-                    tokio::runtime::Runtime::new().map_err(|e| MemoryError::LoadFailed {
-                        key: MemoryKeys::runtime(),
-                        backend: skreaver_core::error::MemoryBackend::Redis,
-                        kind: skreaver_core::error::MemoryErrorKind::InternalError {
-                            backend_error: format!("Failed to create async runtime: {}", e),
-                        },
-                    })?,
-                );
+
+        // Initialize runtime if needed
+        if matches!(&*rt_ref, RuntimeState::Uninitialized) {
+            let runtime = tokio::runtime::Runtime::new().map_err(|e| MemoryError::LoadFailed {
+                key: MemoryKeys::runtime(),
+                backend: skreaver_core::error::MemoryBackend::Redis,
+                kind: skreaver_core::error::MemoryErrorKind::InternalError {
+                    backend_error: format!("Failed to create async runtime: {}", e),
+                },
+            })?;
+            *rt_ref = RuntimeState::Ready(runtime);
         }
-        let rt = rt_ref
-            .as_ref()
-            .expect("BUG: Runtime should be Some after initialization");
-        rt.block_on(f())
+
+        // SAFETY: We just ensured the runtime is in Ready state
+        match &*rt_ref {
+            RuntimeState::Ready(rt) => rt.block_on(f()),
+            RuntimeState::Uninitialized => {
+                unreachable!("Runtime should be Ready after initialization")
+            }
+        }
     })
 }

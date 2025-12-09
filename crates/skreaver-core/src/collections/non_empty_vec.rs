@@ -260,11 +260,9 @@ impl<T> NonEmptyVec<T> {
     ///
     /// A mutable reference to the last element
     pub fn last_mut(&mut self) -> &mut T {
-        if self.tail.is_empty() {
-            &mut self.head
-        } else {
-            self.tail.last_mut().unwrap()
-        }
+        // SAFETY: tail.last_mut() returns None only when tail is empty,
+        // in which case we return head instead
+        self.tail.last_mut().unwrap_or(&mut self.head)
     }
 }
 

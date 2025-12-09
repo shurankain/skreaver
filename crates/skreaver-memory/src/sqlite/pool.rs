@@ -344,7 +344,7 @@ impl SqlitePool {
 
 /// RAII wrapper for pooled connections that returns connection to pool on drop
 pub struct PooledConnection {
-    connection: Option<Connection>,
+    connection: std::mem::ManuallyDrop<Connection>,
     pool: Arc<Mutex<Vec<Connection>>>,
     pool_size: usize,
     active_connections: Arc<Mutex<usize>>,
@@ -358,7 +358,7 @@ impl PooledConnection {
         active_connections: Arc<Mutex<usize>>,
     ) -> Self {
         Self {
-            connection: Some(connection),
+            connection: std::mem::ManuallyDrop::new(connection),
             pool,
             pool_size,
             active_connections,
@@ -371,45 +371,40 @@ impl Deref for PooledConnection {
     type Target = Connection;
 
     fn deref(&self) -> &Self::Target {
-        self.connection
-            .as_ref()
-            .expect("BUG: PooledConnection has None connection (this should never happen)")
+        &self.connection
     }
 }
 
 impl DerefMut for PooledConnection {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.connection
-            .as_mut()
-            .expect("BUG: PooledConnection has None connection (this should never happen)")
+        &mut self.connection
     }
 }
 
 impl Drop for PooledConnection {
     fn drop(&mut self) {
-        if let Some(conn) = self.connection.take() {
-            // Always try to return connection to pool with proper size checking
-            if let (Ok(mut available), Ok(mut active_count)) =
-                (self.pool.lock(), self.active_connections.lock())
-            {
-                // Check against actual pool_size, not Vec capacity
-                if available.len() < self.pool_size {
-                    available.push(conn);
-                    *active_count -= 1; // FIX: Decrement when returning (deactivating) connection
-                } else {
-                    // Pool is legitimately full - this shouldn't happen but log if it does
-                    tracing::warn!(
-                        "Pool is full when returning connection. Available: {}, Pool size: {}",
-                        available.len(),
-                        self.pool_size
-                    );
-                }
+        // SAFETY: Drop is only called once, so we can safely take the connection
+        let conn = unsafe { std::mem::ManuallyDrop::take(&mut self.connection) };
+
+        // Always try to return connection to pool with proper size checking
+        if let (Ok(mut available), Ok(mut active_count)) =
+            (self.pool.lock(), self.active_connections.lock())
+        {
+            // Check against actual pool_size, not Vec capacity
+            if available.len() < self.pool_size {
+                available.push(conn);
+                *active_count -= 1; // FIX: Decrement when returning (deactivating) connection
             } else {
-                // Critical: If we can't return the connection, we have a resource leak
-                tracing::error!(
-                    "Failed to lock pool for connection return - resource leak possible"
+                // Pool is legitimately full - this shouldn't happen but log if it does
+                tracing::warn!(
+                    "Pool is full when returning connection. Available: {}, Pool size: {}",
+                    available.len(),
+                    self.pool_size
                 );
             }
+        } else {
+            // Critical: If we can't return the connection, we have a resource leak
+            tracing::error!("Failed to lock pool for connection return - resource leak possible");
         }
     }
 }

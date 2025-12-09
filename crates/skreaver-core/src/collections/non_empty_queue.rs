@@ -128,12 +128,11 @@ impl<T> NonEmptyQueue<T> {
     ///
     /// `Some(T)` if there are tail elements, `None` if only the head remains
     pub fn dequeue(&mut self) -> Option<T> {
-        if self.tail.is_empty() {
-            None
-        } else {
-            let old_head = std::mem::replace(&mut self.head, self.tail.pop_front().unwrap());
-            Some(old_head)
-        }
+        // Pop from tail first to avoid unwrap
+        self.tail.pop_front().map(|new_head| {
+            // Replace head with the popped element and return old head
+            std::mem::replace(&mut self.head, new_head)
+        })
     }
 
     /// Get the number of elements in the queue.
