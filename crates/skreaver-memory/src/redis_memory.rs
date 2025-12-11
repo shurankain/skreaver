@@ -207,7 +207,7 @@ impl RedisMemory {
         let results: Vec<Option<String>> = conn.get(&prefixed_keys).await.map_err(|e| {
             self.update_metrics(false, start.elapsed());
             MemoryError::LoadFailed {
-                key: MemoryKey::new("batch").unwrap(),
+                key: skreaver_core::memory::MemoryKeys::batch(),
                 backend: skreaver_core::error::MemoryBackend::Redis,
                 kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                     details: Self::sanitize_error(&e),
@@ -261,7 +261,7 @@ impl RedisMemory {
         let _: () = pipe.query_async(&mut *conn).await.map_err(|e| {
             self.update_metrics(false, start.elapsed());
             MemoryError::StoreFailed {
-                key: MemoryKey::new("batch").unwrap(),
+                key: skreaver_core::memory::MemoryKeys::batch(),
                 backend: skreaver_core::error::MemoryBackend::Redis,
                 kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                     details: Self::sanitize_error(&e),
@@ -295,7 +295,7 @@ impl RedisMemory {
                 .query_async(&mut *conn)
                 .await
                 .map_err(|e| MemoryError::LoadFailed {
-                    key: MemoryKey::new("scan").unwrap(),
+                    key: skreaver_core::memory::MemoryKeys::scan(),
                     backend: skreaver_core::error::MemoryBackend::Redis,
                     kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                         details: Self::sanitize_error(&e),
@@ -319,7 +319,7 @@ impl RedisMemory {
             conn.get(&all_keys)
                 .await
                 .map_err(|e| MemoryError::LoadFailed {
-                    key: MemoryKey::new("snapshot").unwrap(),
+                    key: skreaver_core::memory::MemoryKeys::snapshot(),
                     backend: skreaver_core::error::MemoryBackend::Redis,
                     kind: skreaver_core::error::MemoryErrorKind::NetworkError {
                         details: Self::sanitize_error(&e),

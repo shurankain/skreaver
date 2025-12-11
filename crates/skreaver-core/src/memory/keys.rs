@@ -167,6 +167,34 @@ impl MemoryKeys {
     pub fn redis_operation() -> MemoryKey {
         MemoryKey::new_unchecked("redis_operation")
     }
+
+    /// Key for scan operations
+    ///
+    /// Used by memory backends for scanning/listing keys.
+    pub fn scan() -> MemoryKey {
+        MemoryKey::new_unchecked("scan")
+    }
+
+    /// Key for snapshot operations
+    ///
+    /// Used by memory backends for creating snapshots.
+    pub fn snapshot() -> MemoryKey {
+        MemoryKey::new_unchecked("snapshot")
+    }
+
+    /// Key for clear all operations
+    ///
+    /// Used by memory backends for clearing all data.
+    pub fn clear_all() -> MemoryKey {
+        MemoryKey::new_unchecked("clear_all")
+    }
+
+    /// Key for namespaced fallback operations
+    ///
+    /// Used by namespaced memory wrapper for fallback scenarios.
+    pub fn fallback_namespaced() -> MemoryKey {
+        MemoryKey::new_unchecked("fallback_namespaced")
+    }
 }
 
 #[cfg(test)]
@@ -191,6 +219,10 @@ mod tests {
             MemoryKeys::ping(),
             MemoryKeys::runtime(),
             MemoryKeys::redis_operation(),
+            MemoryKeys::scan(),
+            MemoryKeys::snapshot(),
+            MemoryKeys::clear_all(),
+            MemoryKeys::fallback_namespaced(),
         ];
 
         // All should be non-empty and valid
@@ -233,6 +265,10 @@ mod tests {
         let key12 = MemoryKeys::ping();
         let key13 = MemoryKeys::runtime();
         let key14 = MemoryKeys::redis_operation();
+        let key15 = MemoryKeys::scan();
+        let key16 = MemoryKeys::snapshot();
+        let key17 = MemoryKeys::clear_all();
+        let key18 = MemoryKeys::fallback_namespaced();
 
         let keys = vec![
             key1.as_str(),
@@ -249,6 +285,10 @@ mod tests {
             key12.as_str(),
             key13.as_str(),
             key14.as_str(),
+            key15.as_str(),
+            key16.as_str(),
+            key17.as_str(),
+            key18.as_str(),
         ];
 
         let mut unique = std::collections::HashSet::new();

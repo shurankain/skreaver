@@ -37,9 +37,8 @@ impl<M> NamespacedMemory<M> {
     /// Wrap a key with the namespace prefix.
     fn wrap_key(&self, key: &MemoryKey) -> Result<MemoryKey, MemoryError> {
         let wrapped_key_str = format!("{}:{}", self.prefix, key.as_str());
-        let fallback_key = MemoryKey::new("fallback_namespaced").unwrap();
         MemoryKey::new(&wrapped_key_str).map_err(|e| MemoryError::StoreFailed {
-            key: fallback_key,
+            key: skreaver_core::memory::MemoryKeys::fallback_namespaced(),
             backend: skreaver_core::error::MemoryBackend::InMemory,
             kind: skreaver_core::error::MemoryErrorKind::InvalidKey {
                 validation_error: format!("Invalid namespaced key: {}", e),

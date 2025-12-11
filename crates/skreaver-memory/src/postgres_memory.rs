@@ -183,7 +183,7 @@ impl PostgresMemory {
             .query(&query, &[])
             .await
             .map_err(|e| MemoryError::LoadFailed {
-                key: MemoryKey::new("snapshot").unwrap(),
+                key: skreaver_core::memory::MemoryKeys::snapshot(),
                 backend: skreaver_core::error::MemoryBackend::Postgres,
                 kind: skreaver_core::error::MemoryErrorKind::IoError {
                     details: format!("Database error: {}", e),
@@ -224,7 +224,7 @@ impl PostgresMemory {
         conn.execute(&query, &[])
             .await
             .map_err(|e| MemoryError::StoreFailed {
-                key: MemoryKey::new("clear_all").unwrap(),
+                key: skreaver_core::memory::MemoryKeys::clear_all(),
                 backend: skreaver_core::error::MemoryBackend::Postgres,
                 kind: skreaver_core::error::MemoryErrorKind::IoError {
                     details: format!("Database error: {}", e),
