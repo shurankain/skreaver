@@ -67,6 +67,9 @@ pub enum AuthError {
 
     #[error("Invalid encryption key")]
     InvalidEncryptionKey,
+
+    #[error("Failed to generate cryptographically secure random bytes: {0}")]
+    RandomGenerationFailed(String),
 }
 
 /// Authentication result type

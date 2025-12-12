@@ -6,7 +6,8 @@
 use skreaver_core::{ExecutionResult, Tool, ToolCall};
 use skreaver_tools::{ToolName, ToolRegistry};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 /// A mock tool that returns predefined responses based on input patterns
 #[derive(Debug, Clone)]
@@ -14,7 +15,7 @@ pub struct MockTool {
     name: String,
     responses: HashMap<String, ExecutionResult>,
     default_response: Option<ExecutionResult>,
-    call_count: Arc<Mutex<usize>>,
+    call_count: Arc<AtomicUsize>,
     call_history: Arc<Mutex<Vec<String>>>,
 }
 
@@ -25,7 +26,7 @@ impl MockTool {
             name: name.into(),
             responses: HashMap::new(),
             default_response: None,
-            call_count: Arc::new(Mutex::new(0)),
+            call_count: Arc::new(AtomicUsize::new(0)),
             call_history: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -58,25 +59,30 @@ impl MockTool {
 
     /// Get the number of times this tool has been called
     pub fn call_count(&self) -> usize {
-        *self.call_count.lock().unwrap()
+        self.call_count.load(Ordering::Relaxed)
     }
 
     /// Get the history of inputs passed to this tool
     pub fn call_history(&self) -> Vec<String> {
-        self.call_history.lock().unwrap().clone()
+        self.call_history
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Reset call count and history
     pub fn reset(&self) {
-        *self.call_count.lock().unwrap() = 0;
-        self.call_history.lock().unwrap().clear();
+        self.call_count.store(0, Ordering::Relaxed);
+        if let Ok(mut history) = self.call_history.lock() {
+            history.clear();
+        }
     }
 
     /// Check if the tool was called with a specific input
     pub fn was_called_with(&self, input: &str) -> bool {
         self.call_history
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .contains(&input.to_string())
     }
 }
@@ -87,9 +93,12 @@ impl Tool for MockTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        // Update call tracking
-        *self.call_count.lock().unwrap() += 1;
-        self.call_history.lock().unwrap().push(input.clone());
+        // Update call tracking - best effort, don't panic on poisoned mutex
+        self.call_count.fetch_add(1, Ordering::Relaxed);
+
+        if let Ok(mut history) = self.call_history.lock() {
+            history.push(input.clone());
+        }
 
         // Return response based on input
         if let Some(response) = self.responses.get(&input) {

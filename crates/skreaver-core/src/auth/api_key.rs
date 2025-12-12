@@ -286,19 +286,51 @@ impl Key<Active> {
         }
     }
 
-    /// Generate a secure random key
-    fn generate_key_value(prefix: &str, length: usize) -> String {
+    /// Generate a secure random key with retry logic
+    ///
+    /// This function uses the OS cryptographic RNG and implements retry logic
+    /// to handle transient failures (e.g., temporary entropy exhaustion).
+    ///
+    /// # Errors
+    ///
+    /// Returns `AuthError::RandomGenerationFailed` if RNG fails after 3 attempts
+    fn generate_key_value(prefix: &str, length: usize) -> Result<String, AuthError> {
         use base64::{Engine as _, engine::general_purpose};
         use rand::TryRngCore;
 
         let mut random_bytes = vec![0u8; length];
-        rand::rngs::OsRng
-            .try_fill_bytes(&mut random_bytes)
-            .expect("Failed to generate random bytes");
+
+        // Try multiple times with exponential backoff
+        let mut attempts = 0;
+        loop {
+            match rand::rngs::OsRng.try_fill_bytes(&mut random_bytes) {
+                Ok(()) => break,
+                Err(e) if attempts < 2 => {
+                    attempts += 1;
+                    tracing::warn!(
+                        attempt = attempts + 1,
+                        error = %e,
+                        "Retrying cryptographic RNG after failure"
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(10 * (attempts as u64)));
+                }
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        attempts = attempts + 1,
+                        "Failed to generate cryptographically secure random bytes after retries"
+                    );
+                    return Err(AuthError::RandomGenerationFailed(e.to_string()));
+                }
+            }
+        }
 
         let encoded = general_purpose::URL_SAFE_NO_PAD.encode(random_bytes);
-
-        format!("{}{}", prefix, &encoded[..length.min(encoded.len())])
+        Ok(format!(
+            "{}{}",
+            prefix,
+            &encoded[..length.min(encoded.len())]
+        ))
     }
 }
 
@@ -669,7 +701,7 @@ impl ApiKeyManager {
     /// Generate a new API key (type-safe version)
     pub async fn generate_key(&self, name: String, roles: Vec<Role>) -> AuthResult<Key<Active>> {
         let key_value =
-            Key::<Active>::generate_key_value(&self.config.prefix, self.config.min_length);
+            Key::<Active>::generate_key_value(&self.config.prefix, self.config.min_length)?;
         let key_hash = self.hash_key(&key_value);
 
         let expires_at = self

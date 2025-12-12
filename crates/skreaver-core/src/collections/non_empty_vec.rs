@@ -264,6 +264,36 @@ impl<T> NonEmptyVec<T> {
         // in which case we return head instead
         self.tail.last_mut().unwrap_or(&mut self.head)
     }
+
+    /// Get element at index with detailed panic message if out of bounds.
+    ///
+    /// This method should only be used when you have verified the index is in bounds,
+    /// or when a panic is the desired behavior (e.g., in debug assertions).
+    ///
+    /// For production code with uncertain bounds, use [`get`] instead.
+    ///
+    /// # Panics
+    ///
+    /// Panics if index >= len() with a detailed error message
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use skreaver_core::collections::NonEmptyVec;
+    ///
+    /// let vec = NonEmptyVec::new(1, vec![2, 3]);
+    /// assert_eq!(*vec.get_unchecked(0), 1);
+    /// assert_eq!(*vec.get_unchecked(2), 3);
+    /// ```
+    pub fn get_unchecked(&self, index: usize) -> &T {
+        self.get(index).unwrap_or_else(|| {
+            panic!(
+                "index out of bounds: the len is {} but the index is {}",
+                self.len(),
+                index
+            )
+        })
+    }
 }
 
 impl<T> TryFrom<Vec<T>> for NonEmptyVec<T> {
@@ -290,11 +320,20 @@ impl<T> From<NonEmptyVec<T>> for Vec<T> {
     }
 }
 
+// Index implementation only available in debug mode to catch bugs early
+// In release mode, use .get() for safe access or .get_unchecked() when bounds are verified
+#[cfg(debug_assertions)]
 impl<T> Index<usize> for NonEmptyVec<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-        self.get(index).expect("index out of bounds")
+        self.get(index).unwrap_or_else(|| {
+            panic!(
+                "index out of bounds: the len is {} but the index is {}",
+                self.len(),
+                index
+            )
+        })
     }
 }
 

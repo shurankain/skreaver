@@ -2,7 +2,7 @@
 
 use axum::{
     Json,
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
@@ -465,18 +465,48 @@ impl RapiDocUi {
 /// API specification response helper
 pub struct ApiSpecResponse;
 
+// Pre-validated header values - validated once at first access
+use std::sync::OnceLock;
+static JSON_CONTENT_TYPE: OnceLock<HeaderValue> = OnceLock::new();
+static YAML_CONTENT_TYPE: OnceLock<HeaderValue> = OnceLock::new();
+static CACHE_CONTROL: OnceLock<HeaderValue> = OnceLock::new();
+
+fn json_content_type() -> HeaderValue {
+    JSON_CONTENT_TYPE
+        .get_or_init(|| {
+            "application/json; charset=utf-8"
+                .parse()
+                .expect("BUG: Invalid JSON content-type constant")
+        })
+        .clone()
+}
+
+fn yaml_content_type() -> HeaderValue {
+    YAML_CONTENT_TYPE
+        .get_or_init(|| {
+            "application/x-yaml; charset=utf-8"
+                .parse()
+                .expect("BUG: Invalid YAML content-type constant")
+        })
+        .clone()
+}
+
+fn cache_control() -> HeaderValue {
+    CACHE_CONTROL
+        .get_or_init(|| {
+            "public, max-age=3600"
+                .parse()
+                .expect("BUG: Invalid cache-control constant")
+        })
+        .clone()
+}
+
 impl ApiSpecResponse {
     /// Create a JSON response for the OpenAPI specification
     pub fn json(spec: Value) -> Response {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            "application/json; charset=utf-8".parse().unwrap(),
-        );
-        headers.insert(
-            header::CACHE_CONTROL,
-            "public, max-age=3600".parse().unwrap(),
-        );
+        headers.insert(header::CONTENT_TYPE, json_content_type());
+        headers.insert(header::CACHE_CONTROL, cache_control());
 
         (StatusCode::OK, headers, Json(spec)).into_response()
     }
@@ -486,14 +516,8 @@ impl ApiSpecResponse {
         let yaml_str = serde_yaml::to_string(&spec)?;
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            header::CONTENT_TYPE,
-            "application/x-yaml; charset=utf-8".parse().unwrap(),
-        );
-        headers.insert(
-            header::CACHE_CONTROL,
-            "public, max-age=3600".parse().unwrap(),
-        );
+        headers.insert(header::CONTENT_TYPE, yaml_content_type());
+        headers.insert(header::CACHE_CONTROL, cache_control());
 
         Ok((StatusCode::OK, headers, yaml_str).into_response())
     }
