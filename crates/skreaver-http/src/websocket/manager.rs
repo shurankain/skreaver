@@ -3,9 +3,51 @@
 use super::lock_ordering::ManagerLocks;
 use super::{WebSocketConfig, WsError, WsMessage, WsResult};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+/// Background task handles for graceful shutdown
+struct BackgroundTasks {
+    cleanup_task: Option<JoinHandle<()>>,
+    orphaned_cleanup_task: Option<JoinHandle<()>>,
+    broadcast_task: Option<JoinHandle<()>>,
+    shutdown_signal: Arc<AtomicBool>,
+}
+
+impl BackgroundTasks {
+    fn new() -> Self {
+        Self {
+            cleanup_task: None,
+            orphaned_cleanup_task: None,
+            broadcast_task: None,
+            shutdown_signal: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Shutdown all background tasks
+    fn shutdown(&mut self) {
+        self.shutdown_signal.store(true, Ordering::Release);
+
+        if let Some(handle) = self.cleanup_task.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.orphaned_cleanup_task.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.broadcast_task.take() {
+            handle.abort();
+        }
+    }
+}
+
+impl Drop for BackgroundTasks {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
 
 /// WebSocket connection manager
 pub struct WebSocketManager {
@@ -17,6 +59,8 @@ pub struct WebSocketManager {
     event_sender: broadcast::Sender<ChannelEvent>,
     /// Authentication handler
     auth_handler: Option<Arc<dyn AuthHandler + Send + Sync>>,
+    /// Background task handles for lifecycle management
+    background_tasks: Arc<Mutex<BackgroundTasks>>,
 }
 
 /// Connection state with typestate pattern
@@ -208,6 +252,7 @@ impl WebSocketManager {
             locks: ManagerLocks::new(),
             event_sender,
             auth_handler: None,
+            background_tasks: Arc::new(Mutex::new(BackgroundTasks::new())),
         }
     }
 
@@ -866,36 +911,87 @@ impl WebSocketManager {
 
     /// Start background tasks
     pub async fn start_background_tasks(&self) {
+        let mut tasks = self.background_tasks.lock().await;
+
+        // Stop existing tasks if any
+        tasks.shutdown();
+
+        // Create new shutdown signal
+        let shutdown = Arc::new(AtomicBool::new(false));
+        tasks.shutdown_signal = Arc::clone(&shutdown);
+
         let manager = Arc::new(self.clone());
 
         // Cleanup task for expired connections
         let cleanup_manager = Arc::clone(&manager);
-        tokio::spawn(async move {
+        let shutdown_clone = Arc::clone(&shutdown);
+        let cleanup_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
-                interval.tick().await;
-                cleanup_manager.cleanup_expired().await;
+                tokio::select! {
+                    _ = interval.tick() => {
+                        cleanup_manager.cleanup_expired().await;
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                        if shutdown_clone.load(Ordering::Acquire) {
+                            info!("Cleanup task shutting down");
+                            break;
+                        }
+                    }
+                }
             }
         });
+        tasks.cleanup_task = Some(cleanup_handle);
 
         // Orphaned state cleanup task (runs less frequently)
         let orphaned_cleanup_manager = Arc::clone(&manager);
-        tokio::spawn(async move {
+        let shutdown_clone = Arc::clone(&shutdown);
+        let orphaned_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // Every 5 minutes
             loop {
-                interval.tick().await;
-                orphaned_cleanup_manager.cleanup_orphaned_state().await;
+                tokio::select! {
+                    _ = interval.tick() => {
+                        orphaned_cleanup_manager.cleanup_orphaned_state().await;
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                        if shutdown_clone.load(Ordering::Acquire) {
+                            info!("Orphaned cleanup task shutting down");
+                            break;
+                        }
+                    }
+                }
             }
         });
+        tasks.orphaned_cleanup_task = Some(orphaned_handle);
 
         // Event broadcasting task
         let broadcast_manager = Arc::clone(&manager);
         let mut event_receiver = self.event_sender.subscribe();
-        tokio::spawn(async move {
-            while let Ok(event) = event_receiver.recv().await {
-                broadcast_manager.handle_channel_event(event).await;
+        let shutdown_clone = Arc::clone(&shutdown);
+        let broadcast_handle = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    event = event_receiver.recv() => {
+                        if let Ok(event) = event {
+                            broadcast_manager.handle_channel_event(event).await;
+                        }
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
+                        if shutdown_clone.load(Ordering::Acquire) {
+                            info!("Event broadcast task shutting down");
+                            break;
+                        }
+                    }
+                }
             }
         });
+        tasks.broadcast_task = Some(broadcast_handle);
+    }
+
+    /// Shutdown all background tasks gracefully
+    pub async fn shutdown(&self) {
+        let mut tasks = self.background_tasks.lock().await;
+        tasks.shutdown();
     }
 
     /// Handle channel event broadcasting
@@ -953,6 +1049,7 @@ impl Clone for WebSocketManager {
             locks: self.locks.clone(),
             event_sender: self.event_sender.clone(),
             auth_handler: self.auth_handler.clone(),
+            background_tasks: Arc::new(Mutex::new(BackgroundTasks::new())),
         }
     }
 }

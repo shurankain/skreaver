@@ -22,19 +22,93 @@ impl FileMemory {
     }
 
     fn load_cache(path: &PathBuf) -> Option<HashMap<String, String>> {
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-    }
-
-    fn persist(&self) {
-        if let Ok(json) = serde_json::to_string_pretty(&self.cache) {
-            // Attempt to write atomically: write to temp then rename
-            let tmp_path = self.path.with_extension("tmp");
-            if fs::write(&tmp_path, json).is_ok() {
-                let _ = fs::rename(&tmp_path, &self.path);
+        match fs::read_to_string(path) {
+            Ok(contents) => match serde_json::from_str::<HashMap<String, String>>(&contents) {
+                Ok(cache) => {
+                    tracing::debug!(path = ?path, entries = cache.len(), "Loaded memory cache");
+                    Some(cache)
+                }
+                Err(e) => {
+                    tracing::error!(
+                        path = ?path,
+                        error = %e,
+                        "Failed to parse memory cache JSON, starting fresh"
+                    );
+                    // Optionally backup corrupted file
+                    if let Some(parent) = path.parent() {
+                        let backup = parent.join(format!(
+                            "{}.corrupted.{}",
+                            path.file_name().unwrap_or_default().to_string_lossy(),
+                            chrono::Utc::now().timestamp()
+                        ));
+                        let _ = fs::copy(path, backup);
+                    }
+                    None
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(path = ?path, "Memory cache file not found, starting fresh");
+                None
+            }
+            Err(e) => {
+                tracing::warn!(path = ?path, error = %e, "Failed to read memory cache");
+                None
             }
         }
+    }
+
+    fn persist(&self) -> Result<(), MemoryError> {
+        let json = serde_json::to_string_pretty(&self.cache).map_err(|e| {
+            tracing::error!(error = %e, "Failed to serialize memory cache");
+            MemoryError::StoreFailed {
+                key: skreaver_core::memory::MemoryKeys::snapshot(),
+                backend: skreaver_core::error::MemoryBackend::File,
+                kind: skreaver_core::error::MemoryErrorKind::SerializationError {
+                    details: format!("Failed to serialize cache: {}", e),
+                },
+            }
+        })?;
+
+        let tmp_path = self.path.with_extension("tmp");
+
+        fs::write(&tmp_path, json).map_err(|e| {
+            tracing::error!(
+                path = ?tmp_path,
+                error = %e,
+                "Failed to write memory cache to temporary file"
+            );
+            MemoryError::StoreFailed {
+                key: skreaver_core::memory::MemoryKeys::snapshot(),
+                backend: skreaver_core::error::MemoryBackend::File,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!("Failed to write to {}: {}", tmp_path.display(), e),
+                },
+            }
+        })?;
+
+        fs::rename(&tmp_path, &self.path).map_err(|e| {
+            tracing::error!(
+                from = ?tmp_path,
+                to = ?self.path,
+                error = %e,
+                "Failed to atomically rename memory cache"
+            );
+            MemoryError::StoreFailed {
+                key: skreaver_core::memory::MemoryKeys::snapshot(),
+                backend: skreaver_core::error::MemoryBackend::File,
+                kind: skreaver_core::error::MemoryErrorKind::IoError {
+                    details: format!(
+                        "Failed to rename {} to {}: {}",
+                        tmp_path.display(),
+                        self.path.display(),
+                        e
+                    ),
+                },
+            }
+        })?;
+
+        tracing::debug!(path = ?self.path, entries = self.cache.len(), "Persisted memory cache");
+        Ok(())
     }
 }
 
@@ -55,8 +129,7 @@ impl MemoryWriter for FileMemory {
     fn store(&mut self, update: MemoryUpdate) -> Result<(), MemoryError> {
         self.cache
             .insert(update.key.as_str().to_string(), update.value);
-        self.persist();
-        Ok(())
+        self.persist()
     }
 
     fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), MemoryError> {
@@ -64,8 +137,7 @@ impl MemoryWriter for FileMemory {
             self.cache
                 .insert(update.key.as_str().to_string(), update.value);
         }
-        self.persist();
-        Ok(())
+        self.persist()
     }
 }
 
@@ -96,8 +168,6 @@ impl SnapshotableMemory for FileMemory {
         self.cache = new_cache;
 
         // Persist the restored state to file
-        self.persist();
-
-        Ok(())
+        self.persist()
     }
 }

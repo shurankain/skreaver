@@ -337,8 +337,13 @@ impl Key<Active> {
 impl Key<Expired> {
     /// Get expiration timestamp (guaranteed to be Some for expired keys)
     pub fn expiration_time(&self) -> DateTime<Utc> {
-        self.expires_at
-            .expect("Expired key must have expiration timestamp")
+        match self.expires_at {
+            Some(expires_at) => expires_at,
+            #[cfg(debug_assertions)]
+            None => panic!("BUG: Expired key must have expiration timestamp"),
+            #[cfg(not(debug_assertions))]
+            None => unsafe { std::hint::unreachable_unchecked() },
+        }
     }
 
     /// Check how long ago the key expired

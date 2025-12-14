@@ -132,29 +132,32 @@ impl RedisTransactionExecutor {
     /// Execute a Redis transaction with proper runtime handling
     pub fn execute_transaction<T, F, R>(
         memory: &mut T,
-        runtime_cell: &std::cell::RefCell<Option<tokio::runtime::Runtime>>,
+        runtime_cell: &std::cell::RefCell<crate::redis::runtime::RuntimeState>,
         f: F,
     ) -> Result<R, TransactionError>
     where
         T: RedisConnectionProvider + ConfigProvider,
         F: FnOnce(&mut dyn MemoryWriter) -> Result<R, TransactionError>,
     {
+        use crate::redis::runtime::RuntimeState;
+
         // Use a simplified synchronous approach similar to PostgreSQL backend
         let rt = tokio::runtime::Handle::try_current()
             .or_else(|_| {
                 let mut rt_ref = runtime_cell.borrow_mut();
-                if rt_ref.is_none() {
-                    *rt_ref = Some(tokio::runtime::Runtime::new().map_err(|e| {
+                if matches!(&*rt_ref, RuntimeState::Uninitialized) {
+                    *rt_ref = RuntimeState::Ready(tokio::runtime::Runtime::new().map_err(|e| {
                         TransactionError::TransactionFailed {
                             reason: format!("Failed to create async runtime: {}", e),
                         }
                     })?);
                 }
-                Ok(rt_ref
-                    .as_ref()
-                    .expect("BUG: Runtime should be Some after initialization")
-                    .handle()
-                    .clone())
+                match &*rt_ref {
+                    RuntimeState::Ready(runtime) => Ok(runtime.handle().clone()),
+                    RuntimeState::Uninitialized => Err(TransactionError::TransactionFailed {
+                        reason: "Runtime initialization failed".to_string(),
+                    }),
+                }
             })
             .map_err(|e: TransactionError| e)?;
 

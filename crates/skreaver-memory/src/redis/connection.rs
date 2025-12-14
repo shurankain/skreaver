@@ -90,7 +90,10 @@ impl RedisConnection<Disconnected> {
                 attempt_count,
                 last_activity,
             } => (attempt_count + 1, last_activity),
-            _ => unreachable!("Disconnected state must have Disconnected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Disconnected state must have Disconnected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         };
 
         match pool.get().await {
@@ -129,7 +132,10 @@ impl RedisConnection<Disconnected> {
     pub fn attempt_count(&self) -> usize {
         match &self.data {
             ConnectionData::Disconnected { attempt_count, .. } => *attempt_count,
-            _ => unreachable!("Disconnected state must have Disconnected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Disconnected state must have Disconnected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -137,7 +143,10 @@ impl RedisConnection<Disconnected> {
     pub fn reset_attempts(self) -> Self {
         let last_activity = match self.data {
             ConnectionData::Disconnected { last_activity, .. } => last_activity,
-            _ => unreachable!("Disconnected state must have Disconnected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Disconnected state must have Disconnected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         };
 
         Self {
@@ -156,7 +165,10 @@ impl RedisConnection<Connected> {
     pub fn connection(&mut self) -> &mut PooledConnection {
         match &mut self.data {
             ConnectionData::Connected { connection, .. } => connection,
-            _ => unreachable!("Connected state must have Connected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Connected state must have Connected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -164,7 +176,10 @@ impl RedisConnection<Connected> {
     pub fn connection_duration(&self) -> Duration {
         match &self.data {
             ConnectionData::Connected { connected_at, .. } => connected_at.elapsed(),
-            _ => unreachable!("Connected state must have Connected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Connected state must have Connected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -172,7 +187,10 @@ impl RedisConnection<Connected> {
     pub fn idle_duration(&self) -> Duration {
         match &self.data {
             ConnectionData::Connected { last_activity, .. } => last_activity.elapsed(),
-            _ => unreachable!("Connected state must have Connected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Connected state must have Connected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -180,7 +198,10 @@ impl RedisConnection<Connected> {
     pub fn attempt_count(&self) -> usize {
         match &self.data {
             ConnectionData::Connected { attempt_count, .. } => *attempt_count,
-            _ => unreachable!("Connected state must have Connected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Connected state must have Connected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -190,7 +211,10 @@ impl RedisConnection<Connected> {
             ConnectionData::Connected { last_activity, .. } => {
                 *last_activity = Instant::now();
             }
-            _ => unreachable!("Connected state must have Connected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Connected state must have Connected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -237,7 +261,10 @@ impl RedisConnection<Connected> {
                         last_activity,
                         ..
                     } => (attempt_count, Some(last_activity)),
-                    _ => unreachable!("Connected state must have Connected data"),
+                    #[cfg(debug_assertions)]
+                    _ => panic!("BUG: Connected state must have Connected data"),
+                    #[cfg(not(debug_assertions))]
+                    _ => unsafe { std::hint::unreachable_unchecked() },
                 };
                 let disconnected = RedisConnection {
                     data: ConnectionData::Disconnected {
@@ -259,7 +286,10 @@ impl RedisConnection<Connected> {
                 last_activity,
                 ..
             } => (attempt_count, Some(last_activity)),
-            _ => unreachable!("Connected state must have Connected data"),
+            #[cfg(debug_assertions)]
+            _ => panic!("BUG: Connected state must have Connected data"),
+            #[cfg(not(debug_assertions))]
+            _ => unsafe { std::hint::unreachable_unchecked() },
         };
         RedisConnection {
             data: ConnectionData::Disconnected {

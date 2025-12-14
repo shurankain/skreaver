@@ -8,7 +8,7 @@ use skreaver_core::memory::MemoryKeys;
 
 /// Runtime state for type-safe initialization tracking
 #[cfg(feature = "redis")]
-enum RuntimeState {
+pub enum RuntimeState {
     Uninitialized,
     Ready(tokio::runtime::Runtime),
 }
@@ -44,9 +44,12 @@ where
         // SAFETY: We just ensured the runtime is in Ready state
         match &*rt_ref {
             RuntimeState::Ready(rt) => rt.block_on(f()),
+            #[cfg(debug_assertions)]
             RuntimeState::Uninitialized => {
-                unreachable!("Runtime should be Ready after initialization")
+                panic!("BUG: Runtime should be Ready after initialization")
             }
+            #[cfg(not(debug_assertions))]
+            RuntimeState::Uninitialized => unsafe { std::hint::unreachable_unchecked() },
         }
     })
 }

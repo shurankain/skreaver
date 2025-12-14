@@ -5,7 +5,6 @@
 //! at compile time rather than runtime.
 
 use skreaver_core::error::MemoryError;
-use std::marker::PhantomData;
 use std::time::Duration;
 
 // === Phantom Type States ===
@@ -438,12 +437,11 @@ impl ValidRedisConfig {
     /// for localhost:6379 with sensible defaults.
     pub fn localhost() -> Self {
         // Create a standalone deployment with required fields
-        let host = NonEmptyString::new("localhost").expect("localhost is valid");
-        let port = PortNumber::new(6379).expect("6379 is valid port");
+        let url = NonEmptyString::new("redis://localhost:6379").expect("localhost URL is valid");
         let pool_size = PoolSize::new(10).expect("10 is valid pool size");
 
         Self {
-            deployment: RedisDeploymentV2::Standalone(Standalone { host, port }),
+            deployment: RedisDeploymentV2::Standalone(Standalone { url }),
             pool_size,
             connect_timeout: Duration::from_secs(5),
             command_timeout: Duration::from_secs(30),
