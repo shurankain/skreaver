@@ -913,10 +913,19 @@ impl WebSocketManager {
     pub async fn start_background_tasks(&self) {
         let mut tasks = self.background_tasks.lock().await;
 
-        // Stop existing tasks if any
-        tasks.shutdown();
+        // Stop existing tasks if any and wait for them to complete
+        if tasks.cleanup_task.is_some()
+            || tasks.orphaned_cleanup_task.is_some()
+            || tasks.broadcast_task.is_some()
+        {
+            tasks.shutdown();
+            // Release lock and wait briefly for tasks to stop
+            drop(tasks);
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            tasks = self.background_tasks.lock().await;
+        }
 
-        // Create new shutdown signal
+        // Create fresh shutdown signal
         let shutdown = Arc::new(AtomicBool::new(false));
         tasks.shutdown_signal = Arc::clone(&shutdown);
 
@@ -1049,7 +1058,7 @@ impl Clone for WebSocketManager {
             locks: self.locks.clone(),
             event_sender: self.event_sender.clone(),
             auth_handler: self.auth_handler.clone(),
-            background_tasks: Arc::new(Mutex::new(BackgroundTasks::new())),
+            background_tasks: Arc::clone(&self.background_tasks),
         }
     }
 }

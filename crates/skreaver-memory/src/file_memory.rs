@@ -164,10 +164,16 @@ impl SnapshotableMemory for FileMemory {
                 },
             })?;
 
-        // Replace the current cache
-        self.cache = new_cache;
+        // Create a backup of the current state for rollback
+        let old_cache = std::mem::replace(&mut self.cache, new_cache);
 
-        // Persist the restored state to file
-        self.persist()
+        // Try to persist - if it fails, rollback to old state
+        if let Err(e) = self.persist() {
+            tracing::error!(error = %e, "Failed to persist restored state, rolling back");
+            self.cache = old_cache;
+            return Err(e);
+        }
+
+        Ok(())
     }
 }

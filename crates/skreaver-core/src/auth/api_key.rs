@@ -335,15 +335,13 @@ impl Key<Active> {
 }
 
 impl Key<Expired> {
-    /// Get expiration timestamp (guaranteed to be Some for expired keys)
+    /// Get expiration timestamp
+    ///
+    /// INVARIANT: Keys can only transition to Expired state if expires_at is Some.
+    /// This is enforced by check_expiration().
     pub fn expiration_time(&self) -> DateTime<Utc> {
-        match self.expires_at {
-            Some(expires_at) => expires_at,
-            #[cfg(debug_assertions)]
-            None => panic!("BUG: Expired key must have expiration timestamp"),
-            #[cfg(not(debug_assertions))]
-            None => unsafe { std::hint::unreachable_unchecked() },
-        }
+        self.expires_at
+            .expect("INVARIANT: Expired key must have expiration timestamp")
     }
 
     /// Check how long ago the key expired

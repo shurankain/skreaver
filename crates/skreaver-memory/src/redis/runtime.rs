@@ -44,12 +44,9 @@ where
         // SAFETY: We just ensured the runtime is in Ready state
         match &*rt_ref {
             RuntimeState::Ready(rt) => rt.block_on(f()),
-            #[cfg(debug_assertions)]
             RuntimeState::Uninitialized => {
-                panic!("BUG: Runtime should be Ready after initialization")
+                panic!("INVARIANT VIOLATION: Runtime should be Ready after initialization")
             }
-            #[cfg(not(debug_assertions))]
-            RuntimeState::Uninitialized => unsafe { std::hint::unreachable_unchecked() },
         }
     })
 }
