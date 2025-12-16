@@ -271,8 +271,25 @@ impl RedisConnection<Connected> {
     }
 
     /// Check if connection should be considered stale
-    pub fn is_stale(&self, max_idle_duration: Duration) -> bool {
-        self.idle_duration() > max_idle_duration
+    ///
+    /// A connection is stale if:
+    /// - It has been idle longer than `max_idle_duration`, OR
+    /// - It has existed longer than `max_connection_age` (if specified)
+    ///
+    /// This prevents long-lived connections that are only occasionally used from
+    /// remaining indefinitely, which can lead to resource exhaustion or connections
+    /// in an inconsistent state.
+    pub fn is_stale(
+        &self,
+        max_idle_duration: Duration,
+        max_connection_age: Option<Duration>,
+    ) -> bool {
+        let idle_stale = self.idle_duration() > max_idle_duration;
+        let age_stale = max_connection_age
+            .map(|max_age| self.connection_duration() > max_age)
+            .unwrap_or(false);
+
+        idle_stale || age_stale
     }
 }
 
@@ -283,6 +300,7 @@ impl RedisConnection<Connected> {
 pub struct StatefulConnectionManager {
     pool: Pool,
     max_idle_duration: Duration,
+    max_connection_age: Option<Duration>,
     max_retry_attempts: usize,
 }
 
@@ -293,6 +311,7 @@ impl StatefulConnectionManager {
         Self {
             pool,
             max_idle_duration: Duration::from_secs(300), // 5 minutes
+            max_connection_age: None,                    // No age limit by default
             max_retry_attempts: 3,
         }
     }
@@ -300,6 +319,16 @@ impl StatefulConnectionManager {
     /// Configure maximum idle duration before considering connection stale
     pub fn with_max_idle_duration(mut self, duration: Duration) -> Self {
         self.max_idle_duration = duration;
+        self
+    }
+
+    /// Configure maximum connection age before considering connection stale
+    ///
+    /// This prevents long-lived connections from remaining indefinitely,
+    /// which can lead to resource exhaustion. For example, setting this to
+    /// 1 hour will ensure connections are refreshed at least hourly.
+    pub fn with_max_connection_age(mut self, duration: Duration) -> Self {
+        self.max_connection_age = Some(duration);
         self
     }
 
@@ -344,7 +373,7 @@ impl StatefulConnectionManager {
         connection: ConnectedRedis,
     ) -> Result<ConnectedRedis, MemoryError> {
         // Check if connection is stale
-        if connection.is_stale(self.max_idle_duration) {
+        if connection.is_stale(self.max_idle_duration, self.max_connection_age) {
             // Disconnect and reconnect
             let disconnected = connection.disconnect();
             return self.reconnect(disconnected).await;

@@ -63,21 +63,26 @@ pub struct WebSocketManager {
     background_tasks: Arc<Mutex<BackgroundTasks>>,
 }
 
-/// Connection state with typestate pattern
+/// Authentication state for a connection
 #[derive(Debug)]
-pub(super) enum ConnectionState {
-    /// Unauthenticated connection
-    Unauthenticated {
-        info: super::ConnectionInfo<super::Unauthenticated>,
-        sender: mpsc::Sender<WsMessage>,
-        channels: Vec<String>,
-    },
-    /// Authenticated connection
-    Authenticated {
-        info: super::ConnectionInfo<super::Authenticated>,
-        sender: mpsc::Sender<WsMessage>,
-        channels: Vec<String>,
-    },
+enum AuthState {
+    /// Connection is not authenticated
+    Unauthenticated,
+    /// Connection is authenticated with a user ID
+    Authenticated { user_id: String },
+}
+
+/// Connection state with common fields extracted
+#[derive(Debug)]
+pub(super) struct ConnectionState {
+    /// Connection information (address, timing, etc.)
+    info: super::ConnectionInfo<super::Unauthenticated>,
+    /// Message sender for this connection
+    sender: mpsc::Sender<WsMessage>,
+    /// Subscribed channels
+    channels: Vec<String>,
+    /// Authentication state
+    auth_state: AuthState,
 }
 
 impl ConnectionState {
@@ -86,112 +91,55 @@ impl ConnectionState {
         info: super::ConnectionInfo<super::Unauthenticated>,
         sender: mpsc::Sender<WsMessage>,
     ) -> Self {
-        Self::Unauthenticated {
+        Self {
             info,
             sender,
             channels: Vec::new(),
+            auth_state: AuthState::Unauthenticated,
         }
     }
 
-    /// Get connection info (works for both states)
+    /// Get connection info
     fn info(&self) -> &dyn InfoAccess {
-        match self {
-            Self::Unauthenticated { info, .. } => info,
-            Self::Authenticated { info, .. } => info,
-        }
+        &self.info
     }
 
-    /// Get mutable connection info (works for both states)
+    /// Get mutable connection info
     fn info_mut(&mut self) -> &mut dyn InfoAccessMut {
-        match self {
-            Self::Unauthenticated { info, .. } => info,
-            Self::Authenticated { info, .. } => info,
-        }
+        &mut self.info
     }
 
     /// Get message sender
     fn sender(&self) -> &mpsc::Sender<WsMessage> {
-        match self {
-            Self::Unauthenticated { sender, .. } => sender,
-            Self::Authenticated { sender, .. } => sender,
-        }
+        &self.sender
     }
 
     /// Get subscribed channels
     fn channels(&self) -> &[String] {
-        match self {
-            Self::Unauthenticated { channels, .. } => channels,
-            Self::Authenticated { channels, .. } => channels,
-        }
+        &self.channels
     }
 
     /// Get mutable subscribed channels
     fn channels_mut(&mut self) -> &mut Vec<String> {
-        match self {
-            Self::Unauthenticated { channels, .. } => channels,
-            Self::Authenticated { channels, .. } => channels,
-        }
+        &mut self.channels
     }
 
     /// Check if connection is authenticated
     fn is_authenticated(&self) -> bool {
-        matches!(self, Self::Authenticated { .. })
+        matches!(self.auth_state, AuthState::Authenticated { .. })
     }
 
     /// Get user ID if authenticated
     fn user_id(&self) -> Option<&str> {
-        match self {
-            Self::Authenticated { info, .. } => Some(info.user_id()),
-            Self::Unauthenticated { .. } => None,
+        match &self.auth_state {
+            AuthState::Authenticated { user_id } => Some(user_id),
+            AuthState::Unauthenticated => None,
         }
     }
 
     /// Authenticate the connection
     fn authenticate(&mut self, user_id: String) {
-        // Take ownership of the current state to transition
-        // Create a placeholder address - this is safe as it's a temporary value
-        // that will never be used (the actual info is moved from old_state)
-        let placeholder_addr = std::net::SocketAddr::from(([0, 0, 0, 0], 0));
-
-        let old_state = std::mem::replace(
-            self,
-            Self::Unauthenticated {
-                info: super::ConnectionInfo::new(placeholder_addr),
-                sender: mpsc::channel(1).0,
-                channels: Vec::new(),
-            },
-        );
-
-        *self = match old_state {
-            Self::Unauthenticated {
-                info,
-                sender,
-                channels,
-            } => Self::Authenticated {
-                info: info.authenticate(user_id),
-                sender,
-                channels,
-            },
-            Self::Authenticated {
-                info,
-                sender,
-                channels,
-            } => {
-                // Already authenticated, update user_id by re-creating
-                Self::Authenticated {
-                    info: super::ConnectionInfo {
-                        id: info.id,
-                        addr: info.addr,
-                        connected_at: info.connected_at,
-                        last_activity: info.last_activity,
-                        metadata: info.metadata,
-                        state: super::Authenticated { user_id },
-                    },
-                    sender,
-                    channels,
-                }
-            }
-        };
+        self.auth_state = AuthState::Authenticated { user_id };
     }
 }
 
@@ -395,23 +343,19 @@ impl WebSocketManager {
     ) {
         let mut guard = self.locks.level1_write().await;
         if let Some(state) = guard.connections.get_mut(&id) {
-            // Store handshake information in metadata for both connection types
-            match state {
-                ConnectionState::Unauthenticated { info, .. } => {
-                    info.metadata.insert("client_name".to_string(), client_name);
-                    info.metadata
-                        .insert("client_version".to_string(), client_version);
-                    info.metadata
-                        .insert("capabilities".to_string(), capabilities.join(","));
-                }
-                ConnectionState::Authenticated { info, .. } => {
-                    info.metadata.insert("client_name".to_string(), client_name);
-                    info.metadata
-                        .insert("client_version".to_string(), client_version);
-                    info.metadata
-                        .insert("capabilities".to_string(), capabilities.join(","));
-                }
-            }
+            // Store handshake information in metadata
+            state
+                .info
+                .metadata
+                .insert("client_name".to_string(), client_name);
+            state
+                .info
+                .metadata
+                .insert("client_version".to_string(), client_version);
+            state
+                .info
+                .metadata
+                .insert("capabilities".to_string(), capabilities.join(","));
         }
     }
 

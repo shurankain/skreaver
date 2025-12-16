@@ -149,6 +149,85 @@ impl FileMemory {
         tracing::debug!(path = ?self.path, entries = self.cache.len(), "Persisted memory cache");
         Ok(())
     }
+
+    /// Clean up old corrupted backup files, keeping only the most recent N backups
+    ///
+    /// This method removes old `.corrupted.*` backup files for this FileMemory instance,
+    /// keeping only the `keep_count` most recent backups based on file modification time.
+    ///
+    /// # Arguments
+    ///
+    /// * `keep_count` - Number of most recent backups to keep (e.g., 5)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory cannot be read or if file operations fail.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use skreaver_memory::FileMemory;
+    ///
+    /// let mut memory = FileMemory::new("data.json");
+    /// // ... use memory ...
+    ///
+    /// // Clean up old backups, keeping only the 5 most recent
+    /// memory.cleanup_backups(5)?;
+    /// ```
+    pub fn cleanup_backups(&self, keep_count: usize) -> std::io::Result<()> {
+        let Some(parent) = self.path.parent() else {
+            return Ok(());
+        };
+
+        let prefix = format!(
+            "{}.corrupted.",
+            self.path.file_name().unwrap_or_default().to_string_lossy()
+        );
+
+        // Collect all backup files for this memory instance
+        let mut backups: Vec<_> = fs::read_dir(parent)?
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
+            .collect();
+
+        // Sort by modification time (oldest first)
+        backups.sort_by_key(|entry| {
+            entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        });
+
+        // Remove oldest backups beyond keep_count
+        let remove_count = backups.len().saturating_sub(keep_count);
+        for backup in backups.iter().take(remove_count) {
+            match fs::remove_file(backup.path()) {
+                Ok(()) => {
+                    tracing::debug!(
+                        path = ?backup.path(),
+                        "Removed old corrupted backup"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = ?backup.path(),
+                        error = %e,
+                        "Failed to remove old corrupted backup"
+                    );
+                }
+            }
+        }
+
+        if remove_count > 0 {
+            tracing::info!(
+                removed = remove_count,
+                kept = keep_count.min(backups.len()),
+                "Cleaned up old corrupted backups"
+            );
+        }
+
+        Ok(())
+    }
 }
 
 impl MemoryReader for FileMemory {
