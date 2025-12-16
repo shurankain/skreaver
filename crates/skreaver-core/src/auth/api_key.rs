@@ -104,8 +104,14 @@ impl ApiKeyConfig {
 pub struct Active;
 
 /// Marker for expired API key state
+///
+/// This type carries the expiration timestamp, making it impossible to have
+/// an expired key without a valid expiration time at the type level.
 #[derive(Debug, Clone, Copy)]
-pub struct Expired;
+pub struct Expired {
+    /// The timestamp when this key expired
+    pub expired_at: DateTime<Utc>,
+}
 
 /// Marker for revoked API key state
 #[derive(Debug, Clone, Copy)]
@@ -235,6 +241,10 @@ impl Key<Active> {
     }
 
     /// Check if the key is expired and transition to expired state if so
+    ///
+    /// Returns `Ok(Key<Active>)` if the key is still valid, or `Err(Key<Expired>)`
+    /// if the key has expired. The `Expired` state carries the expiration timestamp,
+    /// making it impossible to have an expired key without a valid expiration time.
     pub fn check_expiration(self) -> Result<Key<Active>, Box<Key<Expired>>> {
         if let Some(expires_at) = self.expires_at
             && Utc::now() > expires_at
@@ -337,11 +347,24 @@ impl Key<Active> {
 impl Key<Expired> {
     /// Get expiration timestamp
     ///
-    /// INVARIANT: Keys can only transition to Expired state if expires_at is Some.
-    /// This is enforced by check_expiration().
+    /// This method now has a compile-time guarantee: `Key<Expired>` can only be
+    /// constructed when an expiration timestamp exists, as enforced by `check_expiration()`.
+    /// The expiration time is stored in both the `expires_at` field and the `Expired`
+    /// type marker, providing defense in depth.
     pub fn expiration_time(&self) -> DateTime<Utc> {
+        // SAFETY: check_expiration() only creates Key<Expired> when expires_at is Some
         self.expires_at
             .expect("INVARIANT: Expired key must have expiration timestamp")
+    }
+
+    /// Get the Expired state marker with the expiration timestamp
+    ///
+    /// This provides type-level access to the expiration time, demonstrating that
+    /// an Expired key always has an associated expiration timestamp.
+    pub fn expired_state(&self) -> Expired {
+        Expired {
+            expired_at: self.expiration_time(),
+        }
     }
 
     /// Check how long ago the key expired

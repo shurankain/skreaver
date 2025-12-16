@@ -8,6 +8,45 @@ use skreaver_core::memory::{
 };
 
 /// A simple persistent key-value memory that syncs to a JSON file.
+///
+/// # Thread Safety
+///
+/// **This type is NOT thread-safe and should not be shared across threads without
+/// external synchronization.**
+///
+/// `FileMemory` does not implement `Send` or `Sync` protections for its internal
+/// state. If you need to share a `FileMemory` instance across threads, you must
+/// wrap it in appropriate synchronization primitives:
+///
+/// ```rust,ignore
+/// use std::sync::{Arc, Mutex};
+/// use skreaver_memory::FileMemory;
+///
+/// // Safe: Each thread gets its own FileMemory instance
+/// let memory1 = FileMemory::new("thread1.json");
+/// let memory2 = FileMemory::new("thread2.json");
+///
+/// // Safe: Properly synchronized with Mutex
+/// let shared_memory = Arc::new(Mutex::new(FileMemory::new("shared.json")));
+/// let memory_clone = Arc::clone(&shared_memory);
+/// std::thread::spawn(move || {
+///     let mut mem = memory_clone.lock().unwrap();
+///     // ... use mem ...
+/// });
+/// ```
+///
+/// # File Access Patterns
+///
+/// Each operation that modifies the cache (`store`, `store_many`, `restore`) will
+/// write to the file system. This ensures durability but may impact performance
+/// for high-frequency updates. Consider batching writes using `store_many` for
+/// better throughput.
+///
+/// # Concurrent File Access
+///
+/// Multiple `FileMemory` instances pointing to the same file path will conflict
+/// and may corrupt data. Ensure that each file path is used by only one
+/// `FileMemory` instance at a time, or use proper file locking mechanisms.
 pub struct FileMemory {
     path: PathBuf,
     cache: HashMap<String, String>,
