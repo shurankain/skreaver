@@ -10,11 +10,18 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Background task handles for graceful shutdown
+///
+/// SECURITY: Properly manages task lifecycle to prevent:
+/// - Task leaks from incomplete shutdown
+/// - Race conditions during restart
+/// - Zombie tasks with stale shutdown signals
 struct BackgroundTasks {
     cleanup_task: Option<JoinHandle<()>>,
     orphaned_cleanup_task: Option<JoinHandle<()>>,
     broadcast_task: Option<JoinHandle<()>>,
     shutdown_signal: Arc<AtomicBool>,
+    /// Flag to prevent concurrent task initialization
+    is_starting: AtomicBool,
 }
 
 impl BackgroundTasks {
@@ -24,10 +31,49 @@ impl BackgroundTasks {
             orphaned_cleanup_task: None,
             broadcast_task: None,
             shutdown_signal: Arc::new(AtomicBool::new(false)),
+            is_starting: AtomicBool::new(false),
         }
     }
 
-    /// Shutdown all background tasks
+    /// Check if tasks are currently being started
+    fn is_starting(&self) -> bool {
+        self.is_starting.load(Ordering::Acquire)
+    }
+
+    /// Try to acquire the starting lock
+    fn try_start(&self) -> bool {
+        self.is_starting
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    /// Release the starting lock
+    fn finish_start(&self) {
+        self.is_starting.store(false, Ordering::Release);
+    }
+
+    /// Shutdown all background tasks and wait for them to complete
+    async fn shutdown_and_wait(&mut self) {
+        // Signal shutdown
+        self.shutdown_signal.store(true, Ordering::Release);
+
+        // Collect handles
+        let handles = vec![
+            self.cleanup_task.take(),
+            self.orphaned_cleanup_task.take(),
+            self.broadcast_task.take(),
+        ];
+
+        // Wait for all tasks to complete (with timeout)
+        for handle in handles.into_iter().flatten() {
+            // First try graceful shutdown via abort
+            handle.abort();
+            // Wait for task to actually terminate
+            let _ = tokio::time::timeout(tokio::time::Duration::from_millis(500), handle).await;
+        }
+    }
+
+    /// Shutdown all background tasks (synchronous version for Drop)
     fn shutdown(&mut self) {
         self.shutdown_signal.store(true, Ordering::Release);
 
@@ -854,22 +900,34 @@ impl WebSocketManager {
     }
 
     /// Start background tasks
+    ///
+    /// SECURITY: Uses atomic flag to prevent race conditions during concurrent
+    /// calls to start_background_tasks. Waits for old tasks to fully terminate
+    /// before starting new ones.
     pub async fn start_background_tasks(&self) {
         let mut tasks = self.background_tasks.lock().await;
+
+        // Prevent concurrent initialization
+        if tasks.is_starting() {
+            info!("Background tasks already being started, skipping");
+            return;
+        }
+
+        if !tasks.try_start() {
+            info!("Another thread is starting background tasks, skipping");
+            return;
+        }
 
         // Stop existing tasks if any and wait for them to complete
         if tasks.cleanup_task.is_some()
             || tasks.orphaned_cleanup_task.is_some()
             || tasks.broadcast_task.is_some()
         {
-            tasks.shutdown();
-            // Release lock and wait briefly for tasks to stop
-            drop(tasks);
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-            tasks = self.background_tasks.lock().await;
+            // Shutdown and wait for tasks with lock held
+            tasks.shutdown_and_wait().await;
         }
 
-        // Create fresh shutdown signal
+        // Create fresh shutdown signal for new tasks
         let shutdown = Arc::new(AtomicBool::new(false));
         tasks.shutdown_signal = Arc::clone(&shutdown);
 
@@ -939,6 +997,10 @@ impl WebSocketManager {
             }
         });
         tasks.broadcast_task = Some(broadcast_handle);
+
+        // Mark initialization as complete
+        tasks.finish_start();
+        info!("Background tasks started successfully");
     }
 
     /// Shutdown all background tasks gracefully

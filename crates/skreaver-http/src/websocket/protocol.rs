@@ -53,8 +53,49 @@ impl Channel {
     }
 
     /// Check if this channel requires admin privileges
+    ///
+    /// SECURITY: This method checks BOTH the enum variant AND custom channel names
+    /// that shadow privileged channel names to prevent authorization bypass attacks.
+    /// An attacker cannot create Custom("system") to bypass admin requirements.
     pub fn requires_admin(&self) -> bool {
-        matches!(self, Self::System | Self::Metrics | Self::Debug)
+        match self {
+            Self::System | Self::Metrics | Self::Debug => true,
+            Self::Custom(name) => {
+                // SECURITY: Prevent custom channels from shadowing privileged channels
+                // This blocks Custom("system"), Custom("metrics"), Custom("debug")
+                matches!(name.to_lowercase().as_str(), "system" | "metrics" | "debug")
+            }
+            _ => false,
+        }
+    }
+
+    /// Validate that a custom channel name is safe to use
+    ///
+    /// Returns false if the channel name shadows a privileged channel
+    /// or contains potentially dangerous characters.
+    pub fn is_valid_custom_name(name: &str) -> bool {
+        // Reject names that shadow privileged channels (case-insensitive)
+        let lower = name.to_lowercase();
+        if matches!(
+            lower.as_str(),
+            "system" | "metrics" | "debug" | "agents" | "tasks" | "notifications"
+        ) {
+            return false;
+        }
+
+        // Reject empty names
+        if name.is_empty() {
+            return false;
+        }
+
+        // Reject names that are too long
+        if name.len() > 100 {
+            return false;
+        }
+
+        // Only allow alphanumeric, dash, underscore, and dot
+        name.chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
     }
 }
 
@@ -732,6 +773,50 @@ mod tests {
         assert!(!Channel::Agents.requires_admin());
         assert!(!Channel::Tasks.requires_admin());
         assert!(!Channel::Notifications.requires_admin());
+    }
+
+    #[test]
+    fn test_channel_custom_shadowing_blocked() {
+        // SECURITY: Custom channels that shadow privileged names must require admin
+        assert!(Channel::Custom("system".to_string()).requires_admin());
+        assert!(Channel::Custom("System".to_string()).requires_admin());
+        assert!(Channel::Custom("SYSTEM".to_string()).requires_admin());
+        assert!(Channel::Custom("metrics".to_string()).requires_admin());
+        assert!(Channel::Custom("Metrics".to_string()).requires_admin());
+        assert!(Channel::Custom("debug".to_string()).requires_admin());
+        assert!(Channel::Custom("Debug".to_string()).requires_admin());
+
+        // Valid custom channels should NOT require admin
+        assert!(!Channel::Custom("my-channel".to_string()).requires_admin());
+        assert!(!Channel::Custom("user-events".to_string()).requires_admin());
+    }
+
+    #[test]
+    fn test_channel_custom_name_validation() {
+        // Valid custom names
+        assert!(Channel::is_valid_custom_name("my-channel"));
+        assert!(Channel::is_valid_custom_name("user_events"));
+        assert!(Channel::is_valid_custom_name("channel.v1"));
+        assert!(Channel::is_valid_custom_name("Channel123"));
+
+        // Invalid: shadow privileged channels
+        assert!(!Channel::is_valid_custom_name("system"));
+        assert!(!Channel::is_valid_custom_name("System"));
+        assert!(!Channel::is_valid_custom_name("SYSTEM"));
+        assert!(!Channel::is_valid_custom_name("metrics"));
+        assert!(!Channel::is_valid_custom_name("debug"));
+        assert!(!Channel::is_valid_custom_name("agents"));
+        assert!(!Channel::is_valid_custom_name("tasks"));
+        assert!(!Channel::is_valid_custom_name("notifications"));
+
+        // Invalid: empty or too long
+        assert!(!Channel::is_valid_custom_name(""));
+        assert!(!Channel::is_valid_custom_name(&"x".repeat(101)));
+
+        // Invalid: special characters
+        assert!(!Channel::is_valid_custom_name("channel<script>"));
+        assert!(!Channel::is_valid_custom_name("channel name")); // spaces
+        assert!(!Channel::is_valid_custom_name("channel@test"));
     }
 
     #[test]

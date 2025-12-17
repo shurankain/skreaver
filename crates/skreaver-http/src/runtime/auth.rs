@@ -18,8 +18,13 @@ use serde::{Deserialize, Serialize};
 use skreaver_core::{ApiKeyConfig, ApiKeyManager, Role};
 use std::sync::Arc;
 
-/// JWT secret key - uses SecretKey with graceful fallback in debug builds
-/// In production, uses environment variable or generates random key (invalidates existing tokens)
+/// JWT secret key - REQUIRED in production, fallback only in dev/test
+///
+/// SECURITY: In production builds, the JWT secret MUST be set via the
+/// SKREAVER_JWT_SECRET environment variable. The server will panic on startup
+/// if this is not configured to ensure secrets are explicitly managed.
+///
+/// In debug/test builds, a default insecure secret is used for convenience.
 static JWT_SECRET: Lazy<SecretKey> = Lazy::new(|| {
     #[cfg(any(test, debug_assertions))]
     {
@@ -31,9 +36,34 @@ static JWT_SECRET: Lazy<SecretKey> = Lazy::new(|| {
 
     #[cfg(not(any(test, debug_assertions)))]
     {
-        // In production: load from env or generate random (with warning)
-        // This prevents panics but will invalidate existing tokens if env var missing
-        SecretKey::from_env_or_default("SKREAVER_JWT_SECRET", None)
+        // SECURITY: In production, JWT secret MUST be set explicitly
+        // Failing fast prevents deployment with insecure defaults
+        match std::env::var("SKREAVER_JWT_SECRET") {
+            Ok(secret) if !secret.is_empty() => {
+                tracing::info!("JWT secret loaded from environment variable");
+                SecretKey::new(secret)
+            }
+            Ok(_) => {
+                tracing::error!(
+                    "FATAL: SKREAVER_JWT_SECRET is set but empty. \
+                     A non-empty JWT secret is required in production."
+                );
+                panic!(
+                    "SKREAVER_JWT_SECRET environment variable is empty. \
+                     Set a secure, randomly generated secret (minimum 32 characters)."
+                );
+            }
+            Err(_) => {
+                tracing::error!(
+                    "FATAL: SKREAVER_JWT_SECRET environment variable not set. \
+                     This is REQUIRED in production to ensure JWT token security."
+                );
+                panic!(
+                    "SKREAVER_JWT_SECRET environment variable must be set in production. \
+                     Generate a secure random secret: openssl rand -base64 32"
+                );
+            }
+        }
     }
 });
 

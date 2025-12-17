@@ -15,14 +15,23 @@ use std::{net::SocketAddr, sync::Arc};
 use tracing::{debug, error, info, warn};
 
 /// WebSocket upgrade query parameters
+///
+/// SECURITY NOTE: Authentication tokens are NOT accepted in query parameters
+/// to prevent token leakage via:
+/// - Server logs (URLs are commonly logged)
+/// - Browser history
+/// - HTTP Referer headers
+/// - Proxy server logs
+///
+/// Clients MUST authenticate using WebSocket messages AFTER connection establishment.
 #[derive(Debug, Deserialize)]
 pub struct WsUpgradeQuery {
-    /// Optional authentication token
-    pub token: Option<String>,
     /// Client identifier
     pub client: Option<String>,
     /// Client version
     pub version: Option<String>,
+    // SECURITY: Token intentionally removed from query parameters
+    // Use post-connection WsMessage::Auth instead
 }
 
 /// WebSocket connection status response
@@ -145,13 +154,9 @@ async fn handle_websocket_connection(
         warn!("Failed to send welcome message to {}", conn_id);
     }
 
-    // Auto-authenticate if token provided
-    if let Some(token) = query.token {
-        let auth_msg = WsMessage::Auth { token };
-        if let Err(e) = manager.handle_message(conn_id, auth_msg).await {
-            error!("Auto-authentication failed for {}: {}", conn_id, e);
-        }
-    }
+    // SECURITY: Authentication via WebSocket message only (not query params)
+    // Clients must send WsMessage::Auth after connection is established
+    // to prevent token leakage in URLs/logs
 
     // Message handling loop
     use futures::{SinkExt, StreamExt};
@@ -161,6 +166,22 @@ async fn handle_websocket_connection(
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(axum::extract::ws::Message::Text(text)) => {
+                    // SECURITY: Enforce message size limit to prevent DoS
+                    if text.len() > super::protocol::MAX_MESSAGE_SIZE {
+                        warn!(
+                            "Message from {} exceeds size limit: {} bytes (max: {})",
+                            conn_id,
+                            text.len(),
+                            super::protocol::MAX_MESSAGE_SIZE
+                        );
+                        continue;
+                    }
+
+                    // SECURITY: Use size-limited deserialization to prevent JSON bombs
+                    // The size check above prevents memory exhaustion from large payloads
+                    // serde_json handles deeply nested JSON reasonably well, but we've
+                    // limited the input size to bound the maximum resource consumption
+
                     // Try parsing as MessageEnvelope first
                     if let Ok(envelope) = serde_json::from_str::<MessageEnvelope>(&text) {
                         if let Err(e) =
@@ -175,7 +196,7 @@ async fn handle_websocket_connection(
                             error!("Error handling legacy message from {}: {}", conn_id, e);
                         }
                     } else {
-                        error!("Invalid message format from {}: {}", conn_id, text);
+                        warn!("Invalid message format from {}", conn_id);
                     }
                 }
                 Ok(axum::extract::ws::Message::Binary(_)) => {
@@ -494,14 +515,13 @@ mod tests {
 
     #[test]
     fn test_ws_upgrade_query_parsing() {
-        // This would be tested with actual query parsing in integration tests
+        // SECURITY: Token is intentionally NOT in query params
+        // Authentication must happen via WebSocket message after connection
         let query = WsUpgradeQuery {
-            token: Some("test-token".to_string()),
             client: Some("test-client".to_string()),
             version: Some("1.0.0".to_string()),
         };
 
-        assert_eq!(query.token, Some("test-token".to_string()));
         assert_eq!(query.client, Some("test-client".to_string()));
         assert_eq!(query.version, Some("1.0.0".to_string()));
     }

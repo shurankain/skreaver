@@ -350,6 +350,10 @@ impl RoleManager {
     }
 
     /// Check if a tool can be accessed
+    ///
+    /// SECURITY: Uses default-deny pattern. If no explicit policy matches the tool,
+    /// access is DENIED. This prevents accidentally exposing dangerous tools that
+    /// were added without an accompanying access policy.
     pub fn check_tool_access(
         &self,
         tool_name: &str,
@@ -363,15 +367,29 @@ impl RoleManager {
             .filter(|p| p.matches(tool_name))
             .collect();
 
-        // If no policies match, default to checking ExecuteTool permission
+        // SECURITY: Default-deny if no policy matches
+        // This prevents tools without explicit policies from being accessible
         if matching_policies.is_empty() {
-            return permissions.contains(&Permission::ExecuteTool);
+            tracing::warn!(
+                tool_name = %tool_name,
+                "Tool access DENIED - no policy found (secure default-deny)"
+            );
+            return false;
         }
 
         // All matching policies must allow access
         matching_policies
             .iter()
             .all(|p| p.is_allowed(roles, permissions))
+    }
+
+    /// Add a default allow-all policy for tools matching a pattern
+    ///
+    /// SECURITY: Use this method carefully - it allows tools without specific role requirements.
+    /// Prefer using `add_tool_policy` with explicit role/permission requirements.
+    pub fn add_default_allow_policy(&mut self, pattern: &str) {
+        self.tool_policies
+            .push(ToolPolicy::new(pattern.to_string()));
     }
 
     /// Get permissions for a custom role
@@ -438,7 +456,49 @@ mod tests {
         // Agent should not access shell commands
         assert!(!manager.check_tool_access("shell_exec", &agent_roles, &agent_perms));
 
-        // Agent should access regular tools
+        // Agent should access http_get (has ExecuteTool permission and policy exists)
         assert!(manager.check_tool_access("http_get", &agent_roles, &agent_perms));
+    }
+
+    #[test]
+    fn test_default_deny_behavior() {
+        // SECURITY: Test that tools without policies are denied by default
+        let manager = RoleManager::new(); // Empty manager with no policies
+
+        let admin_roles = vec![Role::Admin];
+        let admin_perms = Role::Admin.permissions();
+
+        // Even admin should be denied access to tools without explicit policies
+        // This is the secure default-deny behavior
+        assert!(
+            !manager.check_tool_access("unknown_tool", &admin_roles, &admin_perms),
+            "Tools without policies should be denied (default-deny)"
+        );
+
+        let agent_roles = vec![Role::Agent];
+        let agent_perms = Role::Agent.permissions();
+
+        assert!(
+            !manager.check_tool_access("some_new_tool", &agent_roles, &agent_perms),
+            "New tools without policies should be denied"
+        );
+    }
+
+    #[test]
+    fn test_explicit_allow_policy() {
+        let mut manager = RoleManager::new();
+
+        // Add explicit allow policy for safe tools
+        manager.add_default_allow_policy("safe_*");
+
+        let agent_roles = vec![Role::Agent];
+        let agent_perms = Role::Agent.permissions();
+
+        // Tools matching the allow pattern should be accessible
+        assert!(manager.check_tool_access("safe_read", &agent_roles, &agent_perms));
+        assert!(manager.check_tool_access("safe_list", &agent_roles, &agent_perms));
+
+        // Tools NOT matching any pattern should still be denied
+        assert!(!manager.check_tool_access("dangerous_exec", &agent_roles, &agent_perms));
     }
 }

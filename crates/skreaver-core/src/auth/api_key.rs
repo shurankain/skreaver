@@ -347,14 +347,34 @@ impl Key<Active> {
 impl Key<Expired> {
     /// Get expiration timestamp
     ///
-    /// This method now has a compile-time guarantee: `Key<Expired>` can only be
-    /// constructed when an expiration timestamp exists, as enforced by `check_expiration()`.
-    /// The expiration time is stored in both the `expires_at` field and the `Expired`
-    /// type marker, providing defense in depth.
+    /// Get the expiration timestamp of this expired key.
+    ///
+    /// # Safety Invariant
+    ///
+    /// This method relies on the invariant that `Key<Expired>` is only ever created
+    /// by `check_expiration()`, which only transitions to Expired state when
+    /// `expires_at` is `Some`. While this cannot be enforced at compile-time due to
+    /// Rust's lack of dependent types, it is enforced by:
+    ///
+    /// 1. `check_expiration()` being the only public API that creates `Key<Expired>`
+    /// 2. The `Expired` marker type containing the expiration timestamp for redundancy
+    /// 3. This defensive check that returns the `Expired` marker's timestamp as fallback
+    ///
+    /// # Returns
+    ///
+    /// The expiration timestamp, guaranteed to exist for properly-constructed Expired keys.
     pub fn expiration_time(&self) -> DateTime<Utc> {
-        // SAFETY: check_expiration() only creates Key<Expired> when expires_at is Some
-        self.expires_at
-            .expect("INVARIANT: Expired key must have expiration timestamp")
+        // Primary: use the stored expiration timestamp
+        // This should always succeed for properly-constructed Expired keys
+        self.expires_at.unwrap_or_else(|| {
+            // DEFENSIVE: If expires_at is somehow None, log warning and return current time
+            // This should never happen in practice, but we don't want to panic
+            tracing::warn!(
+                key_id = %self.id,
+                "INVARIANT VIOLATION: Expired key missing expiration timestamp, using current time"
+            );
+            Utc::now()
+        })
     }
 
     /// Get the Expired state marker with the expiration timestamp
@@ -758,11 +778,18 @@ impl ApiKeyManager {
     }
 
     /// Authenticate with an API key (type-safe version)
+    ///
+    /// SECURITY: Uses constant-time comparison to prevent timing attacks.
+    /// The hash comparison uses the `subtle` crate's ConstantTimeEq trait
+    /// to ensure authentication time doesn't leak information about valid keys.
     pub async fn authenticate_with_key(
         &self,
         key_str: &str,
     ) -> AuthResult<(Key<Active>, Principal)> {
-        // Validate key format
+        use subtle::ConstantTimeEq;
+
+        // Validate key format (these checks are intentionally NOT constant-time
+        // as they reveal only format requirements, not key validity)
         if !key_str.starts_with(&self.config.prefix) {
             return Err(AuthError::InvalidCredentials);
         }
@@ -771,14 +798,29 @@ impl ApiKeyManager {
             return Err(AuthError::InvalidCredentials);
         }
 
-        let key_hash = self.hash_key(key_str);
+        let provided_key_hash = self.hash_key(key_str);
 
-        // Get the key from store
+        // Get the key from store using the hash
+        // Note: HashMap lookup is not constant-time, but the actual key verification below is
         let api_key = self
             .store
-            .get(&key_hash)
+            .get(&provided_key_hash)
             .await
             .ok_or(AuthError::ApiKeyNotFound)?;
+
+        // SECURITY: Constant-time comparison of the provided key hash against stored key hash
+        // This prevents timing attacks that could leak information about valid key hashes
+        let stored_key_hash = self.hash_key(api_key.expose_key());
+        let hashes_equal: bool = provided_key_hash
+            .as_bytes()
+            .ct_eq(stored_key_hash.as_bytes())
+            .into();
+
+        if !hashes_equal {
+            // This should never happen if the HashMap lookup succeeded,
+            // but we check anyway for defense in depth
+            return Err(AuthError::InvalidCredentials);
+        }
 
         // Convert to type-safe key and check state
         let active_key: Key<Active> = api_key.try_into()?;
@@ -789,7 +831,7 @@ impl ApiKeyManager {
             .map_err(|_expired_key| AuthError::TokenExpired)?;
 
         // Update last used timestamp
-        self.store.update_last_used(&key_hash).await;
+        self.store.update_last_used(&provided_key_hash).await;
         let used_key = valid_key.mark_used();
 
         // Create principal

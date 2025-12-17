@@ -572,7 +572,9 @@ mod tests {
         let agent_id = "comprehensive-test-agent";
 
         // Simulate a comprehensive agent workflow
-        tokio::spawn(async move {
+        // SECURITY: Store the JoinHandle to ensure proper task lifecycle management
+        // and prevent task leaks
+        let task_handle = tokio::spawn(async move {
             // Start
             executor.thinking(agent_id, "Initializing").await;
             executor.progress(agent_id, 10.0, "Analyzing input").await;
@@ -645,6 +647,14 @@ mod tests {
         assert!(received_types.contains(&"partial"));
         assert!(received_types.contains(&"completed"));
         assert!(update_count >= 8); // Should have received multiple updates
+
+        // SECURITY: Wait for the spawned task to complete to prevent task leaks
+        // This ensures proper resource cleanup even in test code
+        match tokio::time::timeout(std::time::Duration::from_secs(5), task_handle).await {
+            Ok(Ok(())) => { /* Task completed successfully */ }
+            Ok(Err(e)) => panic!("Task panicked: {:?}", e),
+            Err(_) => panic!("Task timed out - potential leak"),
+        }
     }
 
     #[tokio::test]
