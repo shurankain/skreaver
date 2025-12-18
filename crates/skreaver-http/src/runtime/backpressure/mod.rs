@@ -6,7 +6,10 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, atomic::Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use tokio::sync::{RwLock, Semaphore, mpsc};
@@ -32,11 +35,16 @@ pub use request::{
 use queue::AgentQueue;
 
 /// Main backpressure manager
+///
+/// SECURITY: Uses AtomicBool for shutdown to ensure Drop can always signal
+/// shutdown without deadlock or panic, even if locks are held.
 pub struct BackpressureManager {
     config: BackpressureConfig,
     agent_queues: Arc<RwLock<HashMap<String, AgentQueue>>>,
     global_semaphore: Arc<Semaphore>,
     shutdown_tx: Arc<RwLock<Option<mpsc::UnboundedSender<()>>>>,
+    /// Atomic shutdown flag that can always be set safely in Drop
+    shutdown_flag: Arc<AtomicBool>,
 }
 
 impl BackpressureManager {
@@ -49,6 +57,7 @@ impl BackpressureManager {
             agent_queues: Arc::new(RwLock::new(HashMap::new())),
             global_semaphore,
             shutdown_tx: Arc::new(RwLock::new(None)),
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -62,6 +71,7 @@ impl BackpressureManager {
 
         let agent_queues = Arc::clone(&self.agent_queues);
         let config = self.config.clone();
+        let shutdown_flag = Arc::clone(&self.shutdown_flag);
 
         // Start queue processor task
         tokio::spawn(async move {
@@ -70,10 +80,15 @@ impl BackpressureManager {
             loop {
                 tokio::select! {
                     _ = cleanup_interval.tick() => {
+                        // Check atomic shutdown flag (always safe, no locks)
+                        if shutdown_flag.load(Ordering::Acquire) {
+                            info!("Backpressure manager shutting down (via flag)");
+                            break;
+                        }
                         Self::cleanup_expired_requests(&agent_queues, &config).await;
                     }
                     _ = shutdown_rx.recv() => {
-                        info!("Backpressure manager shutting down");
+                        info!("Backpressure manager shutting down (via channel)");
                         break;
                     }
                 }
@@ -207,6 +222,9 @@ impl BackpressureManager {
     }
 
     /// Process the next request for an agent using queued input
+    ///
+    /// SECURITY: Acquires permits BEFORE dequeuing requests to prevent TOCTOU race
+    /// conditions that could cause priority inversion or request starvation.
     pub async fn process_next_queued_request<F, Fut>(
         &self,
         agent_id: &str,
@@ -216,47 +234,38 @@ impl BackpressureManager {
         F: FnOnce(String) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = String> + Send + 'static,
     {
-        // Try to get a request from the queue
-        let (request, tx, semaphore, input) = {
+        // SECURITY FIX: Acquire permits BEFORE dequeuing to prevent TOCTOU race
+        // This ensures we have capacity before removing from queue, avoiding
+        // priority inversion when requeuing on permit failure.
+
+        // Try to acquire global permit first
+        let _global_permit = self.global_semaphore.try_acquire().ok()?;
+
+        // Get local semaphore and try to acquire permit
+        let local_semaphore = {
+            let queues = self.agent_queues.read().await;
+            let queue = queues.get(agent_id)?;
+            if queue.queue.is_empty() {
+                return None;
+            }
+            Arc::clone(&queue.semaphore)
+        };
+
+        let _local_permit = local_semaphore.try_acquire().ok()?;
+
+        // Now that we have both permits, safely dequeue the request
+        let (request, tx, input) = {
             let mut queues = self.agent_queues.write().await;
             let queue = queues.get_mut(agent_id)?;
 
             if queue.queue.is_empty() {
+                // Queue emptied between read lock and write lock - rare but possible
                 return None;
             }
 
             let (request, tx) = queue.queue.pop_front()?;
             let input = request.input.clone().unwrap_or_default();
-            (request, tx, Arc::clone(&queue.semaphore), input)
-        };
-
-        // Acquire permits
-        let _global_permit = match self.global_semaphore.try_acquire() {
-            Ok(permit) => permit,
-            Err(_) => {
-                // Global capacity exhausted, requeue the request
-                {
-                    let mut queues = self.agent_queues.write().await;
-                    if let Some(queue) = queues.get_mut(agent_id) {
-                        queue.queue.push_front((request, tx));
-                    }
-                }
-                return None;
-            }
-        };
-
-        let _local_permit = match semaphore.try_acquire() {
-            Ok(permit) => permit,
-            Err(_) => {
-                // Local capacity exhausted, requeue the request
-                {
-                    let mut queues = self.agent_queues.write().await;
-                    if let Some(queue) = queues.get_mut(agent_id) {
-                        queue.queue.push_front((request, tx));
-                    }
-                }
-                return None;
-            }
+            (request, tx, input)
         };
 
         // Check if request has timed out while in queue
@@ -586,7 +595,12 @@ impl BackpressureManager {
 
 impl Drop for BackpressureManager {
     fn drop(&mut self) {
-        // Use blocking call since Drop can't be async
+        // SECURITY: Always set atomic shutdown flag - this never fails
+        // The background task checks this flag periodically
+        self.shutdown_flag.store(true, Ordering::Release);
+
+        // Also try to send via channel for immediate shutdown (best effort)
+        // This can fail if lock is held, but atomic flag ensures eventual shutdown
         if let Ok(mut shutdown_tx_guard) = self.shutdown_tx.try_write()
             && let Some(shutdown_tx) = shutdown_tx_guard.take()
         {

@@ -319,82 +319,74 @@ impl RuntimeError {
     }
 
     /// Convert this error into a structured error response
+    ///
+    /// SECURITY: This method sanitizes error details to prevent information disclosure.
+    /// Internal details like stack traces, file paths, internal IDs, and user-provided
+    /// values are NOT exposed in API responses. Full details are logged server-side
+    /// with the request_id for debugging.
     pub fn to_error_response(&self) -> ErrorResponse {
-        let mut response = ErrorResponse::new(
-            self.error_code(),
-            &self.to_string(),
-            self.request_id().clone(),
-        );
+        // SECURITY: Use generic user-facing messages instead of internal error details
+        let user_message = self.user_facing_message();
+        let mut response =
+            ErrorResponse::new(self.error_code(), &user_message, self.request_id().clone());
 
-        // Add specific details based on error type
+        // SECURITY: Only add safe, non-sensitive details to client responses
+        // Internal details are logged server-side with request_id for debugging
         match self {
-            RuntimeError::AgentNotFound { agent_id, .. } => {
+            // Agent errors: Don't expose internal agent IDs or operation details
+            RuntimeError::AgentNotFound { .. } => {
+                // No additional details - agent_id could leak internal structure
+            }
+            RuntimeError::AgentCreationFailed { agent_type, .. } => {
+                // Only expose agent_type if it's a user-provided value, not internal reason
+                if let Some(t) = agent_type {
+                    response = response.with_details(serde_json::json!({
+                        "agent_type": t
+                    }));
+                }
+            }
+            RuntimeError::AgentOperationFailed { .. } => {
+                // SECURITY: Don't expose agent_id, operation, or reason - may contain
+                // stack traces, file paths, or other sensitive internal details
+            }
+
+            // Auth errors: Minimal info to prevent enumeration attacks
+            RuntimeError::InvalidAuthentication { auth_method, .. } => {
+                // Don't expose the specific reason - could help attackers
+                if let Some(method) = auth_method {
+                    response = response.with_details(serde_json::json!({
+                        "auth_method": method
+                    }));
+                }
+            }
+            RuntimeError::InsufficientPermissions { required, .. } => {
+                // Only show required permissions, NOT what user provided
+                // (provided permissions could leak user's role structure)
                 response = response.with_details(serde_json::json!({
-                    "agent_id": agent_id
+                    "required_permissions": required
                 }));
             }
-            RuntimeError::AgentCreationFailed {
-                agent_type, reason, ..
-            } => {
-                response = response.with_details(serde_json::json!({
-                    "agent_type": agent_type,
-                    "reason": reason
-                }));
-            }
-            RuntimeError::AgentOperationFailed {
-                agent_id,
-                operation,
-                reason,
-                ..
-            } => {
-                response = response.with_details(serde_json::json!({
-                    "agent_id": agent_id,
-                    "operation": operation,
-                    "reason": reason
-                }));
-            }
-            RuntimeError::InvalidAuthentication {
-                reason,
-                auth_method,
-                ..
-            } => {
-                response = response.with_details(serde_json::json!({
-                    "reason": reason,
-                    "auth_method": auth_method
-                }));
-            }
-            RuntimeError::InsufficientPermissions {
-                required, provided, ..
-            } => {
-                response = response.with_details(serde_json::json!({
-                    "required_permissions": required,
-                    "provided_permissions": provided
-                }));
-            }
+
+            // Rate limiting: Safe to expose limits (helps clients implement backoff)
             RuntimeError::RateLimitExceeded {
                 limit_type,
                 retry_after,
-                current_usage,
-                limit,
                 ..
             } => {
+                // Don't expose current_usage or exact limit - could help DoS planning
                 response = response.with_details(serde_json::json!({
                     "limit_type": limit_type,
-                    "retry_after_seconds": retry_after,
-                    "current_usage": current_usage,
-                    "limit": limit
+                    "retry_after_seconds": retry_after
                 }));
             }
-            RuntimeError::InvalidInput {
-                field,
-                reason,
-                provided_value,
-                ..
-            } => {
+
+            // Input validation: Only expose field name, not the invalid value
+            RuntimeError::InvalidInput { field, reason, .. } => {
+                // SECURITY: Never expose provided_value - may contain sensitive user data
+                // like passwords, API keys, or PII that shouldn't be echoed back
                 response = response.with_details(serde_json::json!({
                     "field": field,
-                    "reason": reason,
-                    "provided_value": provided_value
+                    "reason": reason
                 }));
             }
             RuntimeError::MissingRequiredField { field, .. } => {
@@ -402,20 +394,71 @@ impl RuntimeError {
                     "field": field
                 }));
             }
-            RuntimeError::Timeout {
-                operation,
-                duration_ms,
-                ..
-            } => {
-                response = response.with_details(serde_json::json!({
-                    "operation": operation,
-                    "duration_ms": duration_ms
-                }));
+
+            // Timeouts: Only generic info
+            RuntimeError::Timeout { .. } => {
+                // Don't expose internal operation names or exact durations
             }
-            _ => {} // Other errors don't need special details
+
+            // All other errors: No additional details to prevent information disclosure
+            _ => {}
         }
 
         response
+    }
+
+    /// Get a sanitized user-facing message that doesn't expose internal details
+    ///
+    /// SECURITY: These messages are safe to show to end users and don't leak
+    /// internal implementation details, file paths, or stack traces.
+    fn user_facing_message(&self) -> String {
+        match self {
+            RuntimeError::AgentNotFound { .. } => "The requested agent was not found.".to_string(),
+            RuntimeError::AgentCreationFailed { .. } => {
+                "Failed to create the agent. Please check your configuration.".to_string()
+            }
+            RuntimeError::AgentOperationFailed { .. } => {
+                "The agent operation could not be completed.".to_string()
+            }
+            RuntimeError::AuthenticationRequired { .. } => {
+                "Authentication is required to access this resource.".to_string()
+            }
+            RuntimeError::InvalidAuthentication { .. } => {
+                "The provided authentication credentials are invalid.".to_string()
+            }
+            RuntimeError::InsufficientPermissions { .. } => {
+                "You don't have permission to perform this action.".to_string()
+            }
+            RuntimeError::TokenCreationFailed { .. } => {
+                "Failed to create authentication token.".to_string()
+            }
+            RuntimeError::RateLimitExceeded { .. } => {
+                "Rate limit exceeded. Please try again later.".to_string()
+            }
+            RuntimeError::InvalidInput { field, .. } => {
+                format!("Invalid value provided for field '{}'.", field)
+            }
+            RuntimeError::MissingRequiredField { field, .. } => {
+                format!("Required field '{}' is missing.", field)
+            }
+            RuntimeError::InvalidJson { .. } => "Invalid JSON in request body.".to_string(),
+            RuntimeError::InternalError { .. } => {
+                "An internal error occurred. Please try again later.".to_string()
+            }
+            RuntimeError::ServiceUnavailable { .. } => {
+                "Service is temporarily unavailable. Please try again later.".to_string()
+            }
+            RuntimeError::Timeout { .. } => "The request timed out. Please try again.".to_string(),
+            RuntimeError::MemoryError { .. } => {
+                "A storage error occurred. Please try again later.".to_string()
+            }
+            RuntimeError::ToolExecutionFailed { .. } => {
+                "Tool execution failed. Please check your request.".to_string()
+            }
+            RuntimeError::ConfigurationError { .. } => {
+                "A configuration error occurred.".to_string()
+            }
+        }
     }
 }
 
@@ -512,7 +555,59 @@ mod tests {
 
         assert_eq!(response.error, "agent_not_found");
         assert_eq!(response.request_id, request_id);
-        assert!(response.details.is_some());
+        // SECURITY: AgentNotFound no longer includes agent_id in details
+        // to prevent information disclosure
+        assert!(response.details.is_none());
+        assert_eq!(response.message, "The requested agent was not found.");
+    }
+
+    #[test]
+    fn test_error_response_sanitization() {
+        let request_id = RequestId::generate();
+
+        // Test that sensitive data is NOT exposed in error responses
+        let error = RuntimeError::InvalidInput {
+            field: "password".to_string(),
+            reason: "Must be at least 8 characters".to_string(),
+            provided_value: Some("secret123".to_string()), // SENSITIVE!
+            request_id: request_id.clone(),
+        };
+        let response = error.to_error_response();
+
+        // Verify provided_value is NOT in the response
+        if let Some(details) = &response.details {
+            assert!(
+                details.get("provided_value").is_none(),
+                "SECURITY: provided_value should not be exposed in error response"
+            );
+        }
+
+        // Test that internal operation details are NOT exposed
+        let error = RuntimeError::AgentOperationFailed {
+            agent_id: "internal-agent-12345".to_string(),
+            operation: "load_from_file(/etc/passwd)".to_string(),
+            reason: "Stack trace:\n  at main.rs:42\n  at lib.rs:100".to_string(),
+            request_id: request_id.clone(),
+        };
+        let response = error.to_error_response();
+
+        // Verify no internal details are exposed
+        assert!(
+            response.details.is_none(),
+            "SECURITY: AgentOperationFailed should not expose internal details"
+        );
+        assert!(
+            !response.message.contains("internal-agent"),
+            "SECURITY: agent_id should not be in message"
+        );
+        assert!(
+            !response.message.contains("/etc/passwd"),
+            "SECURITY: operation details should not be in message"
+        );
+        assert!(
+            !response.message.contains("Stack trace"),
+            "SECURITY: stack traces should not be in message"
+        );
     }
 
     #[test]

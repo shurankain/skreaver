@@ -171,41 +171,96 @@ impl PathValidator {
             });
         }
 
-        // Canonicalize path to resolve .. and symlinks
+        // SECURITY: Check for symlinks BEFORE canonicalization to prevent TOCTOU attacks
+        // Canonicalize() follows symlinks, so we must check first.
+        // This prevents attacks like: /allowed/evil_link -> /etc/shadow
+        // where canonicalize would resolve to /etc/shadow before we check.
+        if let super::FileSystemAccess::Enabled {
+            symlink_behavior: super::SymlinkBehavior::NoFollow,
+            ..
+        } = &self.policy.access
+        {
+            // Check each component of the path for symlinks
+            self.check_path_for_symlinks(&path_buf)?;
+        }
+
+        // Now safe to canonicalize - we've already verified no symlinks
         let canonical_path = path_buf
             .canonicalize()
             .map_err(|e| SecurityError::InvalidPath {
                 path: format!("{}: {}", path, e),
             })?;
 
-        // Check if symlinks are allowed
-        if let super::FileSystemAccess::Enabled {
-            symlink_behavior: super::SymlinkBehavior::NoFollow,
-            ..
-        } = &self.policy.access
-        {
-            let metadata =
-                std::fs::symlink_metadata(&path_buf).map_err(|_| SecurityError::InvalidPath {
-                    path: path.to_string(),
-                })?;
-
-            if metadata.file_type().is_symlink() {
-                return Err(SecurityError::ValidationFailed {
-                    reason: "Symbolic links are not allowed".to_string(),
-                });
-            }
-        }
-
         // Check against allowed paths
         if !self.policy.is_path_allowed(&canonical_path)? {
-            // Record path policy violation metric
-
             return Err(SecurityError::PathNotAllowed {
                 path: canonical_path.to_string_lossy().to_string(),
             });
         }
 
         Ok(canonical_path)
+    }
+
+    /// SECURITY: Check each component of a path for symlinks to prevent traversal attacks.
+    ///
+    /// This function walks the path from root to leaf, checking each component
+    /// to ensure no symlinks exist anywhere in the path hierarchy.
+    fn check_path_for_symlinks(&self, path: &Path) -> Result<(), SecurityError> {
+        let mut current_path = PathBuf::new();
+
+        for component in path.components() {
+            use std::path::Component;
+
+            match component {
+                Component::RootDir => {
+                    current_path.push("/");
+                }
+                Component::Prefix(prefix) => {
+                    // Windows path prefix (e.g., C:)
+                    current_path.push(prefix.as_os_str());
+                }
+                Component::CurDir => {
+                    // Skip "." - it's not a symlink
+                    continue;
+                }
+                Component::ParentDir => {
+                    // SECURITY: Reject ".." to prevent path traversal
+                    // Even though we check symlinks, ".." can escape allowed directories
+                    return Err(SecurityError::ValidationFailed {
+                        reason: "Path traversal (..) is not allowed".to_string(),
+                    });
+                }
+                Component::Normal(name) => {
+                    current_path.push(name);
+
+                    // Check if this path component is a symlink
+                    match std::fs::symlink_metadata(&current_path) {
+                        Ok(metadata) => {
+                            if metadata.file_type().is_symlink() {
+                                return Err(SecurityError::ValidationFailed {
+                                    reason: format!(
+                                        "Symbolic link detected at: {}",
+                                        current_path.display()
+                                    ),
+                                });
+                            }
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            // Path doesn't exist yet - that's OK, canonicalize will fail appropriately
+                            continue;
+                        }
+                        Err(_) => {
+                            // Other error accessing path - fail securely
+                            return Err(SecurityError::InvalidPath {
+                                path: current_path.to_string_lossy().to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn validate_file_size(&self, path: &Path) -> Result<(), SecurityError> {

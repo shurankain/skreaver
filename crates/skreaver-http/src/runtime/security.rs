@@ -528,7 +528,42 @@ impl SecurityHeadersPolicy {
 pub type SecurityHeadersConfig = SecurityHeadersPolicy;
 
 impl Default for SecurityConfig {
+    /// Create a default SecurityConfig
+    ///
+    /// SECURITY: In release builds, this panics to prevent accidental use of
+    /// insecure defaults in production. Use `SecurityConfig::production()` or
+    /// `SecurityConfig::development()` explicitly.
     fn default() -> Self {
+        // SECURITY: Panic in release builds to prevent use of insecure defaults
+        #[cfg(not(any(test, debug_assertions)))]
+        {
+            panic!(
+                "SECURITY ERROR: SecurityConfig::default() is not allowed in production builds. \
+                 Use SecurityConfig::production() for production or SecurityConfig::development() for development."
+            );
+        }
+
+        // In debug/test builds, use development configuration
+        #[cfg(any(test, debug_assertions))]
+        {
+            Self::development()
+        }
+    }
+}
+
+impl SecurityConfig {
+    /// Create a development-only security configuration
+    ///
+    /// SECURITY: This configuration includes test credentials and should NEVER
+    /// be used in production. The hardcoded test key is intentionally marked
+    /// as development-only.
+    ///
+    /// # Panics
+    ///
+    /// Panics in release builds if called directly.
+    #[cfg(any(test, debug_assertions))]
+    pub fn development() -> Self {
+        tracing::warn!("Using DEVELOPMENT security configuration - NOT FOR PRODUCTION USE");
         Self {
             jwt_secret: SecretKey::from_env_or_default(
                 "SKREAVER_JWT_SECRET",
@@ -536,7 +571,7 @@ impl Default for SecurityConfig {
             ),
             api_keys: Arc::new(RwLock::new({
                 let mut keys = HashMap::new();
-                // Add default test key for development
+                // Add default test key for development ONLY
                 keys.insert(
                     "sk-test-key-123".to_string(),
                     ApiKeyData::new(
@@ -551,10 +586,20 @@ impl Default for SecurityConfig {
             security_headers: SecurityHeadersPolicy::default(),
         }
     }
-}
 
-impl SecurityConfig {
+    /// Development configuration is not available in release builds
+    #[cfg(not(any(test, debug_assertions)))]
+    pub fn development() -> Self {
+        panic!(
+            "SECURITY ERROR: SecurityConfig::development() is not available in release builds. \
+             Use SecurityConfig::production() instead."
+        );
+    }
+
     /// Create a production-ready security configuration
+    ///
+    /// SECURITY: This is the recommended constructor for production deployments.
+    /// It requires proper environment configuration and has no default credentials.
     pub fn production() -> Self {
         Self {
             jwt_secret: SecretKey::from_env_or_default("SKREAVER_JWT_SECRET", None),

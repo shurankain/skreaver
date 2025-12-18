@@ -164,22 +164,37 @@ impl AgentLifecycle<Created> {
     ///
     /// This transition sets up the agent with necessary configuration
     /// and prepares it for processing.
+    ///
+    /// SECURITY: The instance lock is held for the entire initialization process
+    /// to prevent race conditions where the agent could be modified during
+    /// initialization (TOCTOU vulnerability). The typestate pattern guarantees
+    /// this method can only be called on `AgentLifecycle<Created>`, preventing
+    /// double initialization at compile time.
     pub async fn initialize(self) -> LifecycleResult<AgentLifecycle<Initialized>> {
-        // Update runtime status
+        // SECURITY: Hold the instance lock for the entire initialization
+        // to prevent race conditions and ensure atomic state transitions.
+        // The typestate pattern (Created -> Initialized) already guarantees at
+        // compile time that this can only be called once per agent.
+        let instance = self.instance.write().await;
+
+        // Set initializing status (atomic transition under lock)
         {
-            let instance = self.instance.write().await;
             let mut status = instance.status.write().await;
             *status = AgentStatusEnum::Initializing;
         }
 
         // Perform initialization logic here
+        // Note: If initialization fails, we should set status back to a failed state
         // For now, just transition to initialized state
 
+        // Set ready status (still holding instance lock - atomic with previous status change)
         {
-            let instance = self.instance.write().await;
             let mut status = instance.status.write().await;
             *status = AgentStatusEnum::Ready;
         }
+
+        // Release the lock before returning
+        drop(instance);
 
         Ok(AgentLifecycle {
             instance: self.instance,

@@ -347,73 +347,109 @@ impl StreamingAgentExecutor {
     }
 
     /// Report that agent is thinking
-    pub async fn thinking(&self, agent_id: &str, step: &str) {
-        let _ = self
-            .send_update(AgentUpdate::Thinking {
-                agent_id: agent_id.to_string(),
-                step: step.to_string(),
-                timestamp: chrono::Utc::now(),
-            })
-            .await;
+    ///
+    /// SECURITY: Logs errors instead of silently swallowing them to aid debugging
+    /// and prevent silent data loss. Returns true if send succeeded.
+    pub async fn thinking(&self, agent_id: &str, step: &str) -> bool {
+        self.send_update(AgentUpdate::Thinking {
+            agent_id: agent_id.to_string(),
+            step: step.to_string(),
+            timestamp: chrono::Utc::now(),
+        })
+        .await
+        .map_err(|e| {
+            tracing::debug!(agent_id = %agent_id, error = %e, "Failed to send thinking update (client may have disconnected)");
+        })
+        .is_ok()
     }
 
     /// Report a tool call
-    pub async fn tool_call(&self, agent_id: &str, tool_name: &str, input: &str) {
-        let _ = self
-            .send_update(AgentUpdate::ToolCall {
-                agent_id: agent_id.to_string(),
-                tool_name: tool_name.to_string(),
-                input: input.to_string(),
-                timestamp: chrono::Utc::now(),
-            })
-            .await;
+    ///
+    /// Returns true if send succeeded.
+    pub async fn tool_call(&self, agent_id: &str, tool_name: &str, input: &str) -> bool {
+        self.send_update(AgentUpdate::ToolCall {
+            agent_id: agent_id.to_string(),
+            tool_name: tool_name.to_string(),
+            input: input.to_string(),
+            timestamp: chrono::Utc::now(),
+        })
+        .await
+        .map_err(|e| {
+            tracing::debug!(agent_id = %agent_id, tool = %tool_name, error = %e, "Failed to send tool call update");
+        })
+        .is_ok()
     }
 
     /// Report a successful tool execution
-    pub async fn tool_success(&self, agent_id: &str, tool_name: &str, output: &str) {
-        let _ = self
-            .send_update(AgentUpdate::tool_success(
-                agent_id.to_string(),
-                tool_name.to_string(),
-                output.to_string(),
-                chrono::Utc::now(),
-            ))
-            .await;
+    ///
+    /// Returns true if send succeeded.
+    pub async fn tool_success(&self, agent_id: &str, tool_name: &str, output: &str) -> bool {
+        self.send_update(AgentUpdate::tool_success(
+            agent_id.to_string(),
+            tool_name.to_string(),
+            output.to_string(),
+            chrono::Utc::now(),
+        ))
+        .await
+        .map_err(|e| {
+            tracing::debug!(agent_id = %agent_id, tool = %tool_name, error = %e, "Failed to send tool success update");
+        })
+        .is_ok()
     }
 
     /// Report a failed tool execution
-    pub async fn tool_failure(&self, agent_id: &str, tool_name: &str, error: &str) {
-        let _ = self
-            .send_update(AgentUpdate::tool_failure(
-                agent_id.to_string(),
-                tool_name.to_string(),
-                error.to_string(),
-                chrono::Utc::now(),
-            ))
-            .await;
+    ///
+    /// Returns true if send succeeded.
+    pub async fn tool_failure(&self, agent_id: &str, tool_name: &str, error: &str) -> bool {
+        self.send_update(AgentUpdate::tool_failure(
+            agent_id.to_string(),
+            tool_name.to_string(),
+            error.to_string(),
+            chrono::Utc::now(),
+        ))
+        .await
+        .map_err(|e| {
+            tracing::debug!(agent_id = %agent_id, tool = %tool_name, error = %e, "Failed to send tool failure update");
+        })
+        .is_ok()
     }
 
     /// Report partial output
-    pub async fn partial(&self, agent_id: &str, content: &str) {
-        let _ = self
-            .send_update(AgentUpdate::Partial {
-                agent_id: agent_id.to_string(),
-                content: content.to_string(),
-                timestamp: chrono::Utc::now(),
-            })
-            .await;
+    ///
+    /// Returns true if send succeeded.
+    pub async fn partial(&self, agent_id: &str, content: &str) -> bool {
+        self.send_update(AgentUpdate::Partial {
+            agent_id: agent_id.to_string(),
+            content: content.to_string(),
+            timestamp: chrono::Utc::now(),
+        })
+        .await
+        .map_err(|e| {
+            tracing::debug!(agent_id = %agent_id, error = %e, "Failed to send partial update");
+        })
+        .is_ok()
     }
 
     /// Report progress update
-    pub async fn progress(&self, agent_id: &str, progress_percent: f32, status_message: &str) {
-        let _ = self
-            .send_update(AgentUpdate::Progress {
-                agent_id: agent_id.to_string(),
-                progress_percent: progress_percent.clamp(0.0, 100.0),
-                status_message: status_message.to_string(),
-                timestamp: chrono::Utc::now(),
-            })
-            .await;
+    ///
+    /// Returns true if send succeeded.
+    pub async fn progress(
+        &self,
+        agent_id: &str,
+        progress_percent: f32,
+        status_message: &str,
+    ) -> bool {
+        self.send_update(AgentUpdate::Progress {
+            agent_id: agent_id.to_string(),
+            progress_percent: progress_percent.clamp(0.0, 100.0),
+            status_message: status_message.to_string(),
+            timestamp: chrono::Utc::now(),
+        })
+        .await
+        .map_err(|e| {
+            tracing::debug!(agent_id = %agent_id, progress = progress_percent, error = %e, "Failed to send progress update");
+        })
+        .is_ok()
     }
 }
 

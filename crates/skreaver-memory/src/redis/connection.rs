@@ -153,44 +153,67 @@ impl RedisConnection<Disconnected> {
 #[cfg(feature = "redis")]
 impl RedisConnection<Connected> {
     /// Get the underlying connection (guaranteed to be available via typestate)
+    ///
+    /// # Safety Guarantee
+    ///
+    /// The typestate pattern ensures that `RedisConnection<Connected>` can ONLY be
+    /// constructed via the `connect()` method on `RedisConnection<Disconnected>`,
+    /// which always initializes `ConnectionData::Connected`. The `Disconnected` and
+    /// `Connected` state markers prevent direct construction of invalid states.
+    ///
+    /// The non-Connected match arm is marked `unreachable!()` rather than returning
+    /// an error because:
+    /// 1. The typestate pattern makes this state impossible in safe Rust
+    /// 2. Only `unsafe` code (like mem::transmute) could violate this invariant
+    /// 3. Returning Result would add overhead and complexity for an impossible case
     pub fn connection(&mut self) -> &mut PooledConnection {
         match &mut self.data {
             ConnectionData::Connected { connection, .. } => connection,
-            _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+            // SAFETY: Typestate pattern guarantees Connected state has Connected data
+            // Only unsafe code (transmute) could reach this - that's undefined behavior anyway
+            _ => unreachable!("Typestate violation: Connected marker with non-Connected data"),
         }
     }
 
     /// Get connection duration
+    ///
+    /// See `connection()` for safety guarantee documentation.
     pub fn connection_duration(&self) -> Duration {
         match &self.data {
             ConnectionData::Connected { connected_at, .. } => connected_at.elapsed(),
-            _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+            _ => unreachable!("Typestate violation: Connected marker with non-Connected data"),
         }
     }
 
     /// Get time since last activity
+    ///
+    /// See `connection()` for safety guarantee documentation.
     pub fn idle_duration(&self) -> Duration {
         match &self.data {
             ConnectionData::Connected { last_activity, .. } => last_activity.elapsed(),
-            _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+            _ => unreachable!("Typestate violation: Connected marker with non-Connected data"),
         }
     }
 
     /// Get attempt count that led to this connection
+    ///
+    /// See `connection()` for safety guarantee documentation.
     pub fn attempt_count(&self) -> usize {
         match &self.data {
             ConnectionData::Connected { attempt_count, .. } => *attempt_count,
-            _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+            _ => unreachable!("Typestate violation: Connected marker with non-Connected data"),
         }
     }
 
     /// Update last activity timestamp
+    ///
+    /// See `connection()` for safety guarantee documentation.
     fn update_activity(&mut self) {
         match &mut self.data {
             ConnectionData::Connected { last_activity, .. } => {
                 *last_activity = Instant::now();
             }
-            _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+            _ => unreachable!("Typestate violation: Connected marker with non-Connected data"),
         }
     }
 

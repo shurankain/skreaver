@@ -9,7 +9,7 @@ use governor::{
     state::{InMemoryState, NotKeyed, keyed::DefaultKeyedStateStore},
 };
 use serde::Serialize;
-use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
+use std::{collections::HashMap, num::NonZeroU32, sync::Arc, time::Instant};
 use tokio::sync::RwLock;
 
 /// Rate limiter for global requests
@@ -28,6 +28,10 @@ pub struct RateLimitConfig {
     pub per_ip_rpm: NonZeroU32,
     /// Maximum requests per minute per authenticated user (guaranteed non-zero)
     pub per_user_rpm: NonZeroU32,
+    /// Maximum number of user limiters to keep in memory (prevents DoS via memory exhaustion)
+    pub max_user_limiters: usize,
+    /// Time after which inactive user limiters are cleaned up
+    pub user_limiter_ttl_secs: u64,
 }
 
 impl RateLimitConfig {
@@ -41,6 +45,25 @@ impl RateLimitConfig {
             global_rpm,
             per_ip_rpm,
             per_user_rpm,
+            max_user_limiters: 10000,    // Default max users
+            user_limiter_ttl_secs: 3600, // 1 hour default
+        }
+    }
+
+    /// Create with custom user limiter bounds
+    pub const fn with_user_bounds(
+        global_rpm: NonZeroU32,
+        per_ip_rpm: NonZeroU32,
+        per_user_rpm: NonZeroU32,
+        max_user_limiters: usize,
+        user_limiter_ttl_secs: u64,
+    ) -> Self {
+        Self {
+            global_rpm,
+            per_ip_rpm,
+            per_user_rpm,
+            max_user_limiters,
+            user_limiter_ttl_secs,
         }
     }
 }
@@ -52,15 +75,27 @@ impl Default for RateLimitConfig {
             global_rpm: unsafe { NonZeroU32::new_unchecked(1000) }, // 1000 requests per minute globally
             per_ip_rpm: unsafe { NonZeroU32::new_unchecked(60) },   // 60 requests per minute per IP
             per_user_rpm: unsafe { NonZeroU32::new_unchecked(120) }, // 120 requests per minute per authenticated user
+            max_user_limiters: 10000, // SECURITY: Limit to prevent memory exhaustion DoS
+            user_limiter_ttl_secs: 3600, // Clean up after 1 hour of inactivity
         }
     }
 }
 
+/// Entry tracking a user rate limiter with last access time
+struct UserLimiterEntry {
+    limiter: Arc<GlobalRateLimiter>,
+    last_access: Instant,
+}
+
 /// Rate limiting state
+///
+/// SECURITY: User limiters are bounded to prevent memory exhaustion DoS attacks.
+/// Entries expire after `user_limiter_ttl_secs` of inactivity and are evicted
+/// when the map exceeds `max_user_limiters`.
 pub struct RateLimitState {
     pub global_limiter: GlobalRateLimiter,
     pub ip_limiter: IpRateLimiter,
-    pub user_limiters: Arc<RwLock<HashMap<String, Arc<GlobalRateLimiter>>>>,
+    user_limiters: Arc<RwLock<HashMap<String, UserLimiterEntry>>>,
     pub config: RateLimitConfig,
 }
 
@@ -95,17 +130,73 @@ impl RateLimitState {
     }
 
     /// Get or create a rate limiter for a specific user
+    ///
+    /// SECURITY: This method enforces bounds on the user limiter map to prevent
+    /// memory exhaustion DoS attacks. When the map exceeds `max_user_limiters`,
+    /// expired entries are cleaned up. If still over limit, oldest entries are evicted.
     async fn get_user_limiter(&self, user_id: &str) -> Arc<GlobalRateLimiter> {
         let mut user_limiters = self.user_limiters.write().await;
 
-        user_limiters
-            .entry(user_id.to_string())
-            .or_insert_with(|| {
-                // Guaranteed non-zero by RateLimitConfig's type system
-                let quota = Quota::per_minute(self.config.per_user_rpm);
-                Arc::new(RateLimiter::direct(quota))
-            })
-            .clone()
+        // Check if entry exists and update access time
+        if let Some(entry) = user_limiters.get_mut(user_id) {
+            entry.last_access = Instant::now();
+            return Arc::clone(&entry.limiter);
+        }
+
+        // SECURITY: Enforce maximum user limiters to prevent memory exhaustion
+        if user_limiters.len() >= self.config.max_user_limiters {
+            // First, try to clean up expired entries
+            let ttl = std::time::Duration::from_secs(self.config.user_limiter_ttl_secs);
+            let now = Instant::now();
+            user_limiters.retain(|_, entry| now.duration_since(entry.last_access) < ttl);
+
+            // If still at capacity, evict oldest entries
+            if user_limiters.len() >= self.config.max_user_limiters {
+                // Find and remove oldest 10% of entries
+                let to_remove = (self.config.max_user_limiters / 10).max(1);
+                let mut entries: Vec<_> = user_limiters
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.last_access))
+                    .collect();
+                entries.sort_by_key(|(_, last_access)| *last_access);
+
+                for (key, _) in entries.into_iter().take(to_remove) {
+                    user_limiters.remove(&key);
+                }
+
+                tracing::warn!(
+                    "Rate limiter map at capacity ({}), evicted {} oldest entries",
+                    self.config.max_user_limiters,
+                    to_remove
+                );
+            }
+        }
+
+        // Create new limiter entry
+        let quota = Quota::per_minute(self.config.per_user_rpm);
+        let entry = UserLimiterEntry {
+            limiter: Arc::new(RateLimiter::direct(quota)),
+            last_access: Instant::now(),
+        };
+        let limiter = Arc::clone(&entry.limiter);
+        user_limiters.insert(user_id.to_string(), entry);
+
+        limiter
+    }
+
+    /// Clean up expired user limiters (called periodically)
+    pub async fn cleanup_expired_limiters(&self) {
+        let mut user_limiters = self.user_limiters.write().await;
+        let ttl = std::time::Duration::from_secs(self.config.user_limiter_ttl_secs);
+        let now = Instant::now();
+        let before = user_limiters.len();
+
+        user_limiters.retain(|_, entry| now.duration_since(entry.last_access) < ttl);
+
+        let removed = before - user_limiters.len();
+        if removed > 0 {
+            tracing::debug!("Cleaned up {} expired user rate limiters", removed);
+        }
     }
 
     /// Check if a request should be rate limited
@@ -240,5 +331,57 @@ mod tests {
 
         // Should be able to make a request
         assert!(user_limiter.check().is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_user_limiter_bounds() {
+        // SECURITY: Test that user limiters are bounded
+        let config = RateLimitConfig::with_user_bounds(
+            NonZeroU32::new(1000).unwrap(),
+            NonZeroU32::new(60).unwrap(),
+            NonZeroU32::new(120).unwrap(),
+            5, // Only allow 5 user limiters
+            1, // 1 second TTL for testing
+        );
+        let state = RateLimitState::new(config);
+
+        // Create 5 user limiters (at limit)
+        for i in 0..5 {
+            let _ = state.get_user_limiter(&format!("user-{}", i)).await;
+        }
+
+        // Creating 6th should evict oldest
+        let _ = state.get_user_limiter("user-new").await;
+
+        // Verify we didn't exceed the limit
+        let limiters = state.user_limiters.read().await;
+        assert!(
+            limiters.len() <= 5,
+            "User limiters should be bounded at max_user_limiters"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_user_limiter_cleanup() {
+        let config = RateLimitConfig::with_user_bounds(
+            NonZeroU32::new(1000).unwrap(),
+            NonZeroU32::new(60).unwrap(),
+            NonZeroU32::new(120).unwrap(),
+            100,
+            0, // 0 second TTL - everything expires immediately
+        );
+        let state = RateLimitState::new(config);
+
+        // Create a user limiter
+        let _ = state.get_user_limiter("test-user").await;
+
+        // Wait a tiny bit
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Cleanup should remove the expired entry
+        state.cleanup_expired_limiters().await;
+
+        let limiters = state.user_limiters.read().await;
+        assert!(limiters.is_empty(), "Expired limiters should be cleaned up");
     }
 }
