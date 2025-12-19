@@ -157,11 +157,12 @@ impl FileMemory {
     ///
     /// # Arguments
     ///
-    /// * `keep_count` - Number of most recent backups to keep (e.g., 5)
+    /// * `keep_count` - Number of most recent backups to keep (minimum 1)
     ///
-    /// # Errors
+    /// # Returns
     ///
-    /// Returns an error if the directory cannot be read or if file operations fail.
+    /// Returns a `CleanupResult` indicating how many backups were successfully removed
+    /// and how many failed to be removed.
     ///
     /// # Example
     ///
@@ -172,23 +173,66 @@ impl FileMemory {
     /// // ... use memory ...
     ///
     /// // Clean up old backups, keeping only the 5 most recent
-    /// memory.cleanup_backups(5)?;
+    /// let result = memory.cleanup_backups(5)?;
+    /// println!("Removed {} backups, {} failed", result.succeeded, result.failed);
     /// ```
-    pub fn cleanup_backups(&self, keep_count: usize) -> std::io::Result<()> {
+    pub fn cleanup_backups(&self, keep_count: usize) -> std::io::Result<CleanupResult> {
+        // MEDIUM-26: Validate keep_count - don't allow deleting all backups
+        if keep_count == 0 {
+            tracing::warn!(
+                "cleanup_backups called with keep_count=0, using 1 to preserve at least one backup"
+            );
+            return self.cleanup_backups(1);
+        }
+
+        // Get parent directory
         let Some(parent) = self.path.parent() else {
-            return Ok(());
+            tracing::debug!("Cannot cleanup: path has no parent directory");
+            return Ok(CleanupResult::default());
         };
 
-        let prefix = format!(
-            "{}.corrupted.",
-            self.path.file_name().unwrap_or_default().to_string_lossy()
-        );
+        // MEDIUM-26: Verify parent is a directory
+        if !parent.is_dir() {
+            tracing::warn!(parent = ?parent, "Cannot cleanup: parent is not a directory");
+            return Ok(CleanupResult::default());
+        }
+
+        // MEDIUM-27: Use to_str() instead of to_string_lossy() for proper UTF-8 handling
+        let Some(file_name_str) = self.path.file_name().and_then(|f| f.to_str()) else {
+            tracing::warn!(
+                path = ?self.path,
+                "Cannot cleanup: filename contains invalid UTF-8"
+            );
+            return Ok(CleanupResult::default());
+        };
+
+        let prefix = format!("{}.corrupted.", file_name_str);
 
         // Collect all backup files for this memory instance
-        let mut backups: Vec<_> = fs::read_dir(parent)?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
-            .collect();
+        // MEDIUM-26: Track read_dir errors instead of silently dropping them
+        let mut backups: Vec<_> = Vec::new();
+        let mut read_errors = 0usize;
+
+        for entry_result in fs::read_dir(parent)? {
+            match entry_result {
+                Ok(entry) => {
+                    if entry.file_name().to_string_lossy().starts_with(&prefix) {
+                        backups.push(entry);
+                    }
+                }
+                Err(e) => {
+                    read_errors += 1;
+                    tracing::debug!(error = %e, "Failed to read directory entry during cleanup");
+                }
+            }
+        }
+
+        if read_errors > 0 {
+            tracing::warn!(
+                errors = read_errors,
+                "Some directory entries couldn't be read during backup cleanup"
+            );
+        }
 
         // Sort by modification time (oldest first)
         backups.sort_by_key(|entry| {
@@ -198,17 +242,22 @@ impl FileMemory {
                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
         });
 
-        // Remove oldest backups beyond keep_count
+        // MEDIUM-24: Track successes and failures separately
         let remove_count = backups.len().saturating_sub(keep_count);
+        let mut succeeded = 0usize;
+        let mut failed = 0usize;
+
         for backup in backups.iter().take(remove_count) {
             match fs::remove_file(backup.path()) {
                 Ok(()) => {
+                    succeeded += 1;
                     tracing::debug!(
                         path = ?backup.path(),
                         "Removed old corrupted backup"
                     );
                 }
                 Err(e) => {
+                    failed += 1;
                     tracing::warn!(
                         path = ?backup.path(),
                         error = %e,
@@ -218,15 +267,45 @@ impl FileMemory {
             }
         }
 
-        if remove_count > 0 {
+        if succeeded > 0 || failed > 0 {
             tracing::info!(
-                removed = remove_count,
+                succeeded,
+                failed,
                 kept = keep_count.min(backups.len()),
-                "Cleaned up old corrupted backups"
+                "Backup cleanup completed"
             );
         }
 
-        Ok(())
+        Ok(CleanupResult { succeeded, failed })
+    }
+}
+
+/// Result of a backup cleanup operation
+///
+/// Tracks how many backup files were successfully removed vs failed to be removed,
+/// allowing callers to handle partial failures appropriately.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CleanupResult {
+    /// Number of backups successfully removed
+    pub succeeded: usize,
+    /// Number of backups that failed to be removed
+    pub failed: usize,
+}
+
+impl CleanupResult {
+    /// Check if all removals succeeded (no failures)
+    pub fn all_succeeded(&self) -> bool {
+        self.failed == 0
+    }
+
+    /// Check if any removals failed
+    pub fn has_failures(&self) -> bool {
+        self.failed > 0
+    }
+
+    /// Total number of attempted removals
+    pub fn total_attempted(&self) -> usize {
+        self.succeeded + self.failed
     }
 }
 
@@ -272,6 +351,28 @@ impl SnapshotableMemory for FileMemory {
         serde_json::to_string(&self.cache).ok()
     }
 
+    /// Restore memory state from a snapshot
+    ///
+    /// # Thread Safety Warning (MEDIUM-29)
+    ///
+    /// This method is NOT atomic with respect to concurrent `load()` calls.
+    /// Between replacing the cache and completing `persist()`, other threads
+    /// calling `load()` will see the new state before it's persisted.
+    ///
+    /// If persistence fails, the state is rolled back, but concurrent readers
+    /// may have already observed the new (now-rolled-back) state.
+    ///
+    /// **For concurrent access, wrap FileMemory in a Mutex:**
+    ///
+    /// ```rust,ignore
+    /// use std::sync::{Arc, Mutex};
+    ///
+    /// let memory = Arc::new(Mutex::new(FileMemory::new("data.json")));
+    ///
+    /// // Thread-safe restore
+    /// let mut guard = memory.lock().unwrap();
+    /// guard.restore(snapshot)?;
+    /// ```
     fn restore(&mut self, snapshot: &str) -> Result<(), MemoryError> {
         // Parse the JSON snapshot
         let new_cache: HashMap<String, String> =
@@ -283,6 +384,9 @@ impl SnapshotableMemory for FileMemory {
             })?;
 
         // Create a backup of the current state for rollback
+        // WARNING: Between this replace and persist() completion, concurrent load()
+        // calls will see the new state. If persist() fails, we rollback, but
+        // concurrent readers may have already observed the transient state.
         let old_cache = std::mem::replace(&mut self.cache, new_cache);
 
         // Try to persist - if it fails, rollback to old state

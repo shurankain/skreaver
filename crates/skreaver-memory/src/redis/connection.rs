@@ -89,7 +89,11 @@ impl RedisConnection<Disconnected> {
             ConnectionData::Disconnected {
                 attempt_count,
                 last_activity,
-            } => (attempt_count + 1, last_activity),
+            } => {
+                // MEDIUM-28: Use saturating_add to prevent integer overflow
+                // If connection fails usize::MAX times, counter stays at max instead of wrapping
+                (attempt_count.saturating_add(1), last_activity)
+            }
             _ => panic!("INVARIANT VIOLATION: Disconnected state must have Disconnected data"),
         };
 
@@ -302,11 +306,25 @@ impl RedisConnection<Connected> {
     /// This prevents long-lived connections that are only occasionally used from
     /// remaining indefinitely, which can lead to resource exhaustion or connections
     /// in an inconsistent state.
+    ///
+    /// # Edge Case Handling (MEDIUM-25)
+    ///
+    /// To prevent freshly-created connections from being immediately marked stale
+    /// (e.g., if someone misconfigures `max_connection_age` to 1ms), connections
+    /// less than 1 second old are never considered stale.
     pub fn is_stale(
         &self,
         max_idle_duration: Duration,
         max_connection_age: Option<Duration>,
     ) -> bool {
+        // MEDIUM-25: Never mark connection stale if less than 1 second old
+        // This prevents edge cases where misconfigured age limits immediately
+        // mark connections as stale before they can be used
+        const MIN_CONNECTION_AGE: Duration = Duration::from_secs(1);
+        if self.connection_duration() < MIN_CONNECTION_AGE {
+            return false;
+        }
+
         let idle_stale = self.idle_duration() > max_idle_duration;
         let age_stale = max_connection_age
             .map(|max_age| self.connection_duration() > max_age)

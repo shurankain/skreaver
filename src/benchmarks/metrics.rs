@@ -3,6 +3,7 @@
 //! Provides memory and CPU monitoring capabilities for benchmarks.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::mem::MaybeUninit;
 use std::time::{Duration, Instant};
 
 /// Combined resource metrics
@@ -312,8 +313,6 @@ fn get_memory_usage() -> Result<(u64, u64), MetricsError> {
 
     #[cfg(target_os = "macos")]
     {
-        use std::mem;
-
         // Use mach API to get memory info
         unsafe extern "C" {
             fn mach_task_self() -> u32;
@@ -337,28 +336,36 @@ fn get_memory_usage() -> Result<(u64, u64), MetricsError> {
             system_time: u64,
         }
 
-        let mut info: TaskBasicInfo = unsafe { mem::zeroed() };
+        // MEDIUM-40: Use MaybeUninit::zeroed() instead of mem::zeroed()
+        // This is safer because it explicitly documents that we're working with
+        // potentially uninitialized memory until the FFI call initializes it
+        let mut info = MaybeUninit::<TaskBasicInfo>::zeroed();
         let mut count = TASK_BASIC_INFO_COUNT;
 
         let result = unsafe {
             task_info(
                 mach_task_self(),
                 TASK_BASIC_INFO,
-                &mut info as *mut _ as *mut u8,
+                info.as_mut_ptr() as *mut u8,
                 &mut count,
             )
         };
 
         if result == 0 {
+            // SAFETY: task_info succeeded, so info is now fully initialized
+            let info = unsafe { info.assume_init() };
             Ok((info.resident_size, info.virtual_size))
         } else {
             // Fall back to rusage if mach task_info fails
             // This can happen in some virtualized environments or with restricted permissions
             use libc::{RUSAGE_SELF, getrusage, rusage};
-            let mut usage: rusage = unsafe { mem::zeroed() };
-            let rusage_result = unsafe { getrusage(RUSAGE_SELF, &mut usage) };
+            // MEDIUM-40: Use MaybeUninit::zeroed() for safer FFI struct initialization
+            let mut usage = MaybeUninit::<rusage>::zeroed();
+            let rusage_result = unsafe { getrusage(RUSAGE_SELF, usage.as_mut_ptr()) };
 
             if rusage_result == 0 {
+                // SAFETY: getrusage succeeded, so usage is now fully initialized
+                let usage = unsafe { usage.assume_init() };
                 // Convert from KB to bytes (ru_maxrss is in KB on macOS)
                 let rss_bytes = usage.ru_maxrss as u64 * 1024;
                 Ok((rss_bytes, rss_bytes)) // Use RSS for both resident and virtual as fallback
@@ -407,8 +414,6 @@ fn get_cpu_times() -> Result<(u64, u64), MetricsError> {
 
     #[cfg(target_os = "macos")]
     {
-        use std::mem;
-
         unsafe extern "C" {
             fn getrusage(who: i32, usage: *mut rusage) -> i32;
         }
@@ -429,10 +434,13 @@ fn get_cpu_times() -> Result<(u64, u64), MetricsError> {
             _padding: [u8; 128],
         }
 
-        let mut usage: rusage = unsafe { mem::zeroed() };
-        let result = unsafe { getrusage(RUSAGE_SELF, &mut usage) };
+        // MEDIUM-40: Use MaybeUninit::zeroed() for safer FFI struct initialization
+        let mut usage = MaybeUninit::<rusage>::zeroed();
+        let result = unsafe { getrusage(RUSAGE_SELF, usage.as_mut_ptr()) };
 
         if result == 0 {
+            // SAFETY: getrusage succeeded, so usage is now fully initialized
+            let usage = unsafe { usage.assume_init() };
             let user_us = usage.ru_utime.tv_sec as u64 * 1_000_000 + usage.ru_utime.tv_usec as u64;
             let system_us =
                 usage.ru_stime.tv_sec as u64 * 1_000_000 + usage.ru_stime.tv_usec as u64;

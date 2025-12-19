@@ -122,12 +122,38 @@ impl<const N: usize> Subscriptions<N> {
     /// # Returns
     ///
     /// A new `Subscriptions<N+1>` with the channel added.
+    ///
+    /// # MEDIUM-36: Type-Level Validation
+    ///
+    /// This method includes debug assertions to verify type-level count matches
+    /// runtime state. If subscribing to a duplicate channel, the type-level
+    /// count increments but the HashSet size doesn't, causing divergence.
+    /// Debug builds will catch this; production should pre-check for duplicates.
     pub fn subscribe<const NEXT: usize>(mut self, channel: String) -> Subscriptions<NEXT>
     where
         [(); NEXT]: Sized,
         ValidateSubscriptionLimit<NEXT>: IsWithinLimit,
     {
+        // MEDIUM-36: Verify channel doesn't already exist (duplicate subscription)
+        debug_assert!(
+            !self.channels.contains(&channel),
+            "MEDIUM-36: Duplicate subscription to channel '{}'. Type-level count ({}) will diverge from actual count ({}).",
+            channel,
+            NEXT,
+            self.channels.len()
+        );
+
         self.channels.insert(channel);
+
+        // MEDIUM-36: Verify type-level count matches runtime count
+        debug_assert_eq!(
+            NEXT,
+            self.channels.len(),
+            "MEDIUM-36: Type-level count ({}) != runtime count ({})",
+            NEXT,
+            self.channels.len()
+        );
+
         Subscriptions {
             channels: self.channels,
             _phantom: PhantomData,
@@ -137,11 +163,35 @@ impl<const N: usize> Subscriptions<N> {
     /// Remove a subscription
     ///
     /// Decrements the type-level counter by returning Subscriptions<N-1>.
+    ///
+    /// # MEDIUM-36: Type-Level Validation
+    ///
+    /// Debug builds verify the channel exists before removal. Removing
+    /// a non-existent channel causes type-level count divergence.
     pub fn remove<const PREV: usize>(mut self, channel: &str) -> Subscriptions<PREV>
     where
         [(); PREV]: Sized,
     {
+        // MEDIUM-36: Verify channel exists before removal
+        debug_assert!(
+            self.channels.contains(channel),
+            "MEDIUM-36: Removing non-existent channel '{}'. Type-level count ({}) will diverge from actual count ({}).",
+            channel,
+            PREV,
+            self.channels.len()
+        );
+
         self.channels.remove(channel);
+
+        // MEDIUM-36: Verify type-level count matches runtime count
+        debug_assert_eq!(
+            PREV,
+            self.channels.len(),
+            "MEDIUM-36: Type-level count ({}) != runtime count ({})",
+            PREV,
+            self.channels.len()
+        );
+
         Subscriptions {
             channels: self.channels,
             _phantom: PhantomData,

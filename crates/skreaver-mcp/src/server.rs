@@ -158,6 +158,43 @@ impl McpServer {
                 data: None,
             })?;
 
+        // MEDIUM-35: Validate tool name to prevent DoS and injection attacks
+        // - Reject empty names
+        // - Limit length to prevent memory exhaustion
+        // - Validate characters to prevent log injection and path traversal
+        const MAX_TOOL_NAME_LEN: usize = 256;
+        if tool_name.is_empty() {
+            return Err(RmcpError {
+                code: ErrorCode(-32602),
+                message: Cow::from("Tool name cannot be empty"),
+                data: None,
+            });
+        }
+        if tool_name.len() > MAX_TOOL_NAME_LEN {
+            return Err(RmcpError {
+                code: ErrorCode(-32602),
+                message: Cow::from(format!(
+                    "Tool name too long: {} chars (max {})",
+                    tool_name.len(),
+                    MAX_TOOL_NAME_LEN
+                )),
+                data: None,
+            });
+        }
+        // Only allow alphanumeric, underscore, hyphen, and dot (for namespacing)
+        if !tool_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+        {
+            return Err(RmcpError {
+                code: ErrorCode(-32602),
+                message: Cow::from(
+                    "Tool name contains invalid characters (only alphanumeric, _, -, . allowed)",
+                ),
+                data: None,
+            });
+        }
+
         // Get tool arguments
         let tool_args = request
             .params

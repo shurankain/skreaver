@@ -14,6 +14,31 @@ use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
 use tracing::{debug, error, info, warn};
 
+/// MEDIUM-37: Maximum length for client metadata to prevent memory exhaustion
+const MAX_METADATA_LENGTH: usize = 256;
+
+/// MEDIUM-37: Sanitize client metadata to prevent XSS and injection attacks
+///
+/// This function:
+/// - Truncates to MAX_METADATA_LENGTH characters
+/// - Removes control characters (including NUL bytes)
+/// - Escapes HTML special characters to prevent XSS
+fn sanitize_metadata(input: &str) -> String {
+    input
+        .chars()
+        .take(MAX_METADATA_LENGTH)
+        .filter(|c| !c.is_control()) // Remove control characters
+        .map(|c| match c {
+            '<' => '&'.to_string() + "lt;",
+            '>' => '&'.to_string() + "gt;",
+            '"' => '&'.to_string() + "quot;",
+            '\'' => '&'.to_string() + "#x27;",
+            '&' => '&'.to_string() + "amp;",
+            _ => c.to_string(),
+        })
+        .collect()
+}
+
 /// WebSocket upgrade query parameters
 ///
 /// SECURITY NOTE: Authentication tokens are NOT accepted in query parameters
@@ -102,11 +127,16 @@ async fn handle_websocket_connection(
     let mut conn_info = ConnectionInfo::new(addr);
 
     // Add client metadata from query
+    // MEDIUM-37: Sanitize metadata to prevent XSS and injection attacks
     if let Some(client) = query.client {
-        conn_info.metadata.insert("client".to_string(), client);
+        conn_info
+            .metadata
+            .insert("client".to_string(), sanitize_metadata(&client));
     }
     if let Some(version) = query.version {
-        conn_info.metadata.insert("version".to_string(), version);
+        conn_info
+            .metadata
+            .insert("version".to_string(), sanitize_metadata(&version));
     }
 
     let conn_id = conn_info.id();

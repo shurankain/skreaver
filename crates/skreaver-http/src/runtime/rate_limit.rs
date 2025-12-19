@@ -68,15 +68,32 @@ impl RateLimitConfig {
     }
 }
 
+// MEDIUM-39: Safe const initialization for NonZeroU32 values
+// These constants are verified at compile time, eliminating the need for unsafe
+const DEFAULT_GLOBAL_RPM: NonZeroU32 = match NonZeroU32::new(1000) {
+    Some(v) => v,
+    None => panic!("DEFAULT_GLOBAL_RPM must be non-zero"),
+};
+
+const DEFAULT_PER_IP_RPM: NonZeroU32 = match NonZeroU32::new(60) {
+    Some(v) => v,
+    None => panic!("DEFAULT_PER_IP_RPM must be non-zero"),
+};
+
+const DEFAULT_PER_USER_RPM: NonZeroU32 = match NonZeroU32::new(120) {
+    Some(v) => v,
+    None => panic!("DEFAULT_PER_USER_RPM must be non-zero"),
+};
+
 impl Default for RateLimitConfig {
     fn default() -> Self {
-        // SAFETY: These values are constant and non-zero
+        // MEDIUM-39: Use safe const values instead of unsafe { new_unchecked() }
         Self {
-            global_rpm: unsafe { NonZeroU32::new_unchecked(1000) }, // 1000 requests per minute globally
-            per_ip_rpm: unsafe { NonZeroU32::new_unchecked(60) },   // 60 requests per minute per IP
-            per_user_rpm: unsafe { NonZeroU32::new_unchecked(120) }, // 120 requests per minute per authenticated user
-            max_user_limiters: 10000, // SECURITY: Limit to prevent memory exhaustion DoS
-            user_limiter_ttl_secs: 3600, // Clean up after 1 hour of inactivity
+            global_rpm: DEFAULT_GLOBAL_RPM, // 1000 requests per minute globally
+            per_ip_rpm: DEFAULT_PER_IP_RPM, // 60 requests per minute per IP
+            per_user_rpm: DEFAULT_PER_USER_RPM, // 120 requests per minute per authenticated user
+            max_user_limiters: 10000,       // SECURITY: Limit to prevent memory exhaustion DoS
+            user_limiter_ttl_secs: 3600,    // Clean up after 1 hour of inactivity
         }
     }
 }

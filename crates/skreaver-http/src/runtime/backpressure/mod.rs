@@ -12,7 +12,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio::sync::{RwLock, Semaphore, mpsc};
+use tokio::sync::{Notify, RwLock, Semaphore};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -38,11 +38,16 @@ use queue::AgentQueue;
 ///
 /// SECURITY: Uses AtomicBool for shutdown to ensure Drop can always signal
 /// shutdown without deadlock or panic, even if locks are held.
+///
+/// MEDIUM-31: Uses Notify instead of unbounded channel for shutdown signaling.
+/// This eliminates unbounded memory growth potential while maintaining instant
+/// notification capability.
 pub struct BackpressureManager {
     config: BackpressureConfig,
     agent_queues: Arc<RwLock<HashMap<String, AgentQueue>>>,
     global_semaphore: Arc<Semaphore>,
-    shutdown_tx: Arc<RwLock<Option<mpsc::UnboundedSender<()>>>>,
+    /// MEDIUM-31: Replaced unbounded channel with Notify for instant shutdown
+    shutdown_notify: Arc<Notify>,
     /// Atomic shutdown flag that can always be set safely in Drop
     shutdown_flag: Arc<AtomicBool>,
 }
@@ -56,22 +61,19 @@ impl BackpressureManager {
             config,
             agent_queues: Arc::new(RwLock::new(HashMap::new())),
             global_semaphore,
-            shutdown_tx: Arc::new(RwLock::new(None)),
+            // MEDIUM-31: Use Notify instead of unbounded channel
+            shutdown_notify: Arc::new(Notify::new()),
             shutdown_flag: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Initialize background queue processing
     pub async fn start(&self) -> Result<(), BackpressureError> {
-        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
-        {
-            let mut shutdown_tx_guard = self.shutdown_tx.write().await;
-            *shutdown_tx_guard = Some(shutdown_tx);
-        }
-
         let agent_queues = Arc::clone(&self.agent_queues);
         let config = self.config.clone();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        // MEDIUM-31: Use Notify for instant shutdown notification
+        let shutdown_notify = Arc::clone(&self.shutdown_notify);
 
         // Start queue processor task
         tokio::spawn(async move {
@@ -79,17 +81,21 @@ impl BackpressureManager {
 
             loop {
                 tokio::select! {
+                    // biased ensures shutdown is checked first when both are ready
+                    biased;
+
+                    // MEDIUM-31: Instant shutdown via Notify
+                    _ = shutdown_notify.notified() => {
+                        info!("Backpressure manager shutting down (via notify)");
+                        break;
+                    }
                     _ = cleanup_interval.tick() => {
-                        // Check atomic shutdown flag (always safe, no locks)
+                        // Check atomic shutdown flag as fallback (always safe, no locks)
                         if shutdown_flag.load(Ordering::Acquire) {
                             info!("Backpressure manager shutting down (via flag)");
                             break;
                         }
                         Self::cleanup_expired_requests(&agent_queues, &config).await;
-                    }
-                    _ = shutdown_rx.recv() => {
-                        info!("Backpressure manager shutting down (via channel)");
-                        break;
                     }
                 }
             }
@@ -599,14 +605,9 @@ impl Drop for BackpressureManager {
         // The background task checks this flag periodically
         self.shutdown_flag.store(true, Ordering::Release);
 
-        // Also try to send via channel for immediate shutdown (best effort)
-        // This can fail if lock is held, but atomic flag ensures eventual shutdown
-        if let Ok(mut shutdown_tx_guard) = self.shutdown_tx.try_write()
-            && let Some(shutdown_tx) = shutdown_tx_guard.take()
-        {
-            // Ignore send error - cleanup task may already be completed
-            let _ = shutdown_tx.send(());
-        }
+        // MEDIUM-31: Use Notify for instant shutdown - this never fails and
+        // is lock-free, making it safe to call from Drop
+        self.shutdown_notify.notify_waiters();
     }
 }
 

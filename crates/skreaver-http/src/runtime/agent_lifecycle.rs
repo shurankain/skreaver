@@ -342,6 +342,97 @@ impl AgentLifecycle<Terminated> {
 }
 
 // ============================================================================
+// Cleanup Helpers (MEDIUM-33)
+// ============================================================================
+
+/// MEDIUM-33: Helper to ensure proper lifecycle termination.
+///
+/// Due to Rust's limitations on specialized Drop implementations, we cannot
+/// automatically warn when an `AgentLifecycle` is dropped in an active state.
+/// Instead, users should call this method or use the `into_terminated` methods
+/// to ensure proper cleanup.
+///
+/// # Example
+///
+/// ```ignore
+/// // Proper cleanup - terminate before dropping
+/// let lifecycle = agent.start()?;
+/// // ... use the agent ...
+/// let _terminated = lifecycle.terminate("Shutdown".into())?;
+/// // Now it's safe to drop _terminated
+///
+/// // Alternative - use must_use to catch unused lifecycles
+/// #[must_use]
+/// fn get_lifecycle() -> AgentLifecycle<Running> { ... }
+/// ```
+impl<S> AgentLifecycle<S> {
+    /// Check if this lifecycle state requires cleanup before dropping.
+    ///
+    /// MEDIUM-33: Returns true for states that should be terminated before
+    /// the lifecycle is dropped (Initialized, Running, Paused).
+    #[inline]
+    pub fn needs_cleanup(&self) -> bool
+    where
+        S: LifecycleStateInfo,
+    {
+        S::needs_cleanup()
+    }
+}
+
+/// Trait providing information about lifecycle states
+pub trait LifecycleStateInfo {
+    /// Returns true if this state requires cleanup before dropping
+    fn needs_cleanup() -> bool;
+    /// Returns the state name for diagnostics
+    fn state_name() -> &'static str;
+}
+
+impl LifecycleStateInfo for Created {
+    fn needs_cleanup() -> bool {
+        false // Created state has no resources allocated
+    }
+    fn state_name() -> &'static str {
+        "Created"
+    }
+}
+
+impl LifecycleStateInfo for Initialized {
+    fn needs_cleanup() -> bool {
+        true // Resources may have been allocated during initialization
+    }
+    fn state_name() -> &'static str {
+        "Initialized"
+    }
+}
+
+impl LifecycleStateInfo for Running {
+    fn needs_cleanup() -> bool {
+        true // Agent is active and may have resources in use
+    }
+    fn state_name() -> &'static str {
+        "Running"
+    }
+}
+
+impl LifecycleStateInfo for Paused {
+    fn needs_cleanup() -> bool {
+        true // Agent has paused resources that need cleanup
+    }
+    fn state_name() -> &'static str {
+        "Paused"
+    }
+}
+
+impl LifecycleStateInfo for Terminated {
+    fn needs_cleanup() -> bool {
+        false // Already terminated, safe to drop
+    }
+    fn state_name() -> &'static str {
+        "Terminated"
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

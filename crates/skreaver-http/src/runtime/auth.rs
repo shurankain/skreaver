@@ -76,6 +76,8 @@ pub fn create_api_key_manager() -> Arc<ApiKeyManager> {
         rotation: skreaver_core::auth::api_key::RotationPolicy::Manual,
         default_expiry_days: Some(90), // 90-day expiry by default
         max_keys_per_principal: 10,    // Max 10 keys per user/service
+        // MEDIUM-34: Use default hash salt (reads from env var SKREAVER_API_KEY_SALT)
+        hash_salt: ApiKeyConfig::default().hash_salt,
     };
 
     let manager = Arc::new(ApiKeyManager::new(config));

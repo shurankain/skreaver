@@ -4,7 +4,7 @@ use super::lock_ordering::ManagerLocks;
 use super::{WebSocketConfig, WsError, WsMessage, WsResult};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::sync::{Mutex, Notify, broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -15,11 +15,16 @@ use uuid::Uuid;
 /// - Task leaks from incomplete shutdown
 /// - Race conditions during restart
 /// - Zombie tasks with stale shutdown signals
+///
+/// MEDIUM-30: Uses `Notify` for instant shutdown signaling instead of polling.
+/// This eliminates the 100ms polling delay and reduces CPU overhead.
 struct BackgroundTasks {
     cleanup_task: Option<JoinHandle<()>>,
     orphaned_cleanup_task: Option<JoinHandle<()>>,
     broadcast_task: Option<JoinHandle<()>>,
     shutdown_signal: Arc<AtomicBool>,
+    /// Notify for instant shutdown signaling (MEDIUM-30: replaces 100ms polling)
+    shutdown_notify: Arc<Notify>,
     /// Flag to prevent concurrent task initialization
     is_starting: AtomicBool,
 }
@@ -31,6 +36,7 @@ impl BackgroundTasks {
             orphaned_cleanup_task: None,
             broadcast_task: None,
             shutdown_signal: Arc::new(AtomicBool::new(false)),
+            shutdown_notify: Arc::new(Notify::new()),
             is_starting: AtomicBool::new(false),
         }
     }
@@ -74,8 +80,12 @@ impl BackgroundTasks {
     }
 
     /// Shutdown all background tasks (synchronous version for Drop)
+    ///
+    /// MEDIUM-30: Uses Notify for instant wakeup of tasks waiting in select!
     fn shutdown(&mut self) {
         self.shutdown_signal.store(true, Ordering::Release);
+        // MEDIUM-30: Notify all waiting tasks immediately instead of relying on polling
+        self.shutdown_notify.notify_waiters();
 
         if let Some(handle) = self.cleanup_task.take() {
             handle.abort();
@@ -119,6 +129,28 @@ enum AuthState {
 }
 
 /// Connection state with common fields extracted
+///
+/// # Design Note: Runtime vs Compile-Time Safety Trade-off
+///
+/// This struct uses a runtime enum (`AuthState`) instead of the typestate pattern
+/// for authentication state tracking. While typestates provide compile-time
+/// guarantees, they are impractical here because:
+///
+/// 1. **Dynamic State Changes**: Authentication state changes frequently based on
+///    runtime events (WebSocket messages, token expiration, disconnection).
+///
+/// 2. **HashMap Storage**: Connections are stored in `HashMap<ConnectionId, ConnectionState>`.
+///    Typestate patterns require different types for different states, making
+///    heterogeneous storage difficult without type erasure.
+///
+/// 3. **Concurrent Access**: Multiple tasks access connection state concurrently.
+///    Typestate transitions require ownership (`self`), conflicting with shared access.
+///
+/// **Mitigations for Runtime Safety:**
+/// - `is_authenticated()` provides a single check point for all auth decisions
+/// - `authenticate()` performs validation before state transition
+/// - All authentication-requiring operations use `require_authenticated()`
+/// - Debug builds verify state consistency with assertions
 #[derive(Debug)]
 pub(super) struct ConnectionState {
     /// Connection information (address, timing, etc.)
@@ -930,24 +962,29 @@ impl WebSocketManager {
         // Create fresh shutdown signal for new tasks
         let shutdown = Arc::new(AtomicBool::new(false));
         tasks.shutdown_signal = Arc::clone(&shutdown);
+        // MEDIUM-30: Create fresh Notify for instant shutdown notification
+        let shutdown_notify = Arc::new(Notify::new());
+        tasks.shutdown_notify = Arc::clone(&shutdown_notify);
 
         let manager = Arc::new(self.clone());
 
         // Cleanup task for expired connections
+        // MEDIUM-30: Uses biased select! with Notify for instant shutdown instead of 100ms polling
         let cleanup_manager = Arc::clone(&manager);
-        let shutdown_clone = Arc::clone(&shutdown);
+        let shutdown_notify_clone = Arc::clone(&shutdown_notify);
         let cleanup_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
                 tokio::select! {
+                    // biased ensures shutdown is checked first when both are ready
+                    biased;
+
+                    _ = shutdown_notify_clone.notified() => {
+                        info!("Cleanup task shutting down");
+                        break;
+                    }
                     _ = interval.tick() => {
                         cleanup_manager.cleanup_expired().await;
-                    }
-                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                        if shutdown_clone.load(Ordering::Acquire) {
-                            info!("Cleanup task shutting down");
-                            break;
-                        }
                     }
                 }
             }
@@ -955,20 +992,21 @@ impl WebSocketManager {
         tasks.cleanup_task = Some(cleanup_handle);
 
         // Orphaned state cleanup task (runs less frequently)
+        // MEDIUM-30: Uses biased select! with Notify for instant shutdown
         let orphaned_cleanup_manager = Arc::clone(&manager);
-        let shutdown_clone = Arc::clone(&shutdown);
+        let shutdown_notify_clone = Arc::clone(&shutdown_notify);
         let orphaned_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // Every 5 minutes
             loop {
                 tokio::select! {
+                    biased;
+
+                    _ = shutdown_notify_clone.notified() => {
+                        info!("Orphaned cleanup task shutting down");
+                        break;
+                    }
                     _ = interval.tick() => {
                         orphaned_cleanup_manager.cleanup_orphaned_state().await;
-                    }
-                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                        if shutdown_clone.load(Ordering::Acquire) {
-                            info!("Orphaned cleanup task shutting down");
-                            break;
-                        }
                     }
                 }
             }
@@ -976,21 +1014,22 @@ impl WebSocketManager {
         tasks.orphaned_cleanup_task = Some(orphaned_handle);
 
         // Event broadcasting task
+        // MEDIUM-30: Uses biased select! with Notify for instant shutdown
         let broadcast_manager = Arc::clone(&manager);
         let mut event_receiver = self.event_sender.subscribe();
-        let shutdown_clone = Arc::clone(&shutdown);
+        let shutdown_notify_clone = Arc::clone(&shutdown_notify);
         let broadcast_handle = tokio::spawn(async move {
             loop {
                 tokio::select! {
+                    biased;
+
+                    _ = shutdown_notify_clone.notified() => {
+                        info!("Event broadcast task shutting down");
+                        break;
+                    }
                     event = event_receiver.recv() => {
                         if let Ok(event) = event {
                             broadcast_manager.handle_channel_event(event).await;
-                        }
-                    }
-                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                        if shutdown_clone.load(Ordering::Acquire) {
-                            info!("Event broadcast task shutting down");
-                            break;
                         }
                     }
                 }

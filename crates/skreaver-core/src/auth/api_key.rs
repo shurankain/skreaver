@@ -63,6 +63,16 @@ pub struct ApiKeyConfig {
     pub rotation: RotationPolicy,
     /// Maximum keys per principal
     pub max_keys_per_principal: usize,
+    /// Salt for key hashing (MEDIUM-34: prevents hash collision DoS)
+    ///
+    /// This salt is prepended to API keys before hashing to:
+    /// 1. Prevent hash collisions across different deployments
+    /// 2. Add an extra layer of security if hashes are exposed
+    /// 3. Ensure unique hash values even for identical keys
+    ///
+    /// Should be set via environment variable SKREAVER_API_KEY_SALT in production.
+    #[serde(default = "ApiKeyConfig::default_hash_salt")]
+    pub hash_salt: String,
 }
 
 impl Default for ApiKeyConfig {
@@ -73,11 +83,20 @@ impl Default for ApiKeyConfig {
             default_expiry_days: Some(365),
             rotation: RotationPolicy::default(),
             max_keys_per_principal: 5,
+            hash_salt: Self::default_hash_salt(),
         }
     }
 }
 
 impl ApiKeyConfig {
+    /// Default hash salt - reads from environment or uses default
+    ///
+    /// MEDIUM-34: In production, set SKREAVER_API_KEY_SALT to a unique random value
+    fn default_hash_salt() -> String {
+        std::env::var("SKREAVER_API_KEY_SALT")
+            .unwrap_or_else(|_| "skreaver-default-salt-change-in-production".to_string())
+    }
+
     /// Create config with automatic rotation
     pub fn with_auto_rotation(interval_days: u32) -> Self {
         Self {
@@ -911,9 +930,16 @@ impl ApiKeyManager {
     }
 
     /// Hash a key for storage
+    ///
+    /// MEDIUM-34: Uses salted hashing to prevent:
+    /// - Hash collision DoS attacks
+    /// - Rainbow table attacks if hashes are exposed
+    /// - Cross-deployment hash correlation
     fn hash_key(&self, key: &str) -> String {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
+        // MEDIUM-34: Prepend salt before key to prevent hash collisions
+        hasher.update(self.config.hash_salt.as_bytes());
         hasher.update(key.as_bytes());
         format!("{:x}", hasher.finalize())
     }

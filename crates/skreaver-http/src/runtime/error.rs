@@ -25,6 +25,24 @@ pub use skreaver_core::RequestId;
 #[derive(Debug, Clone)]
 pub struct RequestIdExtension(pub RequestId);
 
+/// MEDIUM-41: Maximum length for client-provided request IDs
+const MAX_REQUEST_ID_LENGTH: usize = 128;
+
+/// MEDIUM-41: Validate client-provided request IDs
+///
+/// Valid request IDs must:
+/// - Be non-empty and <= MAX_REQUEST_ID_LENGTH characters
+/// - Contain only alphanumeric characters, hyphens, underscores, and colons
+/// - Not contain control characters (prevents log injection)
+///
+/// UUID format (8-4-4-4-12 hex with hyphens) is preferred but not required.
+fn validate_request_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= MAX_REQUEST_ID_LENGTH
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ':')
+}
+
 /// Middleware that generates or extracts request IDs for distributed tracing
 ///
 /// This middleware:
@@ -45,10 +63,15 @@ pub struct RequestIdExtension(pub RequestId);
 /// ```
 pub async fn request_id_middleware(mut request: Request, next: Next) -> Response {
     // Try to extract request ID from X-Request-ID header
+    // MEDIUM-41: Validate client-provided request IDs to prevent:
+    // - Log injection attacks via control characters
+    // - Correlation confusion via invalid formats
+    // - Storage key collisions via oversized IDs
     let request_id = request
         .headers()
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
+        .filter(|s| validate_request_id(s))
         .map(|s| RequestId::new_unchecked(s.to_string()))
         .unwrap_or_else(RequestId::generate);
 
@@ -337,13 +360,19 @@ impl RuntimeError {
             RuntimeError::AgentNotFound { .. } => {
                 // No additional details - agent_id could leak internal structure
             }
-            RuntimeError::AgentCreationFailed { agent_type, .. } => {
+            RuntimeError::AgentCreationFailed {
+                agent_type: Some(t),
+                ..
+            } => {
                 // Only expose agent_type if it's a user-provided value, not internal reason
-                if let Some(t) = agent_type {
-                    response = response.with_details(serde_json::json!({
-                        "agent_type": t
-                    }));
-                }
+                response = response.with_details(serde_json::json!({
+                    "agent_type": t
+                }));
+            }
+            RuntimeError::AgentCreationFailed {
+                agent_type: None, ..
+            } => {
+                // No additional details if agent_type is not provided
             }
             RuntimeError::AgentOperationFailed { .. } => {
                 // SECURITY: Don't expose agent_id, operation, or reason - may contain
@@ -351,13 +380,19 @@ impl RuntimeError {
             }
 
             // Auth errors: Minimal info to prevent enumeration attacks
-            RuntimeError::InvalidAuthentication { auth_method, .. } => {
+            RuntimeError::InvalidAuthentication {
+                auth_method: Some(method),
+                ..
+            } => {
                 // Don't expose the specific reason - could help attackers
-                if let Some(method) = auth_method {
-                    response = response.with_details(serde_json::json!({
-                        "auth_method": method
-                    }));
-                }
+                response = response.with_details(serde_json::json!({
+                    "auth_method": method
+                }));
+            }
+            RuntimeError::InvalidAuthentication {
+                auth_method: None, ..
+            } => {
+                // No additional details if auth_method is not provided
             }
             RuntimeError::InsufficientPermissions { required, .. } => {
                 // Only show required permissions, NOT what user provided

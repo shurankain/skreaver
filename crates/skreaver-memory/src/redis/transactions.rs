@@ -146,14 +146,26 @@ impl RedisTransactionExecutor {
             .or_else(|_| {
                 let mut rt_ref = runtime_cell.borrow_mut();
                 if matches!(&*rt_ref, RuntimeState::Uninitialized) {
-                    *rt_ref = RuntimeState::Ready(tokio::runtime::Runtime::new().map_err(|e| {
+                    let runtime = tokio::runtime::Runtime::new().map_err(|e| {
                         TransactionError::TransactionFailed {
                             reason: format!("Failed to create async runtime: {}", e),
                         }
-                    })?);
+                    })?;
+                    // MEDIUM-32: Track thread ID in debug builds
+                    #[cfg(debug_assertions)]
+                    {
+                        *rt_ref = RuntimeState::Ready {
+                            runtime,
+                            created_by_thread: std::thread::current().id(),
+                        };
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        *rt_ref = RuntimeState::Ready { runtime };
+                    }
                 }
                 match &*rt_ref {
-                    RuntimeState::Ready(runtime) => Ok(runtime.handle().clone()),
+                    RuntimeState::Ready { runtime, .. } => Ok(runtime.handle().clone()),
                     RuntimeState::Uninitialized => Err(TransactionError::TransactionFailed {
                         reason: "Runtime initialization failed".to_string(),
                     }),
