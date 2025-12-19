@@ -320,12 +320,22 @@ mod tests {
         }
     }
 
+    /// Create a RoleManager with default policies plus allow policies for test tools
+    fn create_test_role_manager() -> RoleManager {
+        let mut manager = RoleManager::with_defaults();
+        // Add allow policies for test tools - the default-deny pattern requires explicit allow
+        manager.add_default_allow_policy("test_tool");
+        manager.add_default_allow_policy("allowed_tool");
+        manager.add_default_allow_policy("blocked_tool");
+        manager
+    }
+
     #[test]
     fn test_secure_registry_allows_enabled_tools() {
         let registry = InMemoryToolRegistry::new().with_tool("test_tool", Arc::new(TestTool));
 
         let config = SecurityConfig::create_default();
-        let role_manager = Arc::new(RoleManager::with_defaults());
+        let role_manager = Arc::new(create_test_role_manager());
         // Default config has filesystem and HTTP enabled
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
@@ -360,7 +370,7 @@ mod tests {
         );
         config.tools = tool_policies;
 
-        let role_manager = Arc::new(RoleManager::with_defaults());
+        let role_manager = Arc::new(create_test_role_manager());
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         let result = secure_registry
@@ -387,7 +397,7 @@ mod tests {
         config.emergency.lockdown_enabled = true;
         config.emergency.lockdown_allowed_tools = vec!["allowed_tool".to_string()];
 
-        let role_manager = Arc::new(RoleManager::with_defaults());
+        let role_manager = Arc::new(create_test_role_manager());
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         // Allowed tool should work
@@ -431,7 +441,7 @@ mod tests {
         );
         config.tools = tool_policies;
 
-        let role_manager = Arc::new(RoleManager::with_defaults());
+        let role_manager = Arc::new(create_test_role_manager());
         let secure_registry = SecureToolRegistry::new(registry, Arc::new(config), role_manager);
 
         let calls = NonEmptyVec::new(

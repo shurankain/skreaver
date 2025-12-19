@@ -439,15 +439,28 @@ impl StreamingAgentExecutor {
         progress_percent: f32,
         status_message: &str,
     ) -> bool {
+        // LOW-46: Handle NaN and infinity before clamping
+        // clamp() does not handle NaN correctly - it returns NaN
+        let sanitized_progress = if progress_percent.is_nan() || progress_percent.is_infinite() {
+            tracing::warn!(
+                agent_id = %agent_id,
+                value = %progress_percent,
+                "Invalid progress value, defaulting to 0.0"
+            );
+            0.0
+        } else {
+            progress_percent.clamp(0.0, 100.0)
+        };
+
         self.send_update(AgentUpdate::Progress {
             agent_id: agent_id.to_string(),
-            progress_percent: progress_percent.clamp(0.0, 100.0),
+            progress_percent: sanitized_progress,
             status_message: status_message.to_string(),
             timestamp: chrono::Utc::now(),
         })
         .await
         .map_err(|e| {
-            tracing::debug!(agent_id = %agent_id, progress = progress_percent, error = %e, "Failed to send progress update");
+            tracing::debug!(agent_id = %agent_id, progress = sanitized_progress, error = %e, "Failed to send progress update");
         })
         .is_ok()
     }

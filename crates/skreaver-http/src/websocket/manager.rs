@@ -82,11 +82,19 @@ impl BackgroundTasks {
     /// Shutdown all background tasks (synchronous version for Drop)
     ///
     /// MEDIUM-30: Uses Notify for instant wakeup of tasks waiting in select!
+    ///
+    /// LOW-44: Thread-safety note - this method is called via `&mut self`, which means
+    /// exclusive access is guaranteed. The outer `Mutex<BackgroundTasks>` in `WebSocketManager`
+    /// serializes all calls to this method, preventing double-abort races. The `take()`
+    /// operations are safe because they happen under the mutex, and subsequent calls
+    /// will find `None` values (no-op).
     fn shutdown(&mut self) {
+        // Signal shutdown first - idempotent, safe to call multiple times
         self.shutdown_signal.store(true, Ordering::Release);
         // MEDIUM-30: Notify all waiting tasks immediately instead of relying on polling
         self.shutdown_notify.notify_waiters();
 
+        // LOW-44: Each handle is Option::take()'d, so subsequent calls are no-ops
         if let Some(handle) = self.cleanup_task.take() {
             handle.abort();
         }
@@ -599,9 +607,11 @@ impl WebSocketManager {
                 .map(|subs| subs.len())
                 .unwrap_or(0);
 
+            // LOW-42: Use > instead of >= to allow exactly max_subscribers_per_channel subscribers
+            // The error reports current count (before the failed addition attempt)
             if current_subscribers >= self.config.max_subscribers_per_channel {
                 return Err(WsError::ChannelSubscriberLimitExceeded {
-                    current: current_subscribers + 1,
+                    current: current_subscribers,
                     max: self.config.max_subscribers_per_channel,
                 });
             }

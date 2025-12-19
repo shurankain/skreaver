@@ -436,9 +436,10 @@ impl ValidRedisConfig {
     /// This is a convenience method that creates a pre-validated configuration
     /// for localhost:6379 with sensible defaults.
     pub fn localhost() -> Self {
-        // Create a standalone deployment with required fields
-        let url = NonEmptyString::new("redis://localhost:6379").expect("localhost URL is valid");
-        let pool_size = PoolSize::new(10).expect("10 is valid pool size");
+        // LOW-45: Using unwrap() for compile-time known constants
+        // SAFETY: These literals are non-empty and within valid ranges
+        let url = NonEmptyString::new("redis://localhost:6379").unwrap();
+        let pool_size = PoolSize::new(10).unwrap();
 
         Self {
             deployment: RedisDeploymentV2::Standalone(Standalone { url }),

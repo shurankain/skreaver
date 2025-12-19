@@ -981,7 +981,8 @@ mod quickcheck_tests {
                     && tool_name
                         .as_str()
                         .chars()
-                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-'),
+                        // IdValidator allows alphanumeric, underscores, hyphens, and dots
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.'),
             ),
             Err(_) => {
                 // Creation failed, which is fine for invalid inputs

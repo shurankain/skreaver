@@ -3,6 +3,7 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
+use subtle::ConstantTimeEq;
 
 // ============================================================================
 // Phantom type markers for compile-time token discrimination
@@ -98,7 +99,9 @@ impl Token<RefreshToken> {
 
 impl<T> PartialEq for Token<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
+        // LOW-47: Use constant-time comparison to prevent timing attacks
+        // Standard == operator can leak token length/content through timing differences
+        self.value.as_bytes().ct_eq(other.value.as_bytes()).into()
     }
 }
 

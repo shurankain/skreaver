@@ -3,7 +3,21 @@
 //! This module enforces a consistent lock acquisition order to prevent deadlocks.
 //! The order is: connections → ip_connections → subscriptions
 //!
-//! In debug builds, runtime assertions verify that lock ordering is maintained.
+//! # Safety Model (LOW-43)
+//!
+//! Lock ordering is enforced through two complementary mechanisms:
+//!
+//! 1. **Compile-time safety**: The typed methods (`level1_write`, `level2_write`, `level3_write`)
+//!    and composite guards (`Level2WriteGuard`, `Level3WriteGuard`) enforce ordering through
+//!    their API design. It's impossible to acquire locks out of order using these APIs.
+//!
+//! 2. **Debug-time runtime verification**: In debug builds, `assert_lock_order` panics if
+//!    locks are acquired out of order. This catches any direct lock access that bypasses
+//!    the typed APIs.
+//!
+//! In release builds, the runtime verification is disabled for performance. The typed API
+//! is the primary safety mechanism - code that exclusively uses `level*_write()` methods
+//! cannot deadlock regardless of build mode.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
