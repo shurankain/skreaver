@@ -168,19 +168,20 @@ impl PostgresMemory {
     }
 
     /// Get all data for snapshot operations
+    ///
+    /// SECURITY: Uses parameterized queries to prevent SQL injection (CRITICAL-1 fix)
     async fn get_all_data(&self) -> Result<std::collections::HashMap<String, String>, MemoryError> {
         let conn = self.pool.acquire().await?;
 
-        let namespace_filter = match &self.namespace {
-            Some(ns) => format!("WHERE namespace = '{}'", ns),
-            None => "WHERE namespace = ''".to_string(),
-        };
-
-        let query = format!("SELECT key, value FROM memory_entries {}", namespace_filter);
-
+        // SECURITY: Use parameterized query instead of string interpolation
+        // to prevent SQL injection attacks via namespace field
+        let namespace_value = self.namespace.as_deref().unwrap_or("");
         let rows = conn
             .client()
-            .query(&query, &[])
+            .query(
+                "SELECT key, value FROM memory_entries WHERE namespace = $1",
+                &[&namespace_value],
+            )
             .await
             .map_err(|e| MemoryError::LoadFailed {
                 key: skreaver_core::memory::MemoryKeys::snapshot(),
@@ -211,25 +212,26 @@ impl PostgresMemory {
     }
 
     /// Clear all data for restore operations
+    ///
+    /// SECURITY: Uses parameterized queries to prevent SQL injection (CRITICAL-1 fix)
     async fn clear_all_data(&self) -> Result<(), MemoryError> {
         let conn = self.pool.acquire().await?;
 
-        let namespace_filter = match &self.namespace {
-            Some(ns) => format!("WHERE namespace = '{}'", ns),
-            None => "WHERE namespace = ''".to_string(),
-        };
-
-        let query = format!("DELETE FROM memory_entries {}", namespace_filter);
-
-        conn.execute(&query, &[])
-            .await
-            .map_err(|e| MemoryError::StoreFailed {
-                key: skreaver_core::memory::MemoryKeys::clear_all(),
-                backend: skreaver_core::error::MemoryBackend::Postgres,
-                kind: skreaver_core::error::MemoryErrorKind::IoError {
-                    details: format!("Database error: {}", e),
-                },
-            })?;
+        // SECURITY: Use parameterized query instead of string interpolation
+        // to prevent SQL injection attacks via namespace field
+        let namespace_value = self.namespace.as_deref().unwrap_or("");
+        conn.execute(
+            "DELETE FROM memory_entries WHERE namespace = $1",
+            &[&namespace_value],
+        )
+        .await
+        .map_err(|e| MemoryError::StoreFailed {
+            key: skreaver_core::memory::MemoryKeys::clear_all(),
+            backend: skreaver_core::error::MemoryBackend::Postgres,
+            kind: skreaver_core::error::MemoryErrorKind::IoError {
+                details: format!("Database error: {}", e),
+            },
+        })?;
 
         Ok(())
     }
