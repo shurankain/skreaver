@@ -81,6 +81,12 @@ impl RedisConnection<Disconnected> {
     }
 
     /// Attempt to establish connection from pool
+    ///
+    /// # Safety Guarantee
+    ///
+    /// The typestate pattern ensures that `RedisConnection<Disconnected>` can ONLY be
+    /// constructed with `ConnectionData::Disconnected`. The match arm for other variants
+    /// is unreachable in safe Rust - only `unsafe` code could violate this invariant.
     pub async fn connect(
         self,
         pool: &Pool,
@@ -94,7 +100,11 @@ impl RedisConnection<Disconnected> {
                 // If connection fails usize::MAX times, counter stays at max instead of wrapping
                 (attempt_count.saturating_add(1), last_activity)
             }
-            _ => panic!("INVARIANT VIOLATION: Disconnected state must have Disconnected data"),
+            // SAFETY: Typestate pattern guarantees Disconnected state has Disconnected data
+            // HIGH-1: Use unreachable!() instead of panic!() for consistency with Connected methods
+            _ => {
+                unreachable!("Typestate violation: Disconnected marker with non-Disconnected data")
+            }
         };
 
         match pool.get().await {
@@ -130,18 +140,28 @@ impl RedisConnection<Disconnected> {
     }
 
     /// Get connection attempt count for retry logic
+    ///
+    /// See `connect()` for safety guarantee documentation.
     pub fn attempt_count(&self) -> usize {
         match &self.data {
             ConnectionData::Disconnected { attempt_count, .. } => *attempt_count,
-            _ => panic!("INVARIANT VIOLATION: Disconnected state must have Disconnected data"),
+            // SAFETY: Typestate pattern guarantees Disconnected state has Disconnected data
+            _ => {
+                unreachable!("Typestate violation: Disconnected marker with non-Disconnected data")
+            }
         }
     }
 
     /// Reset attempt count
+    ///
+    /// See `connect()` for safety guarantee documentation.
     pub fn reset_attempts(self) -> Self {
         let last_activity = match self.data {
             ConnectionData::Disconnected { last_activity, .. } => last_activity,
-            _ => panic!("INVARIANT VIOLATION: Disconnected state must have Disconnected data"),
+            // SAFETY: Typestate pattern guarantees Disconnected state has Disconnected data
+            _ => {
+                unreachable!("Typestate violation: Disconnected marker with non-Disconnected data")
+            }
         };
 
         Self {
@@ -264,7 +284,10 @@ impl RedisConnection<Connected> {
                         last_activity,
                         ..
                     } => (attempt_count, Some(last_activity)),
-                    _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+                    // SAFETY: Typestate pattern guarantees Connected state has Connected data
+                    _ => unreachable!(
+                        "Typestate violation: Connected marker with non-Connected data"
+                    ),
                 };
                 let disconnected = RedisConnection {
                     data: ConnectionData::Disconnected {
@@ -279,6 +302,8 @@ impl RedisConnection<Connected> {
     }
 
     /// Gracefully disconnect the connection
+    ///
+    /// See `connection()` for safety guarantee documentation.
     pub fn disconnect(self) -> RedisConnection<Disconnected> {
         let (attempt_count, last_activity) = match self.data {
             ConnectionData::Connected {
@@ -286,7 +311,8 @@ impl RedisConnection<Connected> {
                 last_activity,
                 ..
             } => (attempt_count, Some(last_activity)),
-            _ => panic!("INVARIANT VIOLATION: Connected state must have Connected data"),
+            // SAFETY: Typestate pattern guarantees Connected state has Connected data
+            _ => unreachable!("Typestate violation: Connected marker with non-Connected data"),
         };
         RedisConnection {
             data: ConnectionData::Disconnected {

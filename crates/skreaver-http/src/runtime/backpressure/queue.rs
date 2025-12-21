@@ -46,4 +46,25 @@ impl AgentQueue {
             self.recent_processing_times.pop_front();
         }
     }
+
+    /// Increment processed counter with overflow protection (HIGH-4)
+    ///
+    /// Uses saturating arithmetic to prevent counter wraparound in long-running systems.
+    /// If counter reaches u64::MAX, it will stay at that value instead of wrapping to 0.
+    #[inline]
+    pub(super) fn increment_processed(&mut self) {
+        self.total_processed = self.total_processed.saturating_add(1);
+    }
+
+    /// Increment timeouts counter with overflow protection (HIGH-4)
+    #[inline]
+    pub(super) fn increment_timeouts(&mut self) {
+        self.total_timeouts = self.total_timeouts.saturating_add(1);
+    }
+
+    /// Increment rejections counter with overflow protection (HIGH-4)
+    #[inline]
+    pub(super) fn increment_rejections(&mut self) {
+        self.total_rejections = self.total_rejections.saturating_add(1);
+    }
 }

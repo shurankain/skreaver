@@ -120,7 +120,7 @@ impl BackpressureManager {
                 {
                     let mut queues = self.agent_queues.write().await;
                     if let Some(queue) = queues.get_mut(&agent_id) {
-                        queue.total_rejections += 1;
+                        queue.increment_rejections();
                     }
                 }
                 return Err(BackpressureError::SystemOverloaded { load });
@@ -146,7 +146,7 @@ impl BackpressureManager {
 
             // Check queue capacity
             if queue.queue.len() >= self.config.max_queue_size {
-                queue.total_rejections += 1;
+                queue.increment_rejections();
                 return Err(BackpressureError::QueueFull {
                     agent_id,
                     max_size: self.config.max_queue_size,
@@ -181,7 +181,7 @@ impl BackpressureManager {
                 {
                     let mut queues = self.agent_queues.write().await;
                     if let Some(queue) = queues.get_mut(&agent_id) {
-                        queue.total_rejections += 1;
+                        queue.increment_rejections();
                     }
                 }
                 return Err(BackpressureError::SystemOverloaded { load });
@@ -207,7 +207,7 @@ impl BackpressureManager {
 
             // Check queue capacity
             if queue.queue.len() >= self.config.max_queue_size {
-                queue.total_rejections += 1;
+                queue.increment_rejections();
                 return Err(BackpressureError::QueueFull {
                     agent_id,
                     max_size: self.config.max_queue_size,
@@ -343,7 +343,7 @@ impl BackpressureManager {
             {
                 let mut queues = agent_queues.write().await;
                 if let Some(queue) = queues.get_mut(&agent_id_clone) {
-                    queue.total_processed += 1;
+                    queue.increment_processed();
                     queue.add_processing_time(processing_time);
                 }
             }
@@ -474,7 +474,7 @@ impl BackpressureManager {
             {
                 let mut queues = agent_queues.write().await;
                 if let Some(queue) = queues.get_mut(&agent_id_clone) {
-                    queue.total_processed += 1;
+                    queue.increment_processed();
                     queue.add_processing_time(processing_time);
                 }
             }
@@ -554,7 +554,7 @@ impl BackpressureManager {
     async fn record_timeout(&self, agent_id: &str) {
         let mut queues = self.agent_queues.write().await;
         if let Some(queue) = queues.get_mut(agent_id) {
-            queue.total_timeouts += 1;
+            queue.increment_timeouts();
         }
     }
 
@@ -582,7 +582,7 @@ impl BackpressureManager {
                             tracing::debug!(agent_id = %agent_id, "Client disconnected before expired timeout response");
                         }
                         expired_count += 1;
-                        queue.total_timeouts += 1;
+                        queue.increment_timeouts();
                     }
                 } else {
                     break;

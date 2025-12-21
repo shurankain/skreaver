@@ -32,15 +32,22 @@ const MAX_REQUEST_ID_LENGTH: usize = 128;
 ///
 /// Valid request IDs must:
 /// - Be non-empty and <= MAX_REQUEST_ID_LENGTH characters
-/// - Contain only alphanumeric characters, hyphens, underscores, and colons
+/// - Contain only alphanumeric characters, hyphens, and underscores
 /// - Not contain control characters (prevents log injection)
+///
+/// # Security Note (HIGH-2)
+///
+/// Colons are explicitly NOT allowed because they are commonly used as field
+/// separators in structured logging (e.g., `key:value`). Allowing colons in
+/// request IDs could enable log injection attacks where attackers craft
+/// request IDs that look like log fields.
 ///
 /// UUID format (8-4-4-4-12 hex with hyphens) is preferred but not required.
 fn validate_request_id(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= MAX_REQUEST_ID_LENGTH
         && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ':')
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Middleware that generates or extracts request IDs for distributed tracing
