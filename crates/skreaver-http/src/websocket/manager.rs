@@ -3,11 +3,16 @@
 use super::lock_ordering::ManagerLocks;
 use super::{WebSocketConfig, WsError, WsMessage, WsResult};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use tokio::sync::{Mutex, Notify, broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+/// Task lifecycle states for atomic state machine (MEDIUM-5)
+const TASK_STATE_IDLE: u8 = 0;
+const TASK_STATE_STARTING: u8 = 1;
+const TASK_STATE_RUNNING: u8 = 2;
 
 /// Background task handles for graceful shutdown
 ///
@@ -18,6 +23,10 @@ use uuid::Uuid;
 ///
 /// MEDIUM-30: Uses `Notify` for instant shutdown signaling instead of polling.
 /// This eliminates the 100ms polling delay and reduces CPU overhead.
+///
+/// MEDIUM-5: Uses atomic state machine to eliminate TOCTOU race condition.
+/// The state machine ensures atomic transitions: IDLE -> STARTING -> RUNNING -> IDLE.
+/// This prevents the race between checking `is_starting()` and calling `try_start()`.
 struct BackgroundTasks {
     cleanup_task: Option<JoinHandle<()>>,
     orphaned_cleanup_task: Option<JoinHandle<()>>,
@@ -25,8 +34,8 @@ struct BackgroundTasks {
     shutdown_signal: Arc<AtomicBool>,
     /// Notify for instant shutdown signaling (MEDIUM-30: replaces 100ms polling)
     shutdown_notify: Arc<Notify>,
-    /// Flag to prevent concurrent task initialization
-    is_starting: AtomicBool,
+    /// Atomic state machine for task lifecycle (MEDIUM-5: eliminates TOCTOU race)
+    state: AtomicU8,
 }
 
 impl BackgroundTasks {
@@ -37,25 +46,34 @@ impl BackgroundTasks {
             broadcast_task: None,
             shutdown_signal: Arc::new(AtomicBool::new(false)),
             shutdown_notify: Arc::new(Notify::new()),
-            is_starting: AtomicBool::new(false),
+            state: AtomicU8::new(TASK_STATE_IDLE),
         }
     }
 
-    /// Check if tasks are currently being started
-    fn is_starting(&self) -> bool {
-        self.is_starting.load(Ordering::Acquire)
+    /// Atomically attempt to transition from IDLE to STARTING
+    ///
+    /// Returns Ok(()) if transition succeeded, Err with current state if failed.
+    /// This eliminates the TOCTOU race by combining the check and state change
+    /// into a single atomic operation (MEDIUM-5).
+    fn try_start(&self) -> Result<(), u8> {
+        self.state
+            .compare_exchange(
+                TASK_STATE_IDLE,
+                TASK_STATE_STARTING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .map(|_| ())
     }
 
-    /// Try to acquire the starting lock
-    fn try_start(&self) -> bool {
-        self.is_starting
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
+    /// Mark tasks as running (transition STARTING -> RUNNING)
+    fn mark_running(&self) {
+        self.state.store(TASK_STATE_RUNNING, Ordering::Release);
     }
 
-    /// Release the starting lock
-    fn finish_start(&self) {
-        self.is_starting.store(false, Ordering::Release);
+    /// Mark tasks as idle (transition RUNNING -> IDLE)
+    fn mark_idle(&self) {
+        self.state.store(TASK_STATE_IDLE, Ordering::Release);
     }
 
     /// Shutdown all background tasks and wait for them to complete
@@ -77,6 +95,9 @@ impl BackgroundTasks {
             // Wait for task to actually terminate
             let _ = tokio::time::timeout(tokio::time::Duration::from_millis(500), handle).await;
         }
+
+        // MEDIUM-5: Transition back to IDLE state after shutdown
+        self.mark_idle();
     }
 
     /// Shutdown all background tasks (synchronous version for Drop)
@@ -104,6 +125,9 @@ impl BackgroundTasks {
         if let Some(handle) = self.broadcast_task.take() {
             handle.abort();
         }
+
+        // MEDIUM-5: Transition back to IDLE state after shutdown
+        self.mark_idle();
     }
 }
 
@@ -943,20 +967,29 @@ impl WebSocketManager {
 
     /// Start background tasks
     ///
-    /// SECURITY: Uses atomic flag to prevent race conditions during concurrent
-    /// calls to start_background_tasks. Waits for old tasks to fully terminate
+    /// SECURITY: Uses atomic state machine to prevent race conditions during concurrent
+    /// calls to start_background_tasks (MEDIUM-5). Waits for old tasks to fully terminate
     /// before starting new ones.
+    ///
+    /// The atomic state machine eliminates TOCTOU by combining check and state change
+    /// into a single compare-exchange operation.
     pub async fn start_background_tasks(&self) {
         let mut tasks = self.background_tasks.lock().await;
 
-        // Prevent concurrent initialization
-        if tasks.is_starting() {
-            info!("Background tasks already being started, skipping");
-            return;
-        }
-
-        if !tasks.try_start() {
-            info!("Another thread is starting background tasks, skipping");
+        // MEDIUM-5: Atomically attempt IDLE -> STARTING transition
+        // This single operation eliminates the race between checking and setting state
+        if let Err(current_state) = tasks.try_start() {
+            match current_state {
+                TASK_STATE_STARTING => {
+                    info!("Background tasks already being started, skipping");
+                }
+                TASK_STATE_RUNNING => {
+                    info!("Background tasks already running, skipping");
+                }
+                _ => {
+                    warn!("Background tasks in unexpected state: {}", current_state);
+                }
+            }
             return;
         }
 
@@ -1047,8 +1080,8 @@ impl WebSocketManager {
         });
         tasks.broadcast_task = Some(broadcast_handle);
 
-        // Mark initialization as complete
-        tasks.finish_start();
+        // MEDIUM-5: Mark tasks as running (STARTING -> RUNNING transition)
+        tasks.mark_running();
         info!("Background tasks started successfully");
     }
 

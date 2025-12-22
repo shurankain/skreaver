@@ -190,7 +190,9 @@ impl AgentService {
             agent_id: agent_id.as_str().to_string(),
             content: response_content,
             response_mode: observation.response_mode,
-            processing_time_ms: processing_time.as_millis() as u32,
+            // MEDIUM-8: Use try_into with saturating fallback for processing time
+            // Cap at u32::MAX (~49 days) for extremely long operations
+            processing_time_ms: processing_time.as_millis().try_into().unwrap_or(u32::MAX),
             tools_called: 0, // Would be tracked by actual implementation
             timestamp: Utc::now(),
             metadata: observation.metadata.into_iter()

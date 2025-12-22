@@ -121,8 +121,10 @@ pub fn configure_connection_timeouts(
     conn: &Connection,
     config: &TimeoutConfig,
 ) -> Result<(), MemoryError> {
-    // Set busy timeout - how long to wait for locks
-    let timeout_ms = config.statement_timeout.as_millis() as i32;
+    // MEDIUM-8: Convert timeout to i32 with bounds checking
+    // SQLite's busy_timeout uses i32 milliseconds, so we need to clamp to i32::MAX (~24 days)
+    let timeout_ms = config.statement_timeout.as_millis().min(i32::MAX as u128) as i32;
+
     conn.busy_timeout(Duration::from_millis(timeout_ms as u64))
         .map_err(|e| MemoryError::ConnectionFailed {
             backend: MemoryBackend::Sqlite,

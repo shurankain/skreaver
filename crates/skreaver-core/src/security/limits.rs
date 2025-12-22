@@ -434,12 +434,16 @@ impl ProcessMonitor {
     }
 
     /// Count open file descriptors (platform-specific)
+    ///
+    /// MEDIUM-8: Uses saturating conversion to prevent overflow on systems
+    /// with extremely large numbers of file descriptors.
     fn count_open_files(&self) -> u32 {
         #[cfg(target_os = "linux")]
         {
             // On Linux, count files in /proc/self/fd/
             if let Ok(entries) = std::fs::read_dir("/proc/self/fd") {
-                return entries.count() as u32;
+                // MEDIUM-8: Use try_into with saturating fallback
+                return entries.count().try_into().unwrap_or(u32::MAX);
             }
         }
 
@@ -457,7 +461,8 @@ impl ProcessMonitor {
                     .split(|&b| b == b'\n')
                     .filter(|line| !line.is_empty())
                     .count();
-                return count.saturating_sub(1) as u32; // Subtract header line
+                // MEDIUM-8: Use try_into with saturating fallback
+                return count.saturating_sub(1).try_into().unwrap_or(u32::MAX);
             }
         }
 
@@ -522,8 +527,9 @@ impl RateLimiter {
         // Check if we've exceeded the limit
         if requests.len() >= self.limit as usize {
             return Err(SecurityError::RateLimitExceeded {
-                requests: requests.len() as u32,
-                window_seconds: self.window.as_secs() as u32,
+                // MEDIUM-8: Use try_into with saturating fallback
+                requests: requests.len().try_into().unwrap_or(u32::MAX),
+                window_seconds: self.window.as_secs().try_into().unwrap_or(u32::MAX),
             });
         }
 

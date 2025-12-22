@@ -598,8 +598,10 @@ impl MemoryAdmin for PostgresMemory {
                 let description: String = row.get(1);
                 let applied_at: chrono::DateTime<chrono::Utc> = row.get(2);
 
+                // MEDIUM-8: Convert version from i32 to u32 with validation
+                let version_u32 = version.try_into().unwrap_or(0);
                 applied_migrations.push(AppliedMigration {
-                    version: version as u32,
+                    version: version_u32,
                     description,
                     applied_at: applied_at.into(),
                 });
@@ -609,11 +611,14 @@ impl MemoryAdmin for PostgresMemory {
             let migration_engine = PostgresMigrationEngine::new();
             let latest_version = migration_engine.latest_version();
 
+            // MEDIUM-8: Convert current version with validation
+            let current_version_u32: u32 = current_version.try_into().unwrap_or(0);
+
             // Calculate pending migrations
-            let pending_migrations: Vec<u32> = ((current_version as u32 + 1)..=latest_version).collect();
+            let pending_migrations: Vec<u32> = ((current_version_u32 + 1)..=latest_version).collect();
 
             Ok(MigrationStatus {
-                current_version: current_version as u32,
+                current_version: current_version_u32,
                 latest_version,
                 pending_migrations,
                 applied_migrations,

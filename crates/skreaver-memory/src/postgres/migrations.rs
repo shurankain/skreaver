@@ -76,13 +76,17 @@ impl PostgresMigrationEngine {
             .map(|row| row.get(0))
             .unwrap_or(0);
 
+        // MEDIUM-8: Convert target version to i32 with validation
+        // Schema versions should never be this large, but validate for safety
         let target = target_version
             .unwrap_or_else(|| self.migrations.iter().map(|m| m.version).max().unwrap_or(0))
-            as i32;
+            .try_into()
+            .unwrap_or(i32::MAX);
 
         // Apply migrations
         for migration in &self.migrations {
-            let version = migration.version as i32;
+            // MEDIUM-8: Convert migration version with validation
+            let version: i32 = migration.version.try_into().unwrap_or(i32::MAX);
             if version > current_version && version <= target {
                 self.apply_migration(pool, migration).await?;
             }
@@ -120,9 +124,11 @@ impl PostgresMigrationEngine {
             })?;
 
         // Record migration
+        // MEDIUM-8: Convert version to i32 with validation
+        let version_i32: i32 = migration.version.try_into().unwrap_or(i32::MAX);
         tx.execute(
             "INSERT INTO schema_migrations (version, description) VALUES ($1, $2)",
-            &[&(migration.version as i32), &migration.description],
+            &[&version_i32, &migration.description],
         )
         .await
         .map_err(|e| MemoryError::ConnectionFailed {
