@@ -323,7 +323,10 @@ impl Key<Active> {
     /// # Errors
     ///
     /// Returns `AuthError::RandomGenerationFailed` if RNG fails after 3 attempts
-    fn generate_key_value(prefix: &str, length: usize) -> Result<String, AuthError> {
+    ///
+    /// LOW-6: Made async to use tokio::time::sleep instead of blocking thread::sleep.
+    /// This prevents blocking the async executor when called from async context.
+    async fn generate_key_value(prefix: &str, length: usize) -> Result<String, AuthError> {
         use base64::{Engine as _, engine::general_purpose};
         use rand::TryRngCore;
 
@@ -341,7 +344,9 @@ impl Key<Active> {
                         error = %e,
                         "Retrying cryptographic RNG after failure"
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(10 * (attempts as u64)));
+                    // LOW-6: Use async sleep to avoid blocking executor thread
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10 * (attempts as u64)))
+                        .await;
                 }
                 Err(e) => {
                     tracing::error!(
@@ -766,7 +771,7 @@ impl ApiKeyManager {
     /// Generate a new API key (type-safe version)
     pub async fn generate_key(&self, name: String, roles: Vec<Role>) -> AuthResult<Key<Active>> {
         let key_value =
-            Key::<Active>::generate_key_value(&self.config.prefix, self.config.min_length)?;
+            Key::<Active>::generate_key_value(&self.config.prefix, self.config.min_length).await?;
         let key_hash = self.hash_key(&key_value);
 
         let expires_at = self

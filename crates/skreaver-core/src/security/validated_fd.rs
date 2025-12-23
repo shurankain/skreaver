@@ -46,6 +46,25 @@ use std::path::{Path, PathBuf};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt;
 
+/// Convert path to string with logging for lossy conversions (LOW-3)
+///
+/// This helper logs when UTF-8 conversion is lossy, which can hide encoding
+/// issues in security-critical paths. The log message includes the original
+/// path bytes for debugging.
+fn path_to_string_checked(path: &Path) -> String {
+    let lossy = path.to_string_lossy();
+    // Check if conversion was lossy by comparing Cow variant
+    if matches!(lossy, std::borrow::Cow::Owned(_)) {
+        // Lossy conversion occurred - log for security audit
+        tracing::warn!(
+            path_debug = ?path,
+            path_lossy = %lossy,
+            "Path contains invalid UTF-8 - using lossy conversion in security context"
+        );
+    }
+    lossy.to_string()
+}
+
 /// A file descriptor that has been validated against security policies
 ///
 /// This type eliminates TOCTOU vulnerabilities by:
@@ -119,7 +138,7 @@ impl ValidatedFileDescriptor {
             .open(path_ref)
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "open_read".to_string(),
-                path: path_ref.to_string_lossy().to_string(),
+                path: path_to_string_checked(path_ref),
                 error: e.to_string(),
             })?;
 
@@ -129,7 +148,7 @@ impl ValidatedFileDescriptor {
             .metadata()
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "metadata".to_string(),
-                path: path_ref.to_string_lossy().to_string(),
+                path: path_to_string_checked(path_ref),
                 error: e.to_string(),
             })?;
 
@@ -148,7 +167,7 @@ impl ValidatedFileDescriptor {
         // Validate the canonical path is allowed
         if !policy.is_path_allowed(&canonical_path)? {
             return Err(SecurityError::PathNotAllowed {
-                path: canonical_path.to_string_lossy().to_string(),
+                path: path_to_string_checked(&canonical_path),
             });
         }
 
@@ -178,7 +197,7 @@ impl ValidatedFileDescriptor {
             .open(path_ref)
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "open_write".to_string(),
-                path: path_ref.to_string_lossy().to_string(),
+                path: path_to_string_checked(path_ref),
                 error: e.to_string(),
             })?;
 
@@ -186,7 +205,7 @@ impl ValidatedFileDescriptor {
             .metadata()
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "metadata".to_string(),
-                path: path_ref.to_string_lossy().to_string(),
+                path: path_to_string_checked(path_ref),
                 error: e.to_string(),
             })?;
 
@@ -194,7 +213,7 @@ impl ValidatedFileDescriptor {
 
         if !policy.is_path_allowed(&canonical_path)? {
             return Err(SecurityError::PathNotAllowed {
-                path: canonical_path.to_string_lossy().to_string(),
+                path: path_to_string_checked(&canonical_path),
             });
         }
 
@@ -214,7 +233,7 @@ impl ValidatedFileDescriptor {
             .read_to_string(&mut contents)
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "read_to_string".to_string(),
-                path: self.canonical_path.to_string_lossy().to_string(),
+                path: path_to_string_checked(&self.canonical_path),
                 error: e.to_string(),
             })?;
         Ok(contents)
@@ -227,7 +246,7 @@ impl ValidatedFileDescriptor {
             .read_to_end(&mut contents)
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "read_to_vec".to_string(),
-                path: self.canonical_path.to_string_lossy().to_string(),
+                path: path_to_string_checked(&self.canonical_path),
                 error: e.to_string(),
             })?;
         Ok(contents)
@@ -239,7 +258,7 @@ impl ValidatedFileDescriptor {
             .write_all(contents)
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "write_all".to_string(),
-                path: self.canonical_path.to_string_lossy().to_string(),
+                path: path_to_string_checked(&self.canonical_path),
                 error: e.to_string(),
             })?;
 
@@ -248,7 +267,7 @@ impl ValidatedFileDescriptor {
             .flush()
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "flush".to_string(),
-                path: self.canonical_path.to_string_lossy().to_string(),
+                path: path_to_string_checked(&self.canonical_path),
                 error: e.to_string(),
             })?;
 
@@ -296,7 +315,7 @@ impl ValidatedFileDescriptor {
             .or_else(|_| fallback.canonicalize())
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "canonical_path".to_string(),
-                path: fallback.to_string_lossy().to_string(),
+                path: path_to_string_checked(&fallback),
                 error: e.to_string(),
             })
     }
@@ -307,7 +326,7 @@ impl ValidatedFileDescriptor {
             .canonicalize()
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "canonical_path".to_string(),
-                path: fallback.to_string_lossy().to_string(),
+                path: path_to_string_checked(&fallback),
                 error: e.to_string(),
             })
     }

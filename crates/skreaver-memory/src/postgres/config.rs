@@ -61,7 +61,17 @@ impl PostgresConfig {
                 .first()
                 .map(|h| match h {
                     tokio_postgres::config::Host::Tcp(s) => s.clone(),
-                    tokio_postgres::config::Host::Unix(path) => path.to_string_lossy().to_string(),
+                    tokio_postgres::config::Host::Unix(path) => {
+                        // LOW-3: Log lossy conversion for Unix socket paths
+                        let lossy = path.to_string_lossy();
+                        if matches!(lossy, std::borrow::Cow::Owned(_)) {
+                            tracing::warn!(
+                                path_debug = ?path,
+                                "Unix socket path contains invalid UTF-8"
+                            );
+                        }
+                        lossy.to_string()
+                    }
                 })
                 .unwrap_or_else(|| "localhost".to_string()),
             port: config.get_ports().first().copied().unwrap_or(5432),

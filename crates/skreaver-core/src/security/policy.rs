@@ -2,8 +2,24 @@
 
 use super::errors::SecurityError;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+/// Convert path to string with logging for lossy conversions (LOW-3)
+///
+/// This helper logs when UTF-8 conversion is lossy, which can hide encoding
+/// issues in security-critical paths.
+fn path_to_string_checked(path: &Path) -> String {
+    let lossy = path.to_string_lossy();
+    if matches!(lossy, std::borrow::Cow::Owned(_)) {
+        tracing::warn!(
+            path_debug = ?path,
+            path_lossy = %lossy,
+            "Path contains invalid UTF-8 - using lossy conversion in security context"
+        );
+    }
+    lossy.to_string()
+}
 
 /// Validated file size limit in bytes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -467,7 +483,7 @@ impl FileSystemPolicy {
         let canonical_path = path
             .canonicalize()
             .map_err(|_| SecurityError::InvalidPath {
-                path: path.to_string_lossy().to_string(),
+                path: path_to_string_checked(path),
             })?;
 
         // Check if path starts with any allowed path
