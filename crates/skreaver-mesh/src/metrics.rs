@@ -72,7 +72,8 @@ impl MeshMetricsCollector {
     /// Record a message sent
     pub async fn record_send(&self, topic: Option<&str>) {
         let mut metrics = self.metrics.write().await;
-        metrics.messages_sent_total += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        metrics.messages_sent_total = metrics.messages_sent_total.saturating_add(1);
 
         if let Some(topic) = topic
             && metrics.queue_depths.len() < self.max_topics
@@ -84,19 +85,22 @@ impl MeshMetricsCollector {
     /// Record a message received
     pub async fn record_receive(&self) {
         let mut metrics = self.metrics.write().await;
-        metrics.messages_received_total += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        metrics.messages_received_total = metrics.messages_received_total.saturating_add(1);
     }
 
     /// Record a broadcast
     pub async fn record_broadcast(&self) {
         let mut metrics = self.metrics.write().await;
-        metrics.messages_broadcast_total += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        metrics.messages_broadcast_total = metrics.messages_broadcast_total.saturating_add(1);
     }
 
     /// Record a publish to topic
     pub async fn record_publish(&self, topic: &str) {
         let mut metrics = self.metrics.write().await;
-        metrics.messages_published_total += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        metrics.messages_published_total = metrics.messages_published_total.saturating_add(1);
 
         if metrics.queue_depths.len() < self.max_topics {
             *metrics.queue_depths.entry(topic.to_string()).or_insert(0) += 1;
@@ -106,13 +110,15 @@ impl MeshMetricsCollector {
     /// Record a send failure
     pub async fn record_send_failure(&self) {
         let mut metrics = self.metrics.write().await;
-        metrics.send_failures_total += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        metrics.send_failures_total = metrics.send_failures_total.saturating_add(1);
     }
 
     /// Record a receive failure
     pub async fn record_receive_failure(&self) {
         let mut metrics = self.metrics.write().await;
-        metrics.receive_failures_total += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        metrics.receive_failures_total = metrics.receive_failures_total.saturating_add(1);
     }
 
     /// Update DLQ metrics

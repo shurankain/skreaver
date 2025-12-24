@@ -175,7 +175,8 @@ impl DeadLetterQueue {
         let entry = DlqEntry::new(message, config.default_ttl_secs, failure_reason.into());
 
         queue.push_back(entry);
-        stats.total_added += 1;
+        // CRIT-1: Use saturating arithmetic to prevent counter overflow
+        stats.total_added = stats.total_added.saturating_add(1);
         stats.current_size = queue.len();
 
         debug!("Added message to DLQ (total: {})", queue.len());
@@ -212,7 +213,8 @@ impl DeadLetterQueue {
         queue.retain(|entry| entry.message.id.as_str() != message_id);
 
         if queue.len() < initial_len {
-            stats.total_removed += 1;
+            // CRIT-1: Use saturating arithmetic to prevent counter overflow
+            stats.total_removed = stats.total_removed.saturating_add(1);
             stats.current_size = queue.len();
             debug!("Removed message {} from DLQ", message_id);
         }
@@ -248,7 +250,8 @@ impl DeadLetterQueue {
         let removed = initial_len - queue.len();
 
         if removed > 0 {
-            stats.total_expired += removed as u64;
+            // CRIT-1: Use saturating arithmetic to prevent counter overflow
+            stats.total_expired = stats.total_expired.saturating_add(removed as u64);
             stats.current_size = queue.len();
             debug!("Cleaned up {} expired messages from DLQ", removed);
         }
@@ -270,7 +273,8 @@ impl DeadLetterQueue {
         let removed = initial_len - queue.len();
 
         if removed > 0 {
-            stats.total_exhausted += removed as u64;
+            // CRIT-1: Use saturating arithmetic to prevent counter overflow
+            stats.total_exhausted = stats.total_exhausted.saturating_add(removed as u64);
             stats.current_size = queue.len();
             debug!("Cleaned up {} exhausted messages from DLQ", removed);
         }
