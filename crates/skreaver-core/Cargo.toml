@@ -51,3 +51,7 @@ redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], opt
 # Resource monitoring (cross-platform)
 sysinfo = "0.32"
 
+# Unix-specific dependencies for secure path operations (HIGH-3)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+

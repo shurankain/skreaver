@@ -384,7 +384,23 @@ impl DerefMut for PooledConnection {
 
 impl Drop for PooledConnection {
     fn drop(&mut self) {
-        // SAFETY: Drop is only called once, so we can safely take the connection
+        // SAFETY (HIGH-1): ManuallyDrop::take is safe here under the following invariants:
+        //
+        // 1. **Single Ownership**: Drop is guaranteed by Rust to be called exactly once per value,
+        //    so we will never attempt to take() the same ManuallyDrop twice.
+        //
+        // 2. **No Prior Take**: The ManuallyDrop was initialized in new() with a valid Connection
+        //    and has never been taken before this point. Access is only through Deref/DerefMut
+        //    which borrow but don't take ownership.
+        //
+        // 3. **Exclusive Access**: &mut self ensures exclusive access to self.connection,
+        //    preventing concurrent access during the take operation.
+        //
+        // 4. **Valid State**: The Connection inside ManuallyDrop is always in a valid,
+        //    initialized state (created in create_connection(), stored in new()).
+        //
+        // Violating these invariants would require unsafe code elsewhere or transmutation,
+        // neither of which occur in this codebase.
         let conn = unsafe { std::mem::ManuallyDrop::take(&mut self.connection) };
 
         // Always try to return connection to pool with proper size checking

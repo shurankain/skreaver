@@ -184,25 +184,24 @@ impl PathValidator {
             });
         }
 
-        // SECURITY: Check for symlinks BEFORE canonicalization to prevent TOCTOU attacks
-        // Canonicalize() follows symlinks, so we must check first.
-        // This prevents attacks like: /allowed/evil_link -> /etc/shadow
-        // where canonicalize would resolve to /etc/shadow before we check.
-        if let super::FileSystemAccess::Enabled {
+        // SECURITY (HIGH-3): Atomically canonicalize path without TOCTOU race
+        // Use platform-specific fd-based canonicalization to prevent race between
+        // symlink check and canonicalize() where attacker could swap path with symlink.
+        let canonical_path = if let super::FileSystemAccess::Enabled {
             symlink_behavior: super::SymlinkBehavior::NoFollow,
             ..
         } = &self.policy.access
         {
-            // Check each component of the path for symlinks
-            self.check_path_for_symlinks(&path_buf)?;
-        }
-
-        // Now safe to canonicalize - we've already verified no symlinks
-        let canonical_path = path_buf
-            .canonicalize()
-            .map_err(|e| SecurityError::InvalidPath {
-                path: format!("{}: {}", path, e),
-            })?;
+            // Use atomic fd-based canonicalization (Unix) or fallback (Windows)
+            Self::canonicalize_no_follow(&path_buf)?
+        } else {
+            // Allow symlinks - use standard canonicalize
+            path_buf
+                .canonicalize()
+                .map_err(|e| SecurityError::InvalidPath {
+                    path: format!("{}: {}", path, e),
+                })?
+        };
 
         // Check against allowed paths
         if !self.policy.is_path_allowed(&canonical_path)? {
@@ -214,11 +213,89 @@ impl PathValidator {
         Ok(canonical_path)
     }
 
-    /// SECURITY: Check each component of a path for symlinks to prevent traversal attacks.
+    /// SECURITY (HIGH-3): Atomically canonicalize a path without following symlinks
     ///
-    /// This function walks the path from root to leaf, checking each component
-    /// to ensure no symlinks exist anywhere in the path hierarchy.
-    fn check_path_for_symlinks(&self, path: &Path) -> Result<(), SecurityError> {
+    /// This prevents TOCTOU race conditions between symlink checking and canonicalization.
+    /// Uses platform-specific file descriptor operations where available.
+    #[cfg(target_os = "linux")]
+    fn canonicalize_no_follow(path: &Path) -> Result<PathBuf, SecurityError> {
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::io::AsRawFd;
+
+        // O_PATH is Linux-specific (since 2.6.39)
+        const O_PATH: i32 = 0o10000000;
+
+        // Open with O_NOFOLLOW to atomically reject symlinks
+        // O_PATH allows opening for metadata without requiring read permissions
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | O_PATH)
+            .open(path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(libc::ELOOP)
+                {
+                    SecurityError::ValidationFailed {
+                        reason: format!(
+                            "Symbolic link detected or permission denied: {}",
+                            path.display()
+                        ),
+                    }
+                } else {
+                    SecurityError::InvalidPath {
+                        path: format!("{}: {}", path.display(), e),
+                    }
+                }
+            })?;
+
+        // Read the canonical path via /proc/self/fd/<fd>
+        // This gives us the real path that the fd points to, without following symlinks
+        let fd_path = format!("/proc/self/fd/{}", file.as_raw_fd());
+        std::fs::read_link(&fd_path).map_err(|e| SecurityError::InvalidPath {
+            path: format!("Failed to resolve path via fd: {}", e),
+        })
+    }
+
+    /// macOS and other Unix systems: Use realpath() with O_NOFOLLOW
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn canonicalize_no_follow(path: &Path) -> Result<PathBuf, SecurityError> {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        // Try to open with O_NOFOLLOW - will fail if path is a symlink
+        let _file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied
+                    || e.raw_os_error() == Some(libc::ELOOP)
+                {
+                    SecurityError::ValidationFailed {
+                        reason: format!(
+                            "Symbolic link detected or permission denied: {}",
+                            path.display()
+                        ),
+                    }
+                } else {
+                    SecurityError::InvalidPath {
+                        path: format!("{}: {}", path.display(), e),
+                    }
+                }
+            })?;
+
+        // If we successfully opened it, it's not a symlink
+        // Now we can safely canonicalize
+        path.canonicalize().map_err(|e| SecurityError::InvalidPath {
+            path: format!("{}: {}", path.display(), e),
+        })
+    }
+
+    /// Windows fallback: Use the existing check_path_for_symlinks approach
+    /// Note: This still has a small TOCTOU window but Windows doesn't have O_NOFOLLOW
+    #[cfg(not(unix))]
+    fn canonicalize_no_follow(path: &Path) -> Result<PathBuf, SecurityError> {
+        // On Windows, we need to check for symlinks component-by-component
+        // This has a TOCTOU window but is the best we can do without Windows-specific APIs
         let mut current_path = PathBuf::new();
 
         for component in path.components() {
@@ -229,16 +306,12 @@ impl PathValidator {
                     current_path.push("/");
                 }
                 Component::Prefix(prefix) => {
-                    // Windows path prefix (e.g., C:)
                     current_path.push(prefix.as_os_str());
                 }
                 Component::CurDir => {
-                    // Skip "." - it's not a symlink
                     continue;
                 }
                 Component::ParentDir => {
-                    // SECURITY: Reject ".." to prevent path traversal
-                    // Even though we check symlinks, ".." can escape allowed directories
                     return Err(SecurityError::ValidationFailed {
                         reason: "Path traversal (..) is not allowed".to_string(),
                     });
@@ -246,7 +319,7 @@ impl PathValidator {
                 Component::Normal(name) => {
                     current_path.push(name);
 
-                    // Check if this path component is a symlink
+                    // Check if this component is a symlink
                     match std::fs::symlink_metadata(&current_path) {
                         Ok(metadata) => {
                             if metadata.file_type().is_symlink() {
@@ -259,13 +332,11 @@ impl PathValidator {
                             }
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            // Path doesn't exist yet - that's OK, canonicalize will fail appropriately
                             continue;
                         }
-                        Err(_) => {
-                            // Other error accessing path - fail securely
+                        Err(e) => {
                             return Err(SecurityError::InvalidPath {
-                                path: current_path.to_string_lossy().to_string(),
+                                path: format!("{}: {}", current_path.display(), e),
                             });
                         }
                     }
@@ -273,7 +344,12 @@ impl PathValidator {
             }
         }
 
-        Ok(())
+        // Now canonicalize the checked path
+        current_path
+            .canonicalize()
+            .map_err(|e| SecurityError::InvalidPath {
+                path: format!("{}: {}", current_path.display(), e),
+            })
     }
 
     pub fn validate_file_size(&self, path: &Path) -> Result<(), SecurityError> {

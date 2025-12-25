@@ -51,8 +51,23 @@ impl DerefMut for PooledConnection {
 
 impl Drop for PooledConnection {
     fn drop(&mut self) {
-        // SAFETY: We are in Drop, so this is the only place that takes ownership
-        // of the client. This is safe because Drop is only called once.
+        // SAFETY (HIGH-1): ManuallyDrop::take is safe here under the following invariants:
+        //
+        // 1. **Single Ownership**: Drop is guaranteed by Rust to be called exactly once per value,
+        //    so we will never attempt to take() the same ManuallyDrop twice.
+        //
+        // 2. **No Prior Take**: The ManuallyDrop was initialized in new() and has never been
+        //    taken before this point. The only way to access the inner Client is through
+        //    Deref/DerefMut, which borrows but doesn't take ownership.
+        //
+        // 3. **Exclusive Access**: &mut self ensures we have exclusive access to self.client,
+        //    preventing concurrent access during the take operation.
+        //
+        // 4. **Valid State**: The Client inside ManuallyDrop is always in a valid state
+        //    (initialized in new(), never moved out except here).
+        //
+        // Violating these invariants would require unsafe code elsewhere in this module
+        // or transmuting between incompatible types, both of which we don't do.
         let client = unsafe { std::mem::ManuallyDrop::take(&mut self.client) };
 
         let pool = Arc::clone(&self.pool);

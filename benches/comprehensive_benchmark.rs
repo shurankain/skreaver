@@ -130,7 +130,8 @@ fn bench_file_io_comprehensive(c: &mut Criterion) {
     for (size_name, byte_count) in sizes {
         let test_data = "x".repeat(byte_count);
 
-        group.throughput(Throughput::Bytes(byte_count as u64));
+        // HIGH-5: Use try_into() with fallback to prevent overflow on 64-bit systems
+        group.throughput(Throughput::Bytes(byte_count.try_into().unwrap_or(u64::MAX)));
 
         group.bench_with_input(
             BenchmarkId::new("file_write", size_name),

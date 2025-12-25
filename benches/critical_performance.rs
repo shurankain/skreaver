@@ -20,7 +20,8 @@ fn benchmark_memory_store(c: &mut Criterion) {
     for size in [1, 10, 100, 1000, 10000].iter() {
         let _value = "x".repeat(*size);
 
-        group.throughput(Throughput::Bytes(*size as u64));
+        // HIGH-5: Use try_into() with fallback to prevent overflow
+        group.throughput(Throughput::Bytes((*size).try_into().unwrap_or(u64::MAX)));
         group.bench_with_input(BenchmarkId::new("store_by_size", size), size, |b, &size| {
             let mut memory = InMemoryMemory::default();
             let value = "x".repeat(size);
@@ -56,7 +57,8 @@ fn benchmark_memory_load(c: &mut Criterion) {
             })
             .unwrap();
 
-        group.throughput(Throughput::Bytes(*size as u64));
+        // HIGH-5: Use try_into() with fallback to prevent overflow
+        group.throughput(Throughput::Bytes((*size).try_into().unwrap_or(u64::MAX)));
         group.bench_with_input(BenchmarkId::new("load_by_size", size), size, |b, _| {
             b.iter(|| {
                 memory.load(&key).unwrap();
@@ -134,7 +136,8 @@ fn benchmark_tool_execution(c: &mut Criterion) {
     for size in [1, 10, 100, 1000].iter() {
         let _input = "x".repeat(*size);
 
-        group.throughput(Throughput::Bytes(*size as u64));
+        // HIGH-5: Use try_into() with fallback to prevent overflow
+        group.throughput(Throughput::Bytes((*size).try_into().unwrap_or(u64::MAX)));
         group.bench_with_input(
             BenchmarkId::new("tool_call_by_input_size", size),
             size,

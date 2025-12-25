@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use tokio::sync::{Mutex, Notify, broadcast, mpsc};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 /// Task lifecycle states for atomic state machine (MEDIUM-5)
@@ -1118,10 +1118,22 @@ impl WebSocketManager {
         };
 
         // Send messages after releasing locks
+        // HIGH-7: Use try_send instead of blocking send to prevent deadlock
+        // If buffer is full, we drop the message and log a warning rather than blocking
         let message = WsMessage::event(&event.channel, event.data);
         for (conn_id, sender) in subscribers_with_senders {
-            if let Err(e) = sender.send(message.clone()).await {
-                error!("Failed to send event to connection {}: {}", conn_id, e);
+            match sender.try_send(message.clone()) {
+                Ok(()) => { /* Message sent successfully */ }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    warn!(
+                        "WebSocket buffer full for connection {}, dropping broadcast message",
+                        conn_id
+                    );
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    // Connection already closed, this is expected
+                    trace!("Connection {} already closed, skipping broadcast", conn_id);
+                }
             }
         }
     }

@@ -98,10 +98,24 @@ impl Default for RateLimitConfig {
     }
 }
 
-/// Entry tracking a user rate limiter with last access time
+/// User priority tiers for eviction (HIGH-6)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum UserPriority {
+    /// Suspicious users - frequent rate limit violations (lowest priority, evict first)
+    Suspicious = 0,
+    /// Free tier users - normal usage
+    Free = 1,
+    /// System or internal users (highest priority, preserve longest)
+    System = 2,
+}
+
+/// Entry tracking a user rate limiter with last access time and priority
 struct UserLimiterEntry {
     limiter: Arc<GlobalRateLimiter>,
     last_access: Instant,
+    priority: UserPriority,
+    /// Track rate limit violations for priority adjustment (HIGH-6)
+    violation_count: u32,
 }
 
 /// Rate limiting state
@@ -167,33 +181,68 @@ impl RateLimitState {
             let now = Instant::now();
             user_limiters.retain(|_, entry| now.duration_since(entry.last_access) < ttl);
 
-            // If still at capacity, evict oldest entries
+            // If still at capacity, evict with priority-based strategy (HIGH-6)
             if user_limiters.len() >= self.config.max_user_limiters {
-                // Find and remove oldest 10% of entries
+                // Find and remove 10% of entries using priority-based eviction
+                // Priority order: Suspicious > Free > System (evict lower priority first)
                 let to_remove = (self.config.max_user_limiters / 10).max(1);
                 let mut entries: Vec<_> = user_limiters
                     .iter()
-                    .map(|(k, v)| (k.clone(), v.last_access))
+                    .map(|(k, v)| (k.clone(), v.priority, v.last_access, v.violation_count))
                     .collect();
-                entries.sort_by_key(|(_, last_access)| *last_access);
 
-                for (key, _) in entries.into_iter().take(to_remove) {
-                    user_limiters.remove(&key);
+                // Sort by: priority (ascending = evict Suspicious first), then by last_access (oldest first)
+                entries.sort_by_key(|(_, priority, last_access, _)| (*priority, *last_access));
+
+                // Collect keys to remove
+                let keys_to_remove: Vec<String> = entries
+                    .into_iter()
+                    .take(to_remove)
+                    .map(|(key, _, _, _)| key)
+                    .collect();
+
+                // Count evictions by priority for logging
+                let mut suspicious_evicted = 0;
+                let mut free_evicted = 0;
+                let mut system_evicted = 0;
+
+                for key in &keys_to_remove {
+                    if let Some(entry) = user_limiters.get(key) {
+                        match entry.priority {
+                            UserPriority::Suspicious => suspicious_evicted += 1,
+                            UserPriority::Free => free_evicted += 1,
+                            UserPriority::System => system_evicted += 1,
+                        }
+                    }
+                    user_limiters.remove(key);
                 }
 
                 tracing::warn!(
-                    "Rate limiter map at capacity ({}), evicted {} oldest entries",
+                    "Rate limiter map at capacity ({}), evicted {} entries (suspicious: {}, free: {}, system: {})",
                     self.config.max_user_limiters,
-                    to_remove
+                    to_remove,
+                    suspicious_evicted,
+                    free_evicted,
+                    system_evicted
                 );
             }
         }
 
-        // Create new limiter entry
+        // Create new limiter entry with priority detection (HIGH-6)
         let quota = Quota::per_minute(self.config.per_user_rpm);
+
+        // Determine initial priority based on user_id patterns
+        let priority = if user_id.starts_with("system:") || user_id.starts_with("internal:") {
+            UserPriority::System
+        } else {
+            UserPriority::Free
+        };
+
         let entry = UserLimiterEntry {
             limiter: Arc::new(RateLimiter::direct(quota)),
             last_access: Instant::now(),
+            priority,
+            violation_count: 0,
         };
         let limiter = Arc::clone(&entry.limiter);
         user_limiters.insert(user_id.to_string(), entry);
@@ -275,6 +324,24 @@ impl RateLimitState {
                         .security_rate_limit_exceeded_total
                         .with_label_values(&["user"])
                         .inc();
+                }
+
+                // HIGH-6: Track violations and downgrade priority for repeat offenders
+                {
+                    let mut user_limiters = self.user_limiters.write().await;
+                    if let Some(entry) = user_limiters.get_mut(user_id) {
+                        entry.violation_count = entry.violation_count.saturating_add(1);
+
+                        // Downgrade to Suspicious after 5 violations
+                        if entry.violation_count >= 5 && entry.priority != UserPriority::System {
+                            entry.priority = UserPriority::Suspicious;
+                            tracing::info!(
+                                "User {} downgraded to Suspicious priority after {} violations",
+                                user_id,
+                                entry.violation_count
+                            );
+                        }
+                    }
                 }
 
                 let retry_after = not_until

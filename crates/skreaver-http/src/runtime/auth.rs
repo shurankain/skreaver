@@ -67,6 +67,62 @@ static JWT_SECRET: Lazy<SecretKey> = Lazy::new(|| {
     }
 });
 
+/// Validate production configuration at startup (HIGH-2)
+///
+/// This function should be called during application startup, BEFORE accepting
+/// any HTTP requests, to ensure that all required security configuration is present.
+/// This provides fail-fast behavior instead of panicking on first auth request.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - In production builds: SKREAVER_JWT_SECRET is not set or is empty
+/// - In debug/test builds: Always returns Ok (validation is relaxed)
+///
+/// # Example
+///
+/// ```no_run
+/// # use skreaver_http::runtime::auth;
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     // Validate config BEFORE starting server
+///     auth::validate_production_config()?;
+///
+///     // Now start the server...
+///     Ok(())
+/// }
+/// ```
+pub fn validate_production_config() -> Result<(), String> {
+    #[cfg(not(any(test, debug_assertions)))]
+    {
+        // Force evaluation of JWT_SECRET at startup
+        // This will panic if the secret is not configured, but we'll
+        // do a pre-check here for a better error message
+        match std::env::var("SKREAVER_JWT_SECRET") {
+            Ok(secret) if !secret.is_empty() => {
+                // Valid secret exists, force evaluation to ensure no other issues
+                let _ = &*JWT_SECRET;
+                Ok(())
+            }
+            Ok(_) => Err("SKREAVER_JWT_SECRET is set but empty. \
+                 Set a secure, randomly generated secret (minimum 32 characters)."
+                .to_string()),
+            Err(_) => Err(
+                "SKREAVER_JWT_SECRET environment variable must be set in production. \
+                 Generate a secure random secret: openssl rand -base64 32"
+                    .to_string(),
+            ),
+        }
+    }
+
+    #[cfg(any(test, debug_assertions))]
+    {
+        // In debug/test builds, validation is relaxed
+        tracing::debug!("Production config validation skipped in debug/test build");
+        Ok(())
+    }
+}
+
 /// Create API key manager with test key in debug builds only
 /// In production, keys should be generated dynamically and stored securely
 pub fn create_api_key_manager() -> Arc<ApiKeyManager> {
