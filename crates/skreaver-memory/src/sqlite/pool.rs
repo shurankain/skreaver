@@ -180,7 +180,8 @@ impl SqlitePool {
             path,
             pool_size,
             config,
-            active_connections: Arc::new(Mutex::new(pool_size)), // Start with all connections in pool
+            // HIGH-4: Initialize to 0, not pool_size - no connections are active at startup
+            active_connections: Arc::new(Mutex::new(0)),
         })
     }
 
