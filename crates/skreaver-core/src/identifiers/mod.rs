@@ -54,8 +54,17 @@
 
 mod validation;
 
+// LOW-4: Re-export deprecated types with allow(deprecated) to reduce internal warnings
+// Users will still see the deprecation warning from the original type definition
 #[allow(deprecated)]
-pub use validation::{IdValidationError, IdValidator};
+#[deprecated(
+    since = "0.5.0",
+    note = "Use `crate::validation::ValidationError` instead. IdValidationError will be REMOVED in 0.6.0."
+)]
+pub use validation::IdValidationError;
+
+#[allow(deprecated)]
+pub use validation::IdValidator;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

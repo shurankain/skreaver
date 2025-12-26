@@ -55,6 +55,7 @@ impl MemoryKey {
     /// - Must not be empty or only whitespace
     /// - Must not exceed 128 characters
     /// - Must contain only alphanumeric characters, underscores, hyphens, dots, and colons
+    /// - Must not contain path traversal sequences (../)
     ///
     /// # Example
     ///
@@ -65,28 +66,33 @@ impl MemoryKey {
     /// assert_eq!(key.as_str(), "user_context");
     /// ```
     pub fn new(key: &str) -> Result<Self, InvalidMemoryKey> {
-        use crate::validation::IdentifierRules;
+        // LOW-2: Simplified validation logic - direct checks instead of complex delegation
+        let trimmed = key.trim();
 
-        let validated = IdentifierRules::MEMORY_KEY
-            .validate(key)
-            .map_err(|e| match e {
-                crate::validation::ValidationError::Empty => InvalidMemoryKey::Empty,
-                crate::validation::ValidationError::WhitespaceOnly => InvalidMemoryKey::Empty,
-                crate::validation::ValidationError::LeadingTrailingWhitespace => {
-                    InvalidMemoryKey::InvalidChars(key.to_string())
-                }
-                crate::validation::ValidationError::TooLong { length, .. } => {
-                    InvalidMemoryKey::TooLong(length)
-                }
-                crate::validation::ValidationError::InvalidChar { input, .. } => {
-                    InvalidMemoryKey::InvalidChars(input)
-                }
-                crate::validation::ValidationError::PathTraversal => {
-                    InvalidMemoryKey::InvalidChars(key.to_string())
-                }
-            })?;
+        // Check if empty
+        if trimmed.is_empty() {
+            return Err(InvalidMemoryKey::Empty);
+        }
 
-        Ok(MemoryKey(validated))
+        // Check length
+        if trimmed.len() > Self::MAX_LENGTH {
+            return Err(InvalidMemoryKey::TooLong(trimmed.len()));
+        }
+
+        // Check for path traversal
+        if trimmed.contains("../") || trimmed.contains("..\\") {
+            return Err(InvalidMemoryKey::InvalidChars(key.to_string()));
+        }
+
+        // Check valid characters: alphanumeric, underscore, hyphen, dot, colon
+        if !trimmed
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.' || c == ':')
+        {
+            return Err(InvalidMemoryKey::InvalidChars(key.to_string()));
+        }
+
+        Ok(MemoryKey(trimmed.to_string()))
     }
 
     /// Create a MemoryKey without validation

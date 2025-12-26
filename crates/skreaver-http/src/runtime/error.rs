@@ -113,23 +113,56 @@ pub struct ErrorResponse {
     pub details: Option<serde_json::Value>,
     /// Request ID for tracking and debugging
     pub request_id: RequestId,
-    /// Timestamp when error occurred
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Timestamp when error occurred (LOW-1: Optional to avoid overhead for internal errors)
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default = "ErrorResponse::default_timestamp"
+    )]
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
     /// Additional metadata for debugging
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
 }
 
 impl ErrorResponse {
-    /// Create a new error response
+    /// Provides current timestamp for deserialization when missing
+    fn default_timestamp() -> Option<chrono::DateTime<chrono::Utc>> {
+        Some(chrono::Utc::now())
+    }
+
+    /// Create a new error response without timestamp (LOW-1: optimized for internal errors)
+    ///
+    /// Use this for internal errors that may not be sent to clients. The timestamp
+    /// will only be created if/when the error is serialized for a response.
     pub fn new(error: &str, message: &str, request_id: RequestId) -> Self {
         Self {
             error: error.to_string(),
             message: message.to_string(),
             details: None,
             request_id,
-            timestamp: chrono::Utc::now(),
+            timestamp: None,
             metadata: HashMap::new(),
+        }
+    }
+
+    /// Create a new error response with immediate timestamp
+    ///
+    /// Use this when you need an immediate timestamp (e.g., for client-facing errors).
+    pub fn new_with_timestamp(error: &str, message: &str, request_id: RequestId) -> Self {
+        Self {
+            error: error.to_string(),
+            message: message.to_string(),
+            details: None,
+            request_id,
+            timestamp: Some(chrono::Utc::now()),
+            metadata: HashMap::new(),
+        }
+    }
+
+    /// Ensure timestamp is set, creating it if needed
+    pub fn ensure_timestamp(&mut self) {
+        if self.timestamp.is_none() {
+            self.timestamp = Some(chrono::Utc::now());
         }
     }
 
@@ -357,8 +390,12 @@ impl RuntimeError {
     pub fn to_error_response(&self) -> ErrorResponse {
         // SECURITY: Use generic user-facing messages instead of internal error details
         let user_message = self.user_facing_message();
-        let mut response =
-            ErrorResponse::new(self.error_code(), &user_message, self.request_id().clone());
+        // LOW-1: Use new_with_timestamp for client-facing errors
+        let mut response = ErrorResponse::new_with_timestamp(
+            self.error_code(),
+            &user_message,
+            self.request_id().clone(),
+        );
 
         // SECURITY: Only add safe, non-sensitive details to client responses
         // Internal details are logged server-side with request_id for debugging

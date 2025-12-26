@@ -55,9 +55,10 @@ const MAX_ID_LENGTH: usize = crate::sanitization::MAX_IDENTIFIER_LENGTH;
 /// Conversion traits are provided for interoperability during the transition period.
 #[deprecated(
     since = "0.5.0",
-    note = "Use `crate::validation::ValidationError` instead. See type documentation for migration guide."
+    note = "Use `crate::validation::ValidationError` instead. This type will be REMOVED in 0.6.0. See type documentation for migration guide."
 )]
 #[derive(Debug, Clone, PartialEq, Eq)]
+// LOW-4: Enhanced deprecation notice - will be removed in v0.6.0
 pub enum IdValidationError {
     /// The identifier string is empty
     Empty,

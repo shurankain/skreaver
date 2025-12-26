@@ -1120,6 +1120,8 @@ impl WebSocketManager {
         // Send messages after releasing locks
         // HIGH-7: Use try_send instead of blocking send to prevent deadlock
         // If buffer is full, we drop the message and log a warning rather than blocking
+        // LOW-5: Message cloning is necessary here for mpsc channel
+        // Alternative: Change channel type to Arc<WsMessage>, but that's a larger refactor
         let message = WsMessage::event(&event.channel, event.data);
         for (conn_id, sender) in subscribers_with_senders {
             match sender.try_send(message.clone()) {

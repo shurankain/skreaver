@@ -297,11 +297,13 @@ pub async fn observe_agent<T: ToolRegistry + Clone + Send + Sync + 'static>(
     tokio::spawn(async move {
         let agent_id_for_processing = Arc::clone(&agent_id_arc);
         let parsed_id_for_processing = Arc::clone(&parsed_id_arc);
+        // LOW-5: HttpAgentRuntime clone is cheap (all fields are Arc)
         let runtime_for_closure = runtime_arc.clone();
 
         if runtime_arc
             .backpressure_manager
             .process_next_queued_request(&agent_id_arc, move |input| {
+                // LOW-5: HttpAgentRuntime clone is cheap (all fields are Arc)
                 let runtime_inner = runtime_for_closure.clone();
                 let agent_id_for_closure = Arc::clone(&agent_id_for_processing);
                 let parsed_id_for_closure = Arc::clone(&parsed_id_for_processing);
