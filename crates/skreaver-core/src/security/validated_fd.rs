@@ -315,7 +315,7 @@ impl ValidatedFileDescriptor {
             .or_else(|_| fallback.canonicalize())
             .map_err(|e| SecurityError::FileSystemError {
                 operation: "canonical_path".to_string(),
-                path: path_to_string_checked(&fallback),
+                path: path_to_string_checked(fallback),
                 error: e.to_string(),
             })
     }
