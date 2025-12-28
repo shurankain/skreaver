@@ -546,4 +546,21 @@ mod tests {
         assert!(!auth_context.user_id.is_empty());
         assert!(!auth_context.permissions.is_empty());
     }
+
+    #[test]
+    fn test_validate_production_config_in_debug() {
+        // HIGH-2: In debug/test builds, validation should always succeed
+        // even without SKREAVER_JWT_SECRET set
+        let result = validate_production_config();
+        assert!(
+            result.is_ok(),
+            "Production config validation should succeed in debug builds: {:?}",
+            result
+        );
+    }
+
+    // Note: We cannot test production build validation failure in tests
+    // because cfg(test) is always true in test builds. The production
+    // validation is tested implicitly by the HttpAgentRuntime::with_config
+    // call in integration tests.
 }

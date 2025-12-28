@@ -83,6 +83,18 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
             tracing::warn!("Failed to initialize observability: {}", e);
         }
 
+        // HIGH-2: Validate JWT secret at startup (fail-fast instead of lazy panic)
+        // This ensures the server doesn't start with misconfigured authentication
+        if let Err(e) = crate::runtime::auth::validate_production_config() {
+            panic!(
+                "FATAL: Authentication configuration validation failed\n\
+                Error: {}\n\
+                CRITICAL: Invalid authentication configuration prevents startup. \
+                Please set SKREAVER_JWT_SECRET environment variable in production.",
+                e
+            );
+        }
+
         // Load security configuration with fail-fast validation
         let security_config = if let Some(config_path) = &config.security_config_path {
             match SecurityConfig::load_from_file(config_path) {
