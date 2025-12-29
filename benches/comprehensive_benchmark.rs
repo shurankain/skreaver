@@ -267,7 +267,10 @@ fn bench_json_comprehensive(c: &mut Criterion) {
 
     for (scenario_name, json_data) in json_scenarios {
         let json_str = json_data.to_string();
-        group.throughput(Throughput::Bytes(json_str.len() as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Bytes(
+            json_str.len().try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("json_parse", scenario_name),

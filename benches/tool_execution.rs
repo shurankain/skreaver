@@ -113,7 +113,10 @@ fn bench_batch_tool_execution(c: &mut Criterion) {
         .with_tool(MockTool::new("file_write").with_default_response("written"));
 
     for batch_size in [1, 2, 4, 8, 16].iter() {
-        group.throughput(Throughput::Elements(*batch_size as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Elements(
+            (*batch_size).try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("batch_execute", batch_size),

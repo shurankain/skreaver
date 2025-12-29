@@ -72,7 +72,10 @@ fn bench_file_io_focused(c: &mut Criterion) {
     ];
 
     for (size_name, test_data) in test_cases {
-        group.throughput(Throughput::Bytes(test_data.len() as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Bytes(
+            test_data.len().try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("write", size_name),
@@ -178,7 +181,10 @@ fn bench_json_focused(c: &mut Criterion) {
     ];
 
     for (name, json_str) in scenarios {
-        group.throughput(Throughput::Bytes(json_str.len() as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Bytes(
+            json_str.len().try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(BenchmarkId::new("parse", name), &json_str, |b, json_str| {
             b.iter(|| {

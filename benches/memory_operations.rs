@@ -86,7 +86,10 @@ fn bench_memory_bulk_operations(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(15));
 
     for count in [10, 100, 1000].iter() {
-        group.throughput(Throughput::Elements(*count as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Elements(
+            (*count).try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("inmemory_bulk_store", count),
@@ -165,7 +168,10 @@ fn bench_memory_concurrent_access(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(20));
 
     for concurrent_tasks in [2, 4, 8, 16].iter() {
-        group.throughput(Throughput::Elements(*concurrent_tasks as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Elements(
+            (*concurrent_tasks).try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("concurrent_store", concurrent_tasks),

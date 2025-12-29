@@ -161,7 +161,10 @@ fn bench_concurrent_sessions(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(20));
 
     for concurrent_count in [1, 4, 8, 16, 32].iter() {
-        group.throughput(Throughput::Elements(*concurrent_count as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Elements(
+            (*concurrent_count).try_into().unwrap_or(u64::MAX),
+        ));
 
         group.bench_with_input(
             BenchmarkId::new("concurrent_agents", concurrent_count),

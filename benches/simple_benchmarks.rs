@@ -111,7 +111,10 @@ fn bench_payload_sizes(c: &mut Criterion) {
     ];
 
     for (size_name, payload) in payloads {
-        group.throughput(Throughput::Bytes(payload.len() as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Bytes(
+            payload.len().try_into().unwrap_or(u64::MAX),
+        ));
 
         // Memory storage with different sizes
         group.bench_with_input(

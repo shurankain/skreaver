@@ -140,7 +140,10 @@ fn bench_realistic_json_processing(c: &mut Criterion) {
     })
     .to_string();
 
-    group.throughput(Throughput::Bytes(complex_json.len() as u64));
+    // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+    group.throughput(Throughput::Bytes(
+        complex_json.len().try_into().unwrap_or(u64::MAX),
+    ));
 
     group.bench_function("parse_complex_json", |b| {
         b.iter(|| {
@@ -168,7 +171,10 @@ fn bench_realistic_json_processing(c: &mut Criterion) {
         })
         .to_string();
 
-        group.throughput(Throughput::Bytes(json_data.len() as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Bytes(
+            json_data.len().try_into().unwrap_or(u64::MAX),
+        ));
         group.bench_with_input(
             BenchmarkId::new("json_parse_size", size),
             &json_data,

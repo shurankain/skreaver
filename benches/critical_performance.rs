@@ -75,7 +75,10 @@ fn benchmark_memory_batch(c: &mut Criterion) {
 
     // Benchmark batch sizes
     for batch_size in [1, 10, 50, 100, 500].iter() {
-        group.throughput(Throughput::Elements(*batch_size as u64));
+        // HIGH-5: Use saturating conversion to prevent overflow in throughput calculation
+        group.throughput(Throughput::Elements(
+            (*batch_size).try_into().unwrap_or(u64::MAX),
+        ));
 
         // Benchmark store_many
         group.bench_with_input(
