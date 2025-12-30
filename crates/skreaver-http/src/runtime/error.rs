@@ -101,6 +101,83 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     response
 }
 
+/// Type-safe error codes for runtime errors
+///
+/// This enum provides compile-time guarantees for error codes, preventing
+/// typos and enabling exhaustive pattern matching in client code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorCode {
+    /// Agent not found
+    AgentNotFound,
+    /// Agent creation failed
+    AgentCreationFailed,
+    /// Agent operation failed
+    AgentOperationFailed,
+    /// Authentication required
+    AuthenticationRequired,
+    /// Invalid authentication credentials
+    InvalidAuthentication,
+    /// Insufficient permissions
+    InsufficientPermissions,
+    /// Token creation failed
+    TokenCreationFailed,
+    /// Rate limit exceeded
+    RateLimitExceeded,
+    /// Invalid input
+    InvalidInput,
+    /// Missing required field
+    MissingRequiredField,
+    /// Invalid JSON
+    InvalidJson,
+    /// Internal server error
+    InternalError,
+    /// Service unavailable
+    ServiceUnavailable,
+    /// Request timeout
+    Timeout,
+    /// Memory/storage error
+    MemoryError,
+    /// Tool execution failed
+    ToolExecutionFailed,
+    /// Configuration error
+    ConfigurationError,
+}
+
+impl ErrorCode {
+    /// Get the string representation of this error code
+    ///
+    /// This is used for serialization in error responses and logging.
+    /// The format matches the original snake_case convention.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::AgentNotFound => "agent_not_found",
+            Self::AgentCreationFailed => "agent_creation_failed",
+            Self::AgentOperationFailed => "agent_operation_failed",
+            Self::AuthenticationRequired => "authentication_required",
+            Self::InvalidAuthentication => "invalid_authentication",
+            Self::InsufficientPermissions => "insufficient_permissions",
+            Self::TokenCreationFailed => "token_creation_failed",
+            Self::RateLimitExceeded => "rate_limit_exceeded",
+            Self::InvalidInput => "invalid_input",
+            Self::MissingRequiredField => "missing_required_field",
+            Self::InvalidJson => "invalid_json",
+            Self::InternalError => "internal_error",
+            Self::ServiceUnavailable => "service_unavailable",
+            Self::Timeout => "timeout",
+            Self::MemoryError => "memory_error",
+            Self::ToolExecutionFailed => "tool_execution_failed",
+            Self::ConfigurationError => "configuration_error",
+        }
+    }
+}
+
+impl std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Structured error response for HTTP APIs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
@@ -359,25 +436,28 @@ impl RuntimeError {
     }
 
     /// Get the error code for this error type
-    pub fn error_code(&self) -> &'static str {
+    ///
+    /// Returns a type-safe `ErrorCode` enum instead of a string, providing
+    /// compile-time guarantees and enabling pattern matching in client code.
+    pub fn error_code(&self) -> ErrorCode {
         match self {
-            RuntimeError::AgentNotFound { .. } => "agent_not_found",
-            RuntimeError::AgentCreationFailed { .. } => "agent_creation_failed",
-            RuntimeError::AgentOperationFailed { .. } => "agent_operation_failed",
-            RuntimeError::AuthenticationRequired { .. } => "authentication_required",
-            RuntimeError::InvalidAuthentication { .. } => "invalid_authentication",
-            RuntimeError::InsufficientPermissions { .. } => "insufficient_permissions",
-            RuntimeError::TokenCreationFailed { .. } => "token_creation_failed",
-            RuntimeError::RateLimitExceeded { .. } => "rate_limit_exceeded",
-            RuntimeError::InvalidInput { .. } => "invalid_input",
-            RuntimeError::MissingRequiredField { .. } => "missing_required_field",
-            RuntimeError::InvalidJson { .. } => "invalid_json",
-            RuntimeError::InternalError { .. } => "internal_error",
-            RuntimeError::ServiceUnavailable { .. } => "service_unavailable",
-            RuntimeError::Timeout { .. } => "timeout",
-            RuntimeError::MemoryError { .. } => "memory_error",
-            RuntimeError::ToolExecutionFailed { .. } => "tool_execution_failed",
-            RuntimeError::ConfigurationError { .. } => "configuration_error",
+            RuntimeError::AgentNotFound { .. } => ErrorCode::AgentNotFound,
+            RuntimeError::AgentCreationFailed { .. } => ErrorCode::AgentCreationFailed,
+            RuntimeError::AgentOperationFailed { .. } => ErrorCode::AgentOperationFailed,
+            RuntimeError::AuthenticationRequired { .. } => ErrorCode::AuthenticationRequired,
+            RuntimeError::InvalidAuthentication { .. } => ErrorCode::InvalidAuthentication,
+            RuntimeError::InsufficientPermissions { .. } => ErrorCode::InsufficientPermissions,
+            RuntimeError::TokenCreationFailed { .. } => ErrorCode::TokenCreationFailed,
+            RuntimeError::RateLimitExceeded { .. } => ErrorCode::RateLimitExceeded,
+            RuntimeError::InvalidInput { .. } => ErrorCode::InvalidInput,
+            RuntimeError::MissingRequiredField { .. } => ErrorCode::MissingRequiredField,
+            RuntimeError::InvalidJson { .. } => ErrorCode::InvalidJson,
+            RuntimeError::InternalError { .. } => ErrorCode::InternalError,
+            RuntimeError::ServiceUnavailable { .. } => ErrorCode::ServiceUnavailable,
+            RuntimeError::Timeout { .. } => ErrorCode::Timeout,
+            RuntimeError::MemoryError { .. } => ErrorCode::MemoryError,
+            RuntimeError::ToolExecutionFailed { .. } => ErrorCode::ToolExecutionFailed,
+            RuntimeError::ConfigurationError { .. } => ErrorCode::ConfigurationError,
         }
     }
 
@@ -392,7 +472,7 @@ impl RuntimeError {
         let user_message = self.user_facing_message();
         // LOW-1: Use new_with_timestamp for client-facing errors
         let mut response = ErrorResponse::new_with_timestamp(
-            self.error_code(),
+            self.error_code().as_str(),
             &user_message,
             self.request_id().clone(),
         );
@@ -549,7 +629,7 @@ impl IntoResponse for RuntimeError {
 
         // Log the error for monitoring
         tracing::error!(
-            error_code = self.error_code(),
+            error_code = %self.error_code(),
             request_id = %self.request_id(),
             status_code = %status_code,
             error_message = %self,
@@ -722,6 +802,26 @@ mod tests {
             agent_id: "test".to_string(),
             request_id,
         };
-        assert_eq!(error.error_code(), "agent_not_found");
+        assert_eq!(error.error_code(), ErrorCode::AgentNotFound);
+        assert_eq!(error.error_code().as_str(), "agent_not_found");
+    }
+
+    #[test]
+    fn test_error_code_serialization() {
+        // Test that ErrorCode serializes to the expected string format
+        let code = ErrorCode::AgentNotFound;
+        let serialized = serde_json::to_string(&code).unwrap();
+        assert_eq!(serialized, r#""agent_not_found""#);
+
+        // Test deserialization
+        let deserialized: ErrorCode = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, ErrorCode::AgentNotFound);
+    }
+
+    #[test]
+    fn test_error_code_display() {
+        let code = ErrorCode::RateLimitExceeded;
+        assert_eq!(format!("{}", code), "rate_limit_exceeded");
+        assert_eq!(code.to_string(), "rate_limit_exceeded");
     }
 }
