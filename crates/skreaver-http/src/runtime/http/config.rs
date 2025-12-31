@@ -3,6 +3,7 @@
 //! This module provides configuration structures for the HTTP runtime,
 //! including rate limiting, backpressure, connection limits, and observability settings.
 
+use crate::runtime::config::{MaxBodySize, RequestTimeout};
 use crate::runtime::{backpressure::BackpressureConfig, rate_limit::RateLimitConfig};
 use skreaver_observability::ObservabilityConfig;
 use std::path::PathBuf;
@@ -140,6 +141,9 @@ impl Default for OpenApiConfig {
 ///
 /// Uses Option pattern for optional features (CORS, OpenAPI) to eliminate
 /// boolean blindness and provide better configuration control.
+///
+/// Validated newtypes (`RequestTimeout`, `MaxBodySize`) ensure invalid configurations
+/// cannot be constructed, eliminating the need for runtime validation.
 #[derive(Debug, Clone)]
 pub struct HttpRuntimeConfig {
     /// Rate limiting configuration
@@ -148,10 +152,10 @@ pub struct HttpRuntimeConfig {
     pub backpressure: BackpressureConfig,
     /// Connection limits configuration
     pub connection_limits: crate::runtime::connection_limits::ConnectionLimitConfig,
-    /// Request timeout in seconds
-    pub request_timeout_secs: u64,
-    /// Maximum request body size in bytes
-    pub max_body_size: usize,
+    /// Request timeout (validated at construction)
+    pub request_timeout: RequestTimeout,
+    /// Maximum request body size (validated at construction)
+    pub max_body_size: MaxBodySize,
     /// CORS configuration (None = disabled, Some = enabled)
     pub cors: Option<CorsConfig>,
     /// OpenAPI documentation configuration (None = disabled, Some = enabled)
@@ -169,8 +173,8 @@ impl Default for HttpRuntimeConfig {
             rate_limit: RateLimitConfig::default(),
             backpressure: BackpressureConfig::default(),
             connection_limits: crate::runtime::connection_limits::ConnectionLimitConfig::default(),
-            request_timeout_secs: 30,
-            max_body_size: 16 * 1024 * 1024, // 16MB
+            request_timeout: RequestTimeout::default(),
+            max_body_size: MaxBodySize::default(),
             cors: Some(CorsConfig::default()),
             openapi: Some(OpenApiConfig::default()),
             observability: ObservabilityConfig::default(),

@@ -49,7 +49,7 @@ use crate::runtime::{
     rate_limit::RateLimitConfig,
 };
 use skreaver_observability::{ObservabilityConfig, ObservabilityMode};
-use std::{env, path::PathBuf, time::Duration};
+use std::{env, num::NonZeroU64, path::PathBuf, time::Duration};
 
 /// Error type for configuration loading
 #[derive(Debug, thiserror::Error)]
@@ -61,14 +61,135 @@ pub enum ConfigError {
     ValidationError(String),
 }
 
+/// Validated request timeout (1-300 seconds)
+///
+/// This newtype ensures that request timeouts are always valid at construction time,
+/// eliminating the need for runtime validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RequestTimeout(NonZeroU64);
+
+impl RequestTimeout {
+    /// Minimum allowed timeout in seconds
+    pub const MIN_SECONDS: u64 = 1;
+    /// Maximum allowed timeout in seconds (5 minutes)
+    pub const MAX_SECONDS: u64 = 300;
+
+    /// Create a new RequestTimeout from seconds
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError` if the timeout is 0 or greater than 300 seconds.
+    pub fn from_seconds(seconds: u64) -> Result<Self, ConfigError> {
+        if seconds == 0 {
+            return Err(ConfigError::ValidationError(
+                "request timeout must be at least 1 second".to_string(),
+            ));
+        }
+        if seconds > Self::MAX_SECONDS {
+            return Err(ConfigError::ValidationError(format!(
+                "request timeout must be at most {} seconds (5 minutes)",
+                Self::MAX_SECONDS
+            )));
+        }
+        // SAFETY: We've checked that seconds is non-zero above
+        Ok(Self(NonZeroU64::new(seconds).unwrap()))
+    }
+
+    /// Get the timeout value in seconds
+    #[must_use]
+    pub fn seconds(&self) -> u64 {
+        self.0.get()
+    }
+
+    /// Convert to `Duration`
+    #[must_use]
+    pub fn as_duration(&self) -> Duration {
+        Duration::from_secs(self.0.get())
+    }
+}
+
+impl Default for RequestTimeout {
+    fn default() -> Self {
+        // SAFETY: 30 is always valid (1 <= 30 <= 300)
+        Self(NonZeroU64::new(30).unwrap())
+    }
+}
+
+impl std::fmt::Display for RequestTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}s", self.seconds())
+    }
+}
+
+/// Validated maximum body size (1 byte to 100MB)
+///
+/// This newtype ensures that body size limits are always valid at construction time,
+/// eliminating the need for runtime validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MaxBodySize(usize);
+
+impl MaxBodySize {
+    /// Maximum allowed body size (100MB)
+    pub const MAX_BYTES: usize = 100 * 1024 * 1024;
+
+    /// Create a new MaxBodySize from bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError` if the size is 0 or greater than 100MB.
+    pub fn from_bytes(bytes: usize) -> Result<Self, ConfigError> {
+        if bytes == 0 {
+            return Err(ConfigError::ValidationError(
+                "max body size must be at least 1 byte".to_string(),
+            ));
+        }
+        if bytes > Self::MAX_BYTES {
+            return Err(ConfigError::ValidationError(format!(
+                "max body size must be at most {} bytes (100MB)",
+                Self::MAX_BYTES
+            )));
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Create a new MaxBodySize from megabytes
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError` if the resulting size is 0 or greater than 100MB.
+    pub fn from_megabytes(mb: usize) -> Result<Self, ConfigError> {
+        Self::from_bytes(mb * 1024 * 1024)
+    }
+
+    /// Get the size value in bytes
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        self.0
+    }
+}
+
+impl Default for MaxBodySize {
+    fn default() -> Self {
+        // SAFETY: 16MB is always valid (1 <= 16MB <= 100MB)
+        Self(16 * 1024 * 1024)
+    }
+}
+
+impl std::fmt::Display for MaxBodySize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mb = self.0 as f64 / (1024.0 * 1024.0);
+        write!(f, "{:.1}MB", mb)
+    }
+}
+
 /// Builder for `HttpRuntimeConfig` with environment variable support
 #[derive(Debug, Clone)]
 pub struct HttpRuntimeConfigBuilder {
     rate_limit: RateLimitConfig,
     backpressure: BackpressureConfig,
     connection_limits: ConnectionLimitConfig,
-    request_timeout_secs: u64,
-    max_body_size: usize,
+    request_timeout: RequestTimeout,
+    max_body_size: MaxBodySize,
     cors: Option<crate::runtime::http::CorsConfig>,
     openapi: Option<crate::runtime::http::OpenApiConfig>,
     observability: ObservabilityConfig,
@@ -81,8 +202,8 @@ impl Default for HttpRuntimeConfigBuilder {
             rate_limit: RateLimitConfig::default(),
             backpressure: BackpressureConfig::default(),
             connection_limits: ConnectionLimitConfig::default(),
-            request_timeout_secs: 30,
-            max_body_size: 16 * 1024 * 1024, // 16MB
+            request_timeout: RequestTimeout::default(),
+            max_body_size: MaxBodySize::default(),
             cors: Some(crate::runtime::http::CorsConfig::default()),
             openapi: Some(crate::runtime::http::OpenApiConfig::default()),
             observability: ObservabilityConfig::default(),
@@ -109,10 +230,10 @@ impl HttpRuntimeConfigBuilder {
 
         // HTTP Runtime Configuration
         if let Some(timeout) = get_env_u64("SKREAVER_REQUEST_TIMEOUT_SECS")? {
-            builder = builder.request_timeout_secs(timeout);
+            builder = builder.request_timeout_secs(timeout)?;
         }
         if let Some(max_size) = get_env_usize("SKREAVER_MAX_BODY_SIZE")? {
-            builder = builder.max_body_size(max_size);
+            builder = builder.max_body_size(max_size)?;
         }
         if let Some(cors) = get_env_bool("SKREAVER_ENABLE_CORS")? {
             builder = builder.cors(if cors {
@@ -288,18 +409,48 @@ impl HttpRuntimeConfigBuilder {
         self
     }
 
-    /// Set request timeout in seconds
+    /// Set request timeout using validated type
     #[must_use]
-    pub fn request_timeout_secs(mut self, timeout: u64) -> Self {
-        self.request_timeout_secs = timeout;
+    pub fn request_timeout(mut self, timeout: RequestTimeout) -> Self {
+        self.request_timeout = timeout;
         self
     }
 
-    /// Set maximum request body size in bytes
+    /// Set request timeout in seconds (convenience method with validation)
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ValidationError` if the timeout is invalid (must be 1-300 seconds).
+    pub fn request_timeout_secs(mut self, timeout: u64) -> Result<Self, ConfigError> {
+        self.request_timeout = RequestTimeout::from_seconds(timeout)?;
+        Ok(self)
+    }
+
+    /// Set maximum body size using validated type
     #[must_use]
-    pub fn max_body_size(mut self, size: usize) -> Self {
+    pub fn max_body_size_validated(mut self, size: MaxBodySize) -> Self {
         self.max_body_size = size;
         self
+    }
+
+    /// Set maximum request body size in bytes (convenience method with validation)
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ValidationError` if the size is invalid (must be 1 byte - 100MB).
+    pub fn max_body_size(mut self, size: usize) -> Result<Self, ConfigError> {
+        self.max_body_size = MaxBodySize::from_bytes(size)?;
+        Ok(self)
+    }
+
+    /// Set maximum request body size in megabytes (convenience method with validation)
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ValidationError` if the size is invalid (must be 1 byte - 100MB).
+    pub fn max_body_size_mb(mut self, size_mb: usize) -> Result<Self, ConfigError> {
+        self.max_body_size = MaxBodySize::from_megabytes(size_mb)?;
+        Ok(self)
     }
 
     /// Set CORS configuration (None = disabled, Some = enabled)
@@ -358,20 +509,24 @@ impl HttpRuntimeConfigBuilder {
         self
     }
 
-    /// Validate configuration and build `HttpRuntimeConfig`
+    /// Build `HttpRuntimeConfig`
+    ///
+    /// This method is infallible because all validated values use newtypes
+    /// that enforce constraints at construction time.
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::ValidationError` if the configuration is invalid.
+    /// Returns `ConfigError::ValidationError` if the backpressure or connection
+    /// limit configuration is invalid (these still use runtime validation).
     pub fn build(self) -> Result<HttpRuntimeConfig, ConfigError> {
-        // Validate configuration
+        // Validate remaining configuration (backpressure, connection limits)
         self.validate()?;
 
         Ok(HttpRuntimeConfig {
             rate_limit: self.rate_limit,
             backpressure: self.backpressure,
             connection_limits: self.connection_limits,
-            request_timeout_secs: self.request_timeout_secs,
+            request_timeout: self.request_timeout,
             max_body_size: self.max_body_size,
             cors: self.cors,
             openapi: self.openapi,
@@ -381,30 +536,15 @@ impl HttpRuntimeConfigBuilder {
     }
 
     /// Validate the configuration
+    ///
+    /// Only validates fields that don't use validated newtypes yet.
+    /// RequestTimeout and MaxBodySize are validated at construction time.
     fn validate(&self) -> Result<(), ConfigError> {
-        // Request timeout validation
-        if self.request_timeout_secs == 0 {
-            return Err(ConfigError::ValidationError(
-                "request_timeout_secs must be greater than 0".to_string(),
-            ));
-        }
-        if self.request_timeout_secs > 300 {
-            return Err(ConfigError::ValidationError(
-                "request_timeout_secs must be <= 300 (5 minutes)".to_string(),
-            ));
-        }
+        // Request timeout validation - ELIMINATED
+        // Now validated at construction time via RequestTimeout newtype
 
-        // Max body size validation
-        if self.max_body_size == 0 {
-            return Err(ConfigError::ValidationError(
-                "max_body_size must be greater than 0".to_string(),
-            ));
-        }
-        if self.max_body_size > 100 * 1024 * 1024 {
-            return Err(ConfigError::ValidationError(
-                "max_body_size must be <= 100MB".to_string(),
-            ));
-        }
+        // Max body size validation - ELIMINATED
+        // Now validated at construction time via MaxBodySize newtype
 
         // Rate limit validation
         // No validation needed - NonZeroU32 guarantees non-zero values at compile time
@@ -523,49 +663,46 @@ mod tests {
     #[test]
     fn test_default_builder() {
         let config = HttpRuntimeConfigBuilder::new().build().unwrap();
-        assert_eq!(config.request_timeout_secs, 30);
-        assert_eq!(config.max_body_size, 16 * 1024 * 1024);
+        assert_eq!(config.request_timeout.seconds(), 30);
+        assert_eq!(config.max_body_size.bytes(), 16 * 1024 * 1024);
         assert!(config.cors.is_some());
         assert!(config.openapi.is_some());
     }
 
     #[test]
     fn test_builder_validation_timeout() {
-        let result = HttpRuntimeConfigBuilder::new()
-            .request_timeout_secs(0)
-            .build();
+        // Validation now happens at builder method level, not build() time
+        let result = HttpRuntimeConfigBuilder::new().request_timeout_secs(0);
         assert!(result.is_err());
         assert!(
             result
                 .unwrap_err()
                 .to_string()
-                .contains("request_timeout_secs must be greater than 0")
+                .contains("request timeout must be at least 1 second")
         );
     }
 
     #[test]
     fn test_builder_validation_timeout_max() {
-        let result = HttpRuntimeConfigBuilder::new()
-            .request_timeout_secs(301)
-            .build();
+        let result = HttpRuntimeConfigBuilder::new().request_timeout_secs(301);
         assert!(result.is_err());
         assert!(
             result
                 .unwrap_err()
                 .to_string()
-                .contains("request_timeout_secs must be <= 300")
+                .contains("request timeout must be at most 300 seconds")
         );
     }
 
     #[test]
     fn test_builder_validation_max_body_size() {
-        let result = HttpRuntimeConfigBuilder::new().max_body_size(0).build();
+        let result = HttpRuntimeConfigBuilder::new().max_body_size(0);
         assert!(result.is_err());
         assert!(
             result
                 .unwrap_err()
                 .to_string()
-                .contains("max_body_size must be greater than 0")
+                .contains("max body size must be at least 1 byte")
         );
     }
 
@@ -596,14 +733,16 @@ mod tests {
     fn test_builder_custom_values() {
         let config = HttpRuntimeConfigBuilder::new()
             .request_timeout_secs(60)
+            .unwrap()
             .max_body_size(32 * 1024 * 1024)
+            .unwrap()
             .cors(None)
             .openapi(None)
             .build()
             .unwrap();
 
-        assert_eq!(config.request_timeout_secs, 60);
-        assert_eq!(config.max_body_size, 32 * 1024 * 1024);
+        assert_eq!(config.request_timeout.seconds(), 60);
+        assert_eq!(config.max_body_size.bytes(), 32 * 1024 * 1024);
         assert!(config.cors.is_none());
         assert!(config.openapi.is_none());
     }

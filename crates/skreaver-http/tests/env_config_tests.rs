@@ -29,8 +29,8 @@ fn test_env_config_default_when_no_vars_set() {
         .build()
         .expect("should build valid config");
 
-    assert_eq!(config.request_timeout_secs, 30);
-    assert_eq!(config.max_body_size, 16 * 1024 * 1024);
+    assert_eq!(config.request_timeout.seconds(), 30);
+    assert_eq!(config.max_body_size.bytes(), 16 * 1024 * 1024);
     assert!(config.cors.is_some());
     assert!(config.openapi.is_some());
     assert_eq!(config.rate_limit.global_rpm.get(), 1000);
@@ -48,7 +48,7 @@ fn test_env_config_request_timeout() {
         .build()
         .expect("should build valid config");
 
-    assert_eq!(config.request_timeout_secs, 60);
+    assert_eq!(config.request_timeout.seconds(), 60);
 
     clear_env("SKREAVER_REQUEST_TIMEOUT_SECS");
 }
@@ -64,7 +64,7 @@ fn test_env_config_max_body_size() {
         .build()
         .expect("should build valid config");
 
-    assert_eq!(config.max_body_size, 32 * 1024 * 1024);
+    assert_eq!(config.max_body_size.bytes(), 32 * 1024 * 1024);
 
     clear_env("SKREAVER_MAX_BODY_SIZE");
 }
@@ -218,14 +218,13 @@ fn test_env_config_validation_timeout_zero() {
     clear_all_skreaver_env_vars();
     set_env("SKREAVER_REQUEST_TIMEOUT_SECS", "0");
 
-    let result = HttpRuntimeConfigBuilder::from_env()
-        .expect("should parse env")
-        .build();
+    // Validation now happens at from_env() time, not build() time
+    let result = HttpRuntimeConfigBuilder::from_env();
 
     assert!(result.is_err());
     match result {
         Err(ConfigError::ValidationError(msg)) => {
-            assert!(msg.contains("request_timeout_secs must be greater than 0"));
+            assert!(msg.contains("request timeout must be at least 1 second"));
         }
         _ => panic!("Expected ValidationError"),
     }
@@ -239,14 +238,13 @@ fn test_env_config_validation_timeout_too_large() {
     clear_all_skreaver_env_vars();
     set_env("SKREAVER_REQUEST_TIMEOUT_SECS", "301");
 
-    let result = HttpRuntimeConfigBuilder::from_env()
-        .expect("should parse env")
-        .build();
+    // Validation now happens at from_env() time, not build() time
+    let result = HttpRuntimeConfigBuilder::from_env();
 
     assert!(result.is_err());
     match result {
         Err(ConfigError::ValidationError(msg)) => {
-            assert!(msg.contains("request_timeout_secs must be <= 300"));
+            assert!(msg.contains("request timeout must be at most 300 seconds"));
         }
         _ => panic!("Expected ValidationError"),
     }
@@ -334,8 +332,8 @@ fn test_env_config_comprehensive() {
         .expect("should build valid config");
 
     // Verify all values
-    assert_eq!(config.request_timeout_secs, 45);
-    assert_eq!(config.max_body_size, 10 * 1024 * 1024);
+    assert_eq!(config.request_timeout.seconds(), 45);
+    assert_eq!(config.max_body_size.bytes(), 10 * 1024 * 1024);
     assert!(config.cors.is_none());
     assert!(config.openapi.is_none());
     assert_eq!(config.rate_limit.global_rpm.get(), 500);
