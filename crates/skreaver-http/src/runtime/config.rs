@@ -24,7 +24,8 @@
 //! - `SKREAVER_BACKPRESSURE_GLOBAL_MAX_CONCURRENT` - Global max concurrent requests (default: 500)
 //! - `SKREAVER_BACKPRESSURE_QUEUE_TIMEOUT_SECS` - Queue timeout in seconds (default: 30)
 //! - `SKREAVER_BACKPRESSURE_PROCESSING_TIMEOUT_SECS` - Processing timeout in seconds (default: 60)
-//! - `SKREAVER_BACKPRESSURE_ENABLE_ADAPTIVE` - Enable adaptive backpressure (default: true)
+//! - `SKREAVER_BACKPRESSURE_MODE` - Backpressure mode: "static" or "adaptive" (default: adaptive)
+//! - `SKREAVER_BACKPRESSURE_ENABLE_ADAPTIVE` - [DEPRECATED] Use SKREAVER_BACKPRESSURE_MODE instead
 //! - `SKREAVER_BACKPRESSURE_TARGET_PROCESSING_MS` - Target processing time in ms (default: 1000)
 //! - `SKREAVER_BACKPRESSURE_LOAD_THRESHOLD` - Load threshold 0.0-1.0 (default: 0.8)
 //!
@@ -289,13 +290,20 @@ impl HttpRuntimeConfigBuilder {
         if let Some(timeout) = get_env_u64("SKREAVER_BACKPRESSURE_PROCESSING_TIMEOUT_SECS")? {
             backpressure.processing_timeout = Duration::from_secs(timeout);
         }
-        if let Some(adaptive) = get_env_bool("SKREAVER_BACKPRESSURE_ENABLE_ADAPTIVE")? {
+
+        // Parse backpressure mode directly from string (eliminates boolean blindness)
+        // Supports both new format ("static"/"adaptive") and legacy boolean format for backward compatibility
+        if let Some(mode) = get_env_parsed("SKREAVER_BACKPRESSURE_MODE")? {
+            backpressure.mode = mode;
+        } else if let Some(adaptive) = get_env_bool("SKREAVER_BACKPRESSURE_ENABLE_ADAPTIVE")? {
+            // Legacy boolean format for backward compatibility (deprecated)
             backpressure.mode = if adaptive {
                 crate::runtime::backpressure::BackpressureMode::Adaptive
             } else {
                 crate::runtime::backpressure::BackpressureMode::Static
             };
         }
+
         if let Some(target_ms) = get_env_u64("SKREAVER_BACKPRESSURE_TARGET_PROCESSING_MS")? {
             backpressure.target_processing_time_ms = target_ms;
         }
@@ -652,6 +660,23 @@ fn get_env_f64(key: &str) -> Result<Option<f64>, ConfigError> {
                 key: key.to_string(),
                 message: format!("invalid f64 value '{val}': {e}"),
             }),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Generic helper to parse environment variables using FromStr
+fn get_env_parsed<T>(key: &str) -> Result<Option<T>, ConfigError>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    match env::var(key) {
+        Ok(val) => val.parse::<T>().map(Some).map_err(|e| {
+            ConfigError::InvalidEnvVar {
+                key: key.to_string(),
+                message: format!("{}", e),
+            }
+        }),
         Err(_) => Ok(None),
     }
 }
