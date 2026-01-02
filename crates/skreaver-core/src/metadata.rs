@@ -1,12 +1,33 @@
-//! Type-safe metadata framework
+//! Type-safe metadata framework with DoS protection
 //!
 //! Provides compile-time safe metadata handling to replace stringly-typed
 //! HashMap<String, String> usage throughout the codebase.
+//!
+//! ## DoS Protection
+//!
+//! This module includes protection against denial-of-service attacks via:
+//! - **Entry count limits**: Maximum number of metadata entries
+//! - **Total size limits**: Maximum total byte size of all metadata
+//! - **Value size limits**: Maximum size per individual value
+//!
+//! These limits prevent attackers from:
+//! - Exhausting server memory with unbounded metadata
+//! - Causing performance degradation with large metadata operations
+//! - Bypassing resource limits through metadata injection
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+
+/// Maximum number of metadata entries (DoS protection)
+pub const MAX_METADATA_ENTRIES: usize = 100;
+
+/// Maximum total size of all metadata in bytes (DoS protection)
+pub const MAX_METADATA_TOTAL_BYTES: usize = 10 * 1024; // 10KB
+
+/// Maximum length for a single metadata value
+pub const MAX_VALUE_LENGTH: usize = 1024; // 1KB per value
 
 /// Type-safe metadata keys with compile-time validation
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -171,10 +192,12 @@ impl FromStr for MetadataKey {
 }
 
 /// Type-safe metadata value supporting multiple types
+///
+/// Values are validated against size limits to prevent DoS attacks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MetadataValue {
-    /// String value
+    /// String value (validated to not exceed MAX_VALUE_LENGTH)
     String(String),
     /// Integer value
     Integer(i64),
@@ -184,9 +207,58 @@ pub enum MetadataValue {
     Float(f64),
     /// Boolean value
     Boolean(bool),
-    /// Timestamp value (ISO 8601)
+    /// Timestamp value (ISO 8601, validated to not exceed MAX_VALUE_LENGTH)
     Timestamp(String),
 }
+
+/// Errors that can occur during metadata operations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MetadataError {
+    /// Value exceeds maximum length
+    ValueTooLong { length: usize, max: usize },
+    /// Too many entries in metadata
+    TooManyEntries { current: usize, max: usize },
+    /// Total metadata size exceeds limit
+    TotalSizeTooLarge {
+        current: usize,
+        additional: usize,
+        max: usize,
+    },
+}
+
+impl fmt::Display for MetadataError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ValueTooLong { length, max } => {
+                write!(
+                    f,
+                    "Metadata value too long: {} bytes (max {})",
+                    length, max
+                )
+            }
+            Self::TooManyEntries { current, max } => {
+                write!(
+                    f,
+                    "Too many metadata entries: {} entries (max {})",
+                    current, max
+                )
+            }
+            Self::TotalSizeTooLarge {
+                current,
+                additional,
+                max,
+            } => {
+                write!(
+                    f,
+                    "Metadata size too large: current {} + additional {} bytes exceeds max {} bytes",
+                    current, additional, max
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for MetadataError {}
 
 impl MetadataValue {
     /// Try to get as string
@@ -297,12 +369,44 @@ impl Metadata {
     /// Create metadata with initial capacity
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: HashMap::with_capacity(capacity),
+            inner: HashMap::with_capacity(capacity.min(MAX_METADATA_ENTRIES)),
         }
     }
 
-    /// Insert a metadata entry
+    /// Insert a metadata entry with validation
+    ///
+    /// # Errors
+    ///
+    /// Returns `MetadataError` if:
+    /// - Value is too long
+    /// - Adding this entry would exceed size limits
     pub fn insert<V: Into<MetadataValue>>(
+        &mut self,
+        key: MetadataKey,
+        value: V,
+    ) -> Result<Option<MetadataValue>, MetadataError> {
+        let value = value.into();
+
+        // Validate value size
+        self.validate_value(&value)?;
+
+        // Check if we're adding a new entry (not replacing)
+        let is_new_entry = !self.inner.contains_key(&key);
+
+        // Check size limits before insertion
+        if is_new_entry {
+            self.validate_size_limits(&key, &value)?;
+        }
+
+        Ok(self.inner.insert(key, value))
+    }
+
+    /// Insert a metadata entry without validation (for internal use)
+    ///
+    /// This method bypasses size validation and should only be used when
+    /// the value is known to be safe (e.g., from trusted sources or during deserialization).
+    #[cfg(test)]
+    pub(crate) fn insert_unchecked<V: Into<MetadataValue>>(
         &mut self,
         key: MetadataKey,
         value: V,
@@ -376,6 +480,77 @@ impl Metadata {
             .collect();
         Self { inner }
     }
+
+    /// Get total size in bytes (approximate)
+    pub fn total_bytes(&self) -> usize {
+        self.inner
+            .iter()
+            .map(|(k, v)| self.value_size(k, v))
+            .sum()
+    }
+
+    /// Calculate the size of a key-value pair in bytes
+    fn value_size(&self, key: &MetadataKey, value: &MetadataValue) -> usize {
+        let key_size = key.as_str().len();
+        let value_size = match value {
+            MetadataValue::String(s) => s.len(),
+            MetadataValue::Timestamp(s) => s.len(),
+            MetadataValue::Integer(_) => 8,
+            MetadataValue::UnsignedInteger(_) => 8,
+            MetadataValue::Float(_) => 8,
+            MetadataValue::Boolean(_) => 1,
+        };
+        key_size + value_size
+    }
+
+    /// Validate a metadata value
+    fn validate_value(&self, value: &MetadataValue) -> Result<(), MetadataError> {
+        match value {
+            MetadataValue::String(s) if s.len() > MAX_VALUE_LENGTH => {
+                Err(MetadataError::ValueTooLong {
+                    length: s.len(),
+                    max: MAX_VALUE_LENGTH,
+                })
+            }
+            MetadataValue::Timestamp(s) if s.len() > MAX_VALUE_LENGTH => {
+                Err(MetadataError::ValueTooLong {
+                    length: s.len(),
+                    max: MAX_VALUE_LENGTH,
+                })
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Validate size limits before adding a new entry
+    fn validate_size_limits(
+        &self,
+        new_key: &MetadataKey,
+        new_value: &MetadataValue,
+    ) -> Result<(), MetadataError> {
+        // Check entry count
+        if self.inner.len() >= MAX_METADATA_ENTRIES {
+            return Err(MetadataError::TooManyEntries {
+                current: self.inner.len(),
+                max: MAX_METADATA_ENTRIES,
+            });
+        }
+
+        // Check total byte size
+        let new_bytes = self.value_size(new_key, new_value);
+        let current_bytes = self.total_bytes();
+        let total_bytes = current_bytes + new_bytes;
+
+        if total_bytes > MAX_METADATA_TOTAL_BYTES {
+            return Err(MetadataError::TotalSizeTooLarge {
+                current: current_bytes,
+                additional: new_bytes,
+                max: MAX_METADATA_TOTAL_BYTES,
+            });
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for Metadata {
@@ -405,48 +580,72 @@ impl MetadataBuilder {
     }
 
     /// Add a string value
-    pub fn with_string(mut self, key: MetadataKey, value: impl Into<String>) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns `MetadataError` if the value is too long or size limits are exceeded.
+    pub fn with_string(
+        mut self,
+        key: MetadataKey,
+        value: impl Into<String>,
+    ) -> Result<Self, MetadataError> {
         self.metadata
-            .insert(key, MetadataValue::String(value.into()));
-        self
+            .insert(key, MetadataValue::String(value.into()))?;
+        Ok(self)
     }
 
     /// Add an integer value
-    pub fn with_i64(mut self, key: MetadataKey, value: i64) -> Self {
-        self.metadata.insert(key, MetadataValue::Integer(value));
-        self
+    pub fn with_i64(mut self, key: MetadataKey, value: i64) -> Result<Self, MetadataError> {
+        self.metadata.insert(key, MetadataValue::Integer(value))?;
+        Ok(self)
     }
 
     /// Add an unsigned integer value
-    pub fn with_u64(mut self, key: MetadataKey, value: u64) -> Self {
+    pub fn with_u64(mut self, key: MetadataKey, value: u64) -> Result<Self, MetadataError> {
         self.metadata
-            .insert(key, MetadataValue::UnsignedInteger(value));
-        self
+            .insert(key, MetadataValue::UnsignedInteger(value))?;
+        Ok(self)
     }
 
     /// Add a float value
-    pub fn with_f64(mut self, key: MetadataKey, value: f64) -> Self {
-        self.metadata.insert(key, MetadataValue::Float(value));
-        self
+    pub fn with_f64(mut self, key: MetadataKey, value: f64) -> Result<Self, MetadataError> {
+        self.metadata.insert(key, MetadataValue::Float(value))?;
+        Ok(self)
     }
 
     /// Add a boolean value
-    pub fn with_bool(mut self, key: MetadataKey, value: bool) -> Self {
-        self.metadata.insert(key, MetadataValue::Boolean(value));
-        self
+    pub fn with_bool(mut self, key: MetadataKey, value: bool) -> Result<Self, MetadataError> {
+        self.metadata.insert(key, MetadataValue::Boolean(value))?;
+        Ok(self)
     }
 
     /// Add a timestamp value
-    pub fn with_timestamp(mut self, key: MetadataKey, value: impl Into<String>) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns `MetadataError` if the timestamp is too long or size limits are exceeded.
+    pub fn with_timestamp(
+        mut self,
+        key: MetadataKey,
+        value: impl Into<String>,
+    ) -> Result<Self, MetadataError> {
         self.metadata
-            .insert(key, MetadataValue::Timestamp(value.into()));
-        self
+            .insert(key, MetadataValue::Timestamp(value.into()))?;
+        Ok(self)
     }
 
     /// Add a generic value
-    pub fn with<V: Into<MetadataValue>>(mut self, key: MetadataKey, value: V) -> Self {
-        self.metadata.insert(key, value.into());
-        self
+    ///
+    /// # Errors
+    ///
+    /// Returns `MetadataError` if the value is too long or size limits are exceeded.
+    pub fn with<V: Into<MetadataValue>>(
+        mut self,
+        key: MetadataKey,
+        value: V,
+    ) -> Result<Self, MetadataError> {
+        self.metadata.insert(key, value.into())?;
+        Ok(self)
     }
 
     /// Build the metadata
@@ -501,8 +700,10 @@ mod tests {
     fn test_metadata_operations() {
         let mut metadata = Metadata::new();
 
-        metadata.insert(MetadataKey::BuildVersion, "1.0.0");
-        metadata.insert(MetadataKey::UptimeSeconds, 3600u64);
+        metadata
+            .insert(MetadataKey::BuildVersion, "1.0.0")
+            .unwrap();
+        metadata.insert(MetadataKey::UptimeSeconds, 3600u64).unwrap();
 
         assert_eq!(metadata.len(), 2);
         assert!(metadata.contains_key(&MetadataKey::BuildVersion));
@@ -518,8 +719,11 @@ mod tests {
     fn test_metadata_builder() {
         let metadata = MetadataBuilder::new()
             .with_string(MetadataKey::BuildVersion, "1.0.0")
+            .unwrap()
             .with_u64(MetadataKey::UptimeSeconds, 3600)
+            .unwrap()
             .with_bool(MetadataKey::Custom("enabled".to_string()), true)
+            .unwrap()
             .build();
 
         assert_eq!(metadata.len(), 3);
@@ -538,5 +742,101 @@ mod tests {
         let back_to_map = metadata.to_string_map();
         assert_eq!(back_to_map.len(), 2);
         assert_eq!(back_to_map.get("build_version"), Some(&"1.0.0".to_string()));
+    }
+
+    // DoS Protection Tests
+
+    #[test]
+    fn test_value_too_long() {
+        let mut metadata = Metadata::new();
+        let long_value = "a".repeat(MAX_VALUE_LENGTH + 1);
+
+        let result = metadata.insert(MetadataKey::Custom("test".to_string()), long_value);
+        assert!(matches!(result, Err(MetadataError::ValueTooLong { .. })));
+    }
+
+    #[test]
+    fn test_too_many_entries() {
+        let mut metadata = Metadata::new();
+
+        // Fill to max
+        for i in 0..MAX_METADATA_ENTRIES {
+            let key = MetadataKey::Custom(format!("key{}", i));
+            metadata.insert(key, "value").unwrap();
+        }
+
+        // Try to add one more
+        let result = metadata.insert(MetadataKey::Custom("overflow".to_string()), "value");
+        assert!(matches!(
+            result,
+            Err(MetadataError::TooManyEntries { .. })
+        ));
+    }
+
+    #[test]
+    fn test_total_size_limit() {
+        let mut metadata = Metadata::new();
+
+        // Create a large value
+        let value = "x".repeat(MAX_VALUE_LENGTH);
+
+        // Should be able to add some entries
+        for i in 0..5 {
+            let key = MetadataKey::Custom(format!("key{}", i));
+            metadata.insert(key, value.clone()).unwrap();
+        }
+
+        // Eventually should hit the size limit
+        let mut hit_limit = false;
+        for i in 5..50 {
+            let key = MetadataKey::Custom(format!("key{}", i));
+            if metadata.insert(key, value.clone()).is_err() {
+                hit_limit = true;
+                break;
+            }
+        }
+
+        assert!(hit_limit, "Should have hit size limit");
+    }
+
+    #[test]
+    fn test_total_bytes_calculation() {
+        let mut metadata = Metadata::new();
+        metadata.insert(MetadataKey::BuildVersion, "1.0.0").unwrap(); // ~18 bytes
+        metadata.insert(MetadataKey::UptimeSeconds, 3600u64).unwrap(); // ~22 bytes
+
+        let total = metadata.total_bytes();
+        assert!(total > 0);
+        assert!(total < MAX_METADATA_TOTAL_BYTES);
+    }
+
+    #[test]
+    fn test_replace_does_not_count_toward_limit() {
+        let mut metadata = Metadata::new();
+
+        // Insert initial value
+        metadata
+            .insert(MetadataKey::BuildVersion, "1.0.0")
+            .unwrap();
+
+        let initial_len = metadata.len();
+
+        // Replace with same key - should succeed even if close to limits
+        metadata
+            .insert(MetadataKey::BuildVersion, "2.0.0")
+            .unwrap();
+
+        assert_eq!(metadata.len(), initial_len); // Length unchanged
+    }
+
+    #[test]
+    fn test_unchecked_insert() {
+        let mut metadata = Metadata::new();
+
+        // insert_unchecked should bypass validation (internal API)
+        let long_value = "a".repeat(MAX_VALUE_LENGTH + 1);
+        metadata.insert_unchecked(MetadataKey::Custom("test".to_string()), long_value);
+
+        assert_eq!(metadata.len(), 1);
     }
 }

@@ -28,7 +28,7 @@ pub use in_memory::InMemoryMemory;
 pub use memory::{
     MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory, TransactionalMemory,
 };
-pub use metadata::{Metadata, MetadataBuilder, MetadataKey, MetadataValue};
+pub use metadata::{Metadata, MetadataBuilder, MetadataError, MetadataKey, MetadataValue};
 pub use sanitization::{
     ContentSanitizer, DatabaseErrorSanitizer, SanitizeError, SanitizeIdentifier, SecretRedactor,
 };
