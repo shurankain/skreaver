@@ -94,13 +94,31 @@ mod tests {
     #[test]
     fn test_backpressure_mode_from_str() {
         // Test valid values (case-insensitive)
-        assert_eq!("static".parse::<BackpressureMode>().unwrap(), BackpressureMode::Static);
-        assert_eq!("Static".parse::<BackpressureMode>().unwrap(), BackpressureMode::Static);
-        assert_eq!("STATIC".parse::<BackpressureMode>().unwrap(), BackpressureMode::Static);
+        assert_eq!(
+            "static".parse::<BackpressureMode>().unwrap(),
+            BackpressureMode::Static
+        );
+        assert_eq!(
+            "Static".parse::<BackpressureMode>().unwrap(),
+            BackpressureMode::Static
+        );
+        assert_eq!(
+            "STATIC".parse::<BackpressureMode>().unwrap(),
+            BackpressureMode::Static
+        );
 
-        assert_eq!("adaptive".parse::<BackpressureMode>().unwrap(), BackpressureMode::Adaptive);
-        assert_eq!("Adaptive".parse::<BackpressureMode>().unwrap(), BackpressureMode::Adaptive);
-        assert_eq!("ADAPTIVE".parse::<BackpressureMode>().unwrap(), BackpressureMode::Adaptive);
+        assert_eq!(
+            "adaptive".parse::<BackpressureMode>().unwrap(),
+            BackpressureMode::Adaptive
+        );
+        assert_eq!(
+            "Adaptive".parse::<BackpressureMode>().unwrap(),
+            BackpressureMode::Adaptive
+        );
+        assert_eq!(
+            "ADAPTIVE".parse::<BackpressureMode>().unwrap(),
+            BackpressureMode::Adaptive
+        );
     }
 
     #[test]

@@ -671,12 +671,13 @@ where
     T::Err: std::fmt::Display,
 {
     match env::var(key) {
-        Ok(val) => val.parse::<T>().map(Some).map_err(|e| {
-            ConfigError::InvalidEnvVar {
+        Ok(val) => val
+            .parse::<T>()
+            .map(Some)
+            .map_err(|e| ConfigError::InvalidEnvVar {
                 key: key.to_string(),
                 message: format!("{}", e),
-            }
-        }),
+            }),
         Err(_) => Ok(None),
     }
 }

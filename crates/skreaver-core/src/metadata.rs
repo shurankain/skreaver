@@ -230,11 +230,7 @@ impl fmt::Display for MetadataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ValueTooLong { length, max } => {
-                write!(
-                    f,
-                    "Metadata value too long: {} bytes (max {})",
-                    length, max
-                )
+                write!(f, "Metadata value too long: {} bytes (max {})", length, max)
             }
             Self::TooManyEntries { current, max } => {
                 write!(
@@ -483,10 +479,7 @@ impl Metadata {
 
     /// Get total size in bytes (approximate)
     pub fn total_bytes(&self) -> usize {
-        self.inner
-            .iter()
-            .map(|(k, v)| self.value_size(k, v))
-            .sum()
+        self.inner.iter().map(|(k, v)| self.value_size(k, v)).sum()
     }
 
     /// Calculate the size of a key-value pair in bytes
@@ -700,10 +693,10 @@ mod tests {
     fn test_metadata_operations() {
         let mut metadata = Metadata::new();
 
+        metadata.insert(MetadataKey::BuildVersion, "1.0.0").unwrap();
         metadata
-            .insert(MetadataKey::BuildVersion, "1.0.0")
+            .insert(MetadataKey::UptimeSeconds, 3600u64)
             .unwrap();
-        metadata.insert(MetadataKey::UptimeSeconds, 3600u64).unwrap();
 
         assert_eq!(metadata.len(), 2);
         assert!(metadata.contains_key(&MetadataKey::BuildVersion));
@@ -767,10 +760,7 @@ mod tests {
 
         // Try to add one more
         let result = metadata.insert(MetadataKey::Custom("overflow".to_string()), "value");
-        assert!(matches!(
-            result,
-            Err(MetadataError::TooManyEntries { .. })
-        ));
+        assert!(matches!(result, Err(MetadataError::TooManyEntries { .. })));
     }
 
     #[test]
@@ -803,7 +793,9 @@ mod tests {
     fn test_total_bytes_calculation() {
         let mut metadata = Metadata::new();
         metadata.insert(MetadataKey::BuildVersion, "1.0.0").unwrap(); // ~18 bytes
-        metadata.insert(MetadataKey::UptimeSeconds, 3600u64).unwrap(); // ~22 bytes
+        metadata
+            .insert(MetadataKey::UptimeSeconds, 3600u64)
+            .unwrap(); // ~22 bytes
 
         let total = metadata.total_bytes();
         assert!(total > 0);
@@ -815,16 +807,12 @@ mod tests {
         let mut metadata = Metadata::new();
 
         // Insert initial value
-        metadata
-            .insert(MetadataKey::BuildVersion, "1.0.0")
-            .unwrap();
+        metadata.insert(MetadataKey::BuildVersion, "1.0.0").unwrap();
 
         let initial_len = metadata.len();
 
         // Replace with same key - should succeed even if close to limits
-        metadata
-            .insert(MetadataKey::BuildVersion, "2.0.0")
-            .unwrap();
+        metadata.insert(MetadataKey::BuildVersion, "2.0.0").unwrap();
 
         assert_eq!(metadata.len(), initial_len); // Length unchanged
     }
