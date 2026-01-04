@@ -114,11 +114,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📋 Configuration loaded:");
     println!(
         "   - Request timeout: {} seconds",
-        config.request_timeout_secs
+        config.request_timeout.seconds()
     );
     println!(
         "   - Max body size: {} MB",
-        config.max_body_size / (1024 * 1024)
+        config.max_body_size.bytes() / (1024 * 1024)
     );
     println!("   - CORS enabled: {}", config.cors.is_some());
     println!(

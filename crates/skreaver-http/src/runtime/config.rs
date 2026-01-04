@@ -276,13 +276,15 @@ impl HttpRuntimeConfigBuilder {
         // Backpressure
         let mut backpressure = BackpressureConfig::default();
         if let Some(size) = get_env_usize("SKREAVER_BACKPRESSURE_MAX_QUEUE_SIZE")? {
-            backpressure.max_queue_size = size;
+            backpressure.max_queue_size = crate::runtime::backpressure::QueueSize::new(size)?;
         }
         if let Some(concurrent) = get_env_usize("SKREAVER_BACKPRESSURE_MAX_CONCURRENT")? {
-            backpressure.max_concurrent_requests = concurrent;
+            backpressure.max_concurrent_requests =
+                crate::runtime::backpressure::ConcurrencyLimit::new(concurrent)?;
         }
         if let Some(global) = get_env_usize("SKREAVER_BACKPRESSURE_GLOBAL_MAX_CONCURRENT")? {
-            backpressure.global_max_concurrent = global;
+            backpressure.global_max_concurrent =
+                crate::runtime::backpressure::ConcurrencyLimit::new(global)?;
         }
         if let Some(timeout) = get_env_u64("SKREAVER_BACKPRESSURE_QUEUE_TIMEOUT_SECS")? {
             backpressure.queue_timeout = Duration::from_secs(timeout);
@@ -308,7 +310,8 @@ impl HttpRuntimeConfigBuilder {
             backpressure.target_processing_time_ms = target_ms;
         }
         if let Some(threshold) = get_env_f64("SKREAVER_BACKPRESSURE_LOAD_THRESHOLD")? {
-            backpressure.load_threshold = threshold;
+            backpressure.load_threshold =
+                crate::runtime::backpressure::LoadThreshold::new(threshold)?;
         }
         builder = builder.backpressure(backpressure);
 
@@ -557,27 +560,8 @@ impl HttpRuntimeConfigBuilder {
         // Rate limit validation
         // No validation needed - NonZeroU32 guarantees non-zero values at compile time
 
-        // Backpressure validation
-        if self.backpressure.max_queue_size == 0 {
-            return Err(ConfigError::ValidationError(
-                "backpressure.max_queue_size must be greater than 0".to_string(),
-            ));
-        }
-        if self.backpressure.max_concurrent_requests == 0 {
-            return Err(ConfigError::ValidationError(
-                "backpressure.max_concurrent_requests must be greater than 0".to_string(),
-            ));
-        }
-        if self.backpressure.global_max_concurrent == 0 {
-            return Err(ConfigError::ValidationError(
-                "backpressure.global_max_concurrent must be greater than 0".to_string(),
-            ));
-        }
-        if self.backpressure.load_threshold < 0.0 || self.backpressure.load_threshold > 1.0 {
-            return Err(ConfigError::ValidationError(
-                "backpressure.load_threshold must be between 0.0 and 1.0".to_string(),
-            ));
-        }
+        // Backpressure validation - ELIMINATED
+        // Now validated at construction time via QueueSize, ConcurrencyLimit, and LoadThreshold newtypes
 
         // Observability validation
         if self.observability.namespace.is_empty() {
@@ -733,21 +717,20 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_validation_load_threshold() {
-        let backpressure = BackpressureConfig {
-            load_threshold: 1.5,
-            ..Default::default()
-        };
-        let result = HttpRuntimeConfigBuilder::new()
-            .backpressure(backpressure)
-            .build();
+    fn test_load_threshold_validation() {
+        // LoadThreshold construction should fail for invalid values
+        let result = crate::runtime::backpressure::LoadThreshold::new(1.5);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("load_threshold must be between 0.0 and 1.0")
-        );
+        assert!(result.unwrap_err().to_string().contains("0.0 and 1.0"));
+
+        // Valid load thresholds should succeed
+        assert!(crate::runtime::backpressure::LoadThreshold::new(0.0).is_ok());
+        assert!(crate::runtime::backpressure::LoadThreshold::new(0.8).is_ok());
+        assert!(crate::runtime::backpressure::LoadThreshold::new(1.0).is_ok());
+
+        // Negative values should fail
+        let result = crate::runtime::backpressure::LoadThreshold::new(-0.1);
+        assert!(result.is_err());
     }
 
     #[test]

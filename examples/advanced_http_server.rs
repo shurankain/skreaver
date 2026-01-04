@@ -247,8 +247,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         rate_limit: rate_config,
         backpressure: BackpressureConfig::default(),
         connection_limits: ConnectionLimitConfig::default(),
-        request_timeout_secs: 30,
-        max_body_size: 16 * 1024 * 1024, // 16MB
+        request_timeout: skreaver_http::runtime::config::RequestTimeout::from_seconds(30).unwrap(),
+        max_body_size: skreaver_http::runtime::config::MaxBodySize::from_bytes(16 * 1024 * 1024)
+            .unwrap(), // 16MB
         cors: Some(skreaver_http::runtime::http::CorsConfig::default()),
         openapi: Some(skreaver_http::runtime::http::OpenApiConfig::default()),
         observability: Default::default(),

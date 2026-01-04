@@ -24,7 +24,10 @@ mod queue;
 mod request;
 
 // Public re-exports
-pub use config::{BackpressureConfig, BackpressureMode, RequestPriority};
+pub use config::{
+    BackpressureConfig, BackpressureMode, ConcurrencyLimit, LoadThreshold, QueueSize,
+    RequestPriority,
+};
 pub use error::BackpressureError;
 pub use metrics::QueueMetrics;
 pub use request::{
@@ -55,7 +58,7 @@ pub struct BackpressureManager {
 impl BackpressureManager {
     /// Create a new backpressure manager
     pub fn new(config: BackpressureConfig) -> Self {
-        let global_semaphore = Arc::new(Semaphore::new(config.global_max_concurrent));
+        let global_semaphore = Arc::new(Semaphore::new(config.global_max_concurrent.get()));
 
         Self {
             config,
@@ -115,7 +118,7 @@ impl BackpressureManager {
         // Check system load first if adaptive mode is enabled
         if self.config.mode == BackpressureMode::Adaptive {
             let load = self.calculate_system_load().await;
-            if load > self.config.load_threshold {
+            if load > self.config.load_threshold.get() {
                 // Increment rejection counter for the agent
                 {
                     let mut queues = self.agent_queues.write().await;
@@ -142,14 +145,14 @@ impl BackpressureManager {
             let mut queues = self.agent_queues.write().await;
             let queue = queues
                 .entry(agent_id.clone())
-                .or_insert_with(|| AgentQueue::new(self.config.max_concurrent_requests));
+                .or_insert_with(|| AgentQueue::new(self.config.max_concurrent_requests.get()));
 
             // Check queue capacity
-            if queue.queue.len() >= self.config.max_queue_size {
+            if queue.queue.len() >= self.config.max_queue_size.get() {
                 queue.increment_rejections();
                 return Err(BackpressureError::QueueFull {
                     agent_id,
-                    max_size: self.config.max_queue_size,
+                    max_size: self.config.max_queue_size.get(),
                 });
             }
 
@@ -176,7 +179,7 @@ impl BackpressureManager {
         // Check system load first if adaptive mode is enabled
         if self.config.mode == BackpressureMode::Adaptive {
             let load = self.calculate_system_load().await;
-            if load > self.config.load_threshold {
+            if load > self.config.load_threshold.get() {
                 // Increment rejection counter for the agent
                 {
                     let mut queues = self.agent_queues.write().await;
@@ -203,14 +206,14 @@ impl BackpressureManager {
             let mut queues = self.agent_queues.write().await;
             let queue = queues
                 .entry(agent_id.clone())
-                .or_insert_with(|| AgentQueue::new(self.config.max_concurrent_requests));
+                .or_insert_with(|| AgentQueue::new(self.config.max_concurrent_requests.get()));
 
             // Check queue capacity
-            if queue.queue.len() >= self.config.max_queue_size {
+            if queue.queue.len() >= self.config.max_queue_size.get() {
                 queue.increment_rejections();
                 return Err(BackpressureError::QueueFull {
                     agent_id,
-                    max_size: self.config.max_queue_size,
+                    max_size: self.config.max_queue_size.get(),
                 });
             }
 
@@ -541,13 +544,13 @@ impl BackpressureManager {
             .map(|q| q.active_requests.load(Ordering::Relaxed))
             .sum();
 
-        total_active as f64 / self.config.global_max_concurrent as f64
+        total_active as f64 / self.config.global_max_concurrent.get() as f64
     }
 
     /// Calculate load factor for a specific agent
     async fn calculate_agent_load(&self, queue: &AgentQueue) -> f64 {
         let active = queue.active_requests.load(Ordering::Relaxed);
-        active as f64 / self.config.max_concurrent_requests as f64
+        active as f64 / self.config.max_concurrent_requests.get() as f64
     }
 
     /// Record a timeout for metrics
@@ -643,7 +646,7 @@ mod tests {
     #[tokio::test]
     async fn test_queue_full_rejection() {
         let config = BackpressureConfig {
-            max_queue_size: 1,
+            max_queue_size: QueueSize::new(1).unwrap(),
             ..BackpressureConfig::default()
         };
         let manager = BackpressureManager::new(config);
@@ -752,7 +755,7 @@ mod tests {
     #[tokio::test]
     async fn test_rejection_metrics() {
         let config = BackpressureConfig {
-            max_queue_size: 2,
+            max_queue_size: QueueSize::new(2).unwrap(),
             ..BackpressureConfig::default()
         };
         let manager = BackpressureManager::new(config);
@@ -802,8 +805,8 @@ mod tests {
     async fn test_system_overload_rejection_metrics() {
         let config = BackpressureConfig {
             mode: BackpressureMode::Adaptive,
-            load_threshold: 0.01,     // Very low threshold
-            global_max_concurrent: 1, // Low global limit to make it easy to trigger overload
+            load_threshold: LoadThreshold::new(0.01).unwrap(), // Very low threshold
+            global_max_concurrent: ConcurrencyLimit::new(1).unwrap(), // Low global limit to make it easy to trigger overload
             ..BackpressureConfig::default()
         };
         let manager = BackpressureManager::new(config);

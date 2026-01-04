@@ -120,9 +120,9 @@ fn test_env_config_backpressure() {
         .build()
         .expect("should build valid config");
 
-    assert_eq!(config.backpressure.max_queue_size, 200);
-    assert_eq!(config.backpressure.max_concurrent_requests, 20);
-    assert_eq!(config.backpressure.global_max_concurrent, 1000);
+    assert_eq!(config.backpressure.max_queue_size.get(), 200);
+    assert_eq!(config.backpressure.max_concurrent_requests.get(), 20);
+    assert_eq!(config.backpressure.global_max_concurrent.get(), 1000);
 
     clear_env("SKREAVER_BACKPRESSURE_MAX_QUEUE_SIZE");
     clear_env("SKREAVER_BACKPRESSURE_MAX_CONCURRENT");
@@ -258,14 +258,13 @@ fn test_env_config_validation_load_threshold_out_of_range() {
     clear_all_skreaver_env_vars();
     set_env("SKREAVER_BACKPRESSURE_LOAD_THRESHOLD", "1.5");
 
-    let result = HttpRuntimeConfigBuilder::from_env()
-        .expect("should parse env")
-        .build();
+    // from_env() should now fail during parsing because LoadThreshold::new() validates at construction
+    let result = HttpRuntimeConfigBuilder::from_env();
 
     assert!(result.is_err());
     match result {
         Err(ConfigError::ValidationError(msg)) => {
-            assert!(msg.contains("load_threshold must be between 0.0 and 1.0"));
+            assert!(msg.contains("load threshold must be between 0.0 and 1.0"));
         }
         _ => panic!("Expected ValidationError"),
     }
@@ -339,9 +338,9 @@ fn test_env_config_comprehensive() {
     assert_eq!(config.rate_limit.global_rpm.get(), 500);
     assert_eq!(config.rate_limit.per_ip_rpm.get(), 30);
     assert_eq!(config.rate_limit.per_user_rpm.get(), 50);
-    assert_eq!(config.backpressure.max_queue_size, 50);
-    assert_eq!(config.backpressure.max_concurrent_requests, 5);
-    assert_eq!(config.backpressure.global_max_concurrent, 250);
+    assert_eq!(config.backpressure.max_queue_size.get(), 50);
+    assert_eq!(config.backpressure.max_concurrent_requests.get(), 5);
+    assert_eq!(config.backpressure.global_max_concurrent.get(), 250);
     assert_eq!(config.backpressure.queue_timeout.as_secs(), 15);
     assert_eq!(config.backpressure.processing_timeout.as_secs(), 30);
     assert_eq!(
@@ -349,7 +348,7 @@ fn test_env_config_comprehensive() {
         skreaver_http::runtime::backpressure::BackpressureMode::Static
     );
     assert_eq!(config.backpressure.target_processing_time_ms, 500);
-    assert_eq!(config.backpressure.load_threshold, 0.7);
+    assert_eq!(config.backpressure.load_threshold.get(), 0.7);
     // With metrics=true, tracing=false, should be MetricsOnly mode
     assert!(config.observability.mode.metrics_enabled());
     assert!(!config.observability.mode.tracing_enabled());
