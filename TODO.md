@@ -1,320 +1,291 @@
-# Skreaver TODO - Outstanding Items
+# Skreaver TODO
 
-> **Generated**: 2025-10-31
-> **Based on**: DEVELOPMENT_PLAN.md v3.1
-> **Current Version**: v0.5.0 ✅ **RELEASED**
+> **Updated**: January 2026
+> **Current Version**: v0.5.0
 > **Next Milestone**: v0.6.0
 
 ---
 
-## 🎉 v0.5.0 Release - SHIPPED! ✅
+## Immediate (Week 1)
 
-**Release Date**: October 31, 2025
-**Status**: Production Ready
-**Tests**: 492 passing (zero failures)
-**Breaking Changes**: None (100% backward compatible)
+### Verify rmcp Client Capability
 
-### Major Achievements:
-- ✅ **WebSocket Stabilization**: Production-ready, stable API
-- ✅ **Security Config Runtime**: Full HTTP integration complete
-- ✅ **CLI Enhancements**: 3,366 LOC, advanced scaffolding templates
-- ✅ **Prometheus Metrics**: Complete integration with `/metrics` endpoint
-- ✅ **Production Infrastructure**: Helm charts, deployment guides, SRE runbook
-- ✅ **Deprecation Cleanup**: Zero deprecated code remaining
-- ✅ **Lock Ordering**: Compile-time deadlock prevention for WebSocket
-- ✅ **Documentation**: WEBSOCKET_GUIDE.md, SRE_RUNBOOK.md added
+- [ ] Check if `rmcp` 0.2.0 has client feature
+  ```bash
+  cargo doc -p rmcp --all-features --open
+  ```
+- [ ] If no client: evaluate alternatives or plan manual implementation
+- [ ] Document finding in `.dev/` notes
 
-See [CHANGELOG.md](CHANGELOG.md) and [MIGRATION.md](MIGRATION.md) for details.
+### MCP Bridge - Unblock
+
+- [ ] Read `crates/skreaver-mcp/src/bridge.rs` skeleton code
+- [ ] Identify what rmcp APIs are needed for client
+- [ ] Create minimal test: connect to filesystem MCP server
 
 ---
 
-## 🎉 v0.4.0 Release - SHIPPED! ✅
+## v0.6.0 - Phase 1: Protocol Core
 
-**Release Date**: October 11, 2025
+### 1.1 MCP Bridge (Weeks 1-2)
 
-### Major Achievements:
-- ✅ **9 Crates**: Exceeded 7-crate target
-- ✅ **Production Auth**: AES-256-GCM + JWT + Token Revocation
-- ✅ **Real Resource Monitoring**: CPU, memory, disk, file descriptors
-- ✅ **Performance Benchmarks**: All targets met or exceeded
-- ✅ **API Stability**: Formal guarantees with SemVer CI
-- ✅ **Agent Mesh**: Multi-agent coordination (Phase 2.1)
-- ✅ **MCP Protocol**: Claude Desktop integration (Phase 2.2)
-- ✅ **Enhanced Backends**: SQLite, PostgreSQL with migrations
+**Location**: `crates/skreaver-mcp/src/bridge.rs`
 
----
+- [ ] `McpBridge::connect_stdio(command, args)` - Spawn process
+  - Use `tokio::process::Command`
+  - Pipe stdin/stdout to rmcp transport
+- [ ] `McpBridge::list_tools()` - Discover available tools
+- [ ] `BridgedTool::call(name, params)` - Execute remote tool
+- [ ] Add timeout handling (default 30s)
+- [ ] Add reconnection logic on disconnect
 
-## 🎯 High Priority (v0.6.0)
+**Tests** (create `tests/mcp_bridge.rs`):
+- [ ] Connect to mock MCP server
+- [ ] List tools from server
+- [ ] Call tool and get result
+- [ ] Handle server crash gracefully
 
-### External Security Audit
+**Files**:
+```
+crates/skreaver-mcp/src/bridge.rs      # ~400 lines to implement
+crates/skreaver-mcp/src/error.rs       # Add ClientError variant
+crates/skreaver-mcp/tests/bridge.rs    # New integration tests
+```
 
-- [ ] **Third-Party Security Review**
-  - Contract external security firm
-  - Comprehensive penetration testing
-  - Code audit for vulnerabilities
-  - **Impact**: High - Production compliance requirement
-  - **Status**: Planned for v0.6.0
-  - **Estimated**: 2-4 weeks
+### 1.2 A2A Protocol Types (Weeks 2-3)
 
-### WebSocket Binary Messages
+**Create**: `crates/skreaver-a2a/`
 
-- [ ] **Binary Protocol Support**
-  - Add binary message type support to WebSocket
-  - Implement efficient binary serialization
-  - Add compression for binary payloads
-  - **Impact**: Medium - Feature completeness
-  - **Location**: `crates/skreaver-http/src/websocket/`
-  - **Estimated**: 1-2 weeks
+- [ ] Initialize crate
+  ```bash
+  mkdir -p crates/skreaver-a2a/src
+  ```
+- [ ] Add to workspace `Cargo.toml`
 
----
+**Core Types** (`src/agent_card.rs`):
+- [ ] `AgentCard` struct (name, description, url, capabilities)
+- [ ] `Capability` struct (name, input/output schema)
+- [ ] `AuthInfo` enum (None, ApiKey, OAuth)
+- [ ] JSON Schema validation for agent cards
+- [ ] Serde serialization
 
-## 🔧 Medium Priority (v0.6.0)
+**Task Types** (`src/task.rs`):
+- [ ] `TaskId` newtype
+- [ ] `TaskStatus` enum (Pending, Running, Completed, Failed, Cancelled)
+- [ ] `Task` struct (id, status, input, output, created_at, updated_at)
+- [ ] `TaskRequest` / `TaskResponse` for API
 
-- [ ] **Service Layer Refactoring**
-  - Update service.rs TODOs (lines 76, 230, 303, 321)
-  - Clarify that JWT IS implemented (update misleading comments)
-  - Add optional higher-level service abstractions
-  - **Impact**: Low - Code clarity
-  - **Location**: `crates/skreaver-http/src/runtime/service.rs`
-  - **Estimated**: 4-6 hours
+**Message Types** (`src/message.rs`):
+- [ ] JSON-RPC 2.0 request/response wrappers
+- [ ] `A2aRequest` enum (CreateTask, GetTask, SendMessage, CancelTask)
+- [ ] `A2aResponse` enum with result/error
+- [ ] Error codes per A2A spec
 
-### Per-Tool Policy Enforcement
+**Tests**:
+- [ ] Agent card serialization round-trip
+- [ ] Task state transitions
+- [ ] JSON-RPC message parsing
 
-- [ ] **RBAC Integration with Tool Registry**
-  - Integrate RBAC with tool dispatch
-  - Implement tool access control matrix
-  - Runtime policy enforcement
-  - **Impact**: Medium - Multi-tenant security
-  - **Location**: `crates/skreaver-core/src/tool/`
-  - **Estimated**: 1-2 days
+**Files**:
+```
+crates/skreaver-a2a/Cargo.toml
+crates/skreaver-a2a/src/lib.rs
+crates/skreaver-a2a/src/agent_card.rs   # ~150 lines
+crates/skreaver-a2a/src/task.rs         # ~200 lines
+crates/skreaver-a2a/src/message.rs      # ~250 lines
+crates/skreaver-a2a/src/error.rs        # ~50 lines
+```
 
-### Phase 1.4: Developer Experience Foundation
+### 1.3 A2A HTTP Transport (Weeks 3-4)
 
-- [ ] **CLI Tool Templates**
-  - Implement `skreaver new agent --template <type>`
-  - Generate HTTP client, database connector templates
-  - **Impact**: Medium - Developer experience
-  - **Location**: `skreaver-cli/src/commands/new.rs` (to be created)
+**Location**: `crates/skreaver-http/src/runtime/handlers/a2a.rs`
 
-- [ ] **Agent Scaffolding**
-  - Implement `skreaver generate tool --template <type>`
-  - Boilerplate generation with best practices
-  - **Impact**: Medium - Developer experience
-  - **Location**: `skreaver-cli/src/commands/generate.rs` (to be created)
+**Endpoints**:
+- [ ] `POST /a2a/agents` - Register agent card
+- [ ] `GET /a2a/agents` - List registered agents
+- [ ] `GET /a2a/agents/{id}/card` - Get agent card
+- [ ] `POST /a2a/tasks` - Create task
+- [ ] `GET /a2a/tasks/{id}` - Get task status
+- [ ] `POST /a2a/tasks/{id}/messages` - Send message
+- [ ] `GET /a2a/tasks/{id}/stream` - SSE for updates
 
-- [ ] **CLI Test Command**
-  - Implement `skreaver test --agent <name> --coverage --benchmark`
-  - Integrated testing workflow
-  - **Impact**: Low - Nice to have
-  - **Location**: `skreaver-cli/src/commands/test.rs` (to be created)
+**State Management**:
+- [ ] Agent registry (in-memory HashMap + optional persistence)
+- [ ] Task store (in-memory, use skreaver-memory later)
 
----
+**Router Integration**:
+- [ ] Add A2A routes to `runtime/router.rs`
+- [ ] Apply auth middleware to protected routes
 
-## 📚 Documentation (Ongoing)
+**Files**:
+```
+crates/skreaver-http/src/runtime/handlers/a2a.rs    # ~300 lines
+crates/skreaver-http/src/runtime/handlers/mod.rs    # Add export
+crates/skreaver-http/src/runtime/router.rs          # Add routes
+crates/skreaver-a2a/src/transport.rs                # HTTP client
+```
 
-- [x] **Update README.md** ✅
-  - ✅ Added API Stability section with links to new docs
-  - ✅ Documented skreaver-mesh features and patterns
-  - ✅ Documented skreaver-mcp integration with Claude Desktop
-  - ✅ Documented WebSocket support (experimental)
-  - ✅ Added comprehensive feature flags section
-  - ✅ Updated highlights with emojis for clarity
-  - ✅ Reorganized status section with v0.3.0 completeness
-  - **Impact**: Medium - User visibility
-  - **Location**: `README.md`
-  - **Completed**: 2025-10-08
+### 1.4 Protocol Gateway (Weeks 5-6)
 
-- [ ] **API Documentation Pass**
-  - Complete rustdoc for all public APIs
-  - Add examples to all major traits
-  - **Impact**: Medium - Developer experience
-  - **Location**: All `crates/*/src/lib.rs`
+**Option A**: New crate `crates/skreaver-gateway/`
+**Option B**: Module in `crates/skreaver-http/src/gateway/`
 
-- [ ] **Deployment Guide**
-  - Kubernetes deployment tutorial
-  - Helm chart configuration guide
-  - Production best practices
-  - **Impact**: Medium - Operations
-  - **Location**: `docs/deployment/` (to be created)
+Choose based on complexity after 1.1-1.3 done.
 
-- [ ] **Migration Guides**
-  - v0.3.0 → v0.4.0 migration guide
-  - API changes documentation
-  - **Impact**: Medium - Upgrade path
-  - **Location**: `MIGRATION.md` (to be created)
+**Core Functions**:
+- [ ] `mcp_to_a2a(CallToolRequest) -> TaskRequest`
+- [ ] `a2a_to_mcp(TaskResult) -> CallToolResult`
+- [ ] `GatewayRegistry` - Track connected MCP servers + A2A agents
 
----
+**HTTP Endpoints**:
+- [ ] `POST /gateway/mcp/{server}/tools/{tool}` - Call MCP tool
+- [ ] `POST /gateway/a2a/{agent}/tasks` - Create A2A task
+- [ ] `GET /gateway/status` - List all connected endpoints
 
-## 🔒 Security (Ongoing)
-
-- [x] **Real Resource Monitoring** ✅ COMPLETED
-  - ✅ Replaced placeholder code with real sysinfo-based monitoring
-  - ✅ Implemented real CPU usage tracking
-  - ✅ Implemented real memory usage tracking
-  - ✅ Implemented file descriptor counting (Linux/macOS)
-  - ✅ Implemented disk usage monitoring
-  - ✅ Added comprehensive tests (9 tests, all passing)
-  - ✅ Created resource_monitoring.rs example
-  - ✅ Integrated with security_config_loading.rs example
-  - **Impact**: High - Critical security blocker resolved
-  - **Location**: `crates/skreaver-core/src/security/limits.rs`
-  - **Completed**: 2025-10-09
-
-- [ ] **Security Config Runtime Integration**
-  - Verify skreaver-security.toml loading in HTTP runtime
-  - Test security policy enforcement
-  - **Impact**: Medium - Security requirement
-  - **Location**: `crates/skreaver-http/src/runtime/security.rs`
-
-- [x] **Security Config Example** ✅
-  - ✅ Created comprehensive `skreaver-security.toml` file
-  - ✅ Documented all configuration options with examples
-  - ✅ Includes all policies: fs, http, network, resources, audit, secrets, alerting, development, emergency
-  - ✅ Tool-specific policy examples included
-  - **Impact**: Low - Documentation
-  - **Location**: `examples/skreaver-security.toml`
-  - **Completed**: 2025-10-08
-
-- [ ] **External Security Audit** (Deferred to post-v0.5)
-  - Internal review: ✅ Complete
-  - External audit: Planned for production release
-  - **Impact**: High - Production requirement
-  - **Status**: Deferred as per plan
+**Files**:
+```
+crates/skreaver-gateway/src/lib.rs
+crates/skreaver-gateway/src/bridge.rs      # Translation logic
+crates/skreaver-gateway/src/registry.rs    # Connection tracking
+crates/skreaver-gateway/src/handlers.rs    # HTTP endpoints
+```
 
 ---
 
-## ⚙️ Infrastructure & CI
+## v0.6.0 - Phase 2: Python Bindings
 
-- [ ] **Mutation Testing Integration**
-  - Add cargo-mutants to CI (nightly job)
-  - Target: ≥70% mutation score on critical paths
-  - **Impact**: Medium - Test quality
-  - **Location**: `.github/workflows/ci.yml`
+### 2.1 PyO3 Setup (Week 7)
 
-- [ ] **Sanitizer Testing** (Partially Complete)
-  - AddressSanitizer: Planned
-  - ThreadSanitizer: Planned
-  - LeakSanitizer: Planned
-  - **Impact**: Medium - Memory safety
-  - **Location**: `.github/workflows/ci.yml`
+- [ ] Create `skreaver-py/` directory
+- [ ] `Cargo.toml` with pyo3 dependencies
+- [ ] `pyproject.toml` for maturin
+- [ ] Basic `lib.rs` with module definition
+- [ ] Verify build: `maturin develop`
 
-- [ ] **Fuzzing Integration**
-  - Set up cargo-fuzz for critical parsers
-  - Add fuzzing targets for security modules
-  - **Impact**: Medium - Security
-  - **Location**: `fuzz/` (to be created)
+**Files**:
+```
+skreaver-py/Cargo.toml
+skreaver-py/pyproject.toml
+skreaver-py/src/lib.rs
+skreaver-py/python/skreaver/__init__.py
+```
 
----
+### 2.2 MCP Bindings (Week 8)
 
-## 🚀 Future Enhancements (Post-v0.5.0)
+- [ ] `McpClient` class
+  - `connect_stdio(command, args)` async
+  - `list_tools()` async
+  - `call_tool(name, params)` async
+  - `disconnect()`
 
-These are from the "Deferred Features" section of DEVELOPMENT_PLAN.md:
+**File**: `skreaver-py/src/mcp.rs`
 
-- [ ] **Event Sourcing**: Complex state replay mechanisms
-- [ ] **Goal-Oriented Planning**: AI-powered task decomposition
-- [ ] **Formal Verification**: Mathematical correctness proofs
-- [ ] **WebAssembly**: Cross-platform deployment
-- [ ] **Advanced Multi-Agent**: Distributed consensus and orchestration
-- [ ] **IDE Integrations**: VSCode extension, LSP support
-- [ ] **Hot Reload**: Development-time agent reloading
-- [ ] **Visual Debugging**: Agent execution visualization
+### 2.3 A2A Bindings (Week 8-9)
 
----
+- [ ] `AgentCard` dataclass
+- [ ] `A2aClient` class
+  - `register_agent(card)` async
+  - `create_task(agent_id, input)` async
+  - `get_task(task_id)` async
+  - `wait_for_task(task_id)` async
 
-## 📊 Metrics & Monitoring
+**File**: `skreaver-py/src/a2a.rs`
 
-- [ ] **Performance Target Validation**
-  - Validate p50 < 30ms in production workloads
-  - Validate p95 < 200ms in production workloads
-  - Validate RSS ≤ 128MB with N=32 sessions
-  - **Impact**: High - Performance commitment
-  - **Status**: Tracked in CI, needs production validation
+### 2.4 Gateway Bindings (Week 9)
 
-- [ ] **Build Time Optimization**
-  - Target: <90s clean build in CI
-  - Target: <10s incremental build
-  - **Impact**: Medium - Developer experience
-  - **Status**: Partially met with sccache + mold
+- [ ] `Gateway` class
+  - `register_mcp_server(name, client)`
+  - `register_a2a_agent(name, card)`
+  - `start(host, port)` async
+  - `stop()`
 
----
+**File**: `skreaver-py/src/gateway.rs`
 
-## ✅ Completed (v0.4.0 - For Reference)
+### 2.5 Publication (Week 10)
 
-These major items were completed in v0.4.0:
-
-- ✅ Phase 0.1: Crate Architecture (9 crates, exceeded 7-crate target!)
-- ✅ Phase 0.2: Testing Framework (347 tests, zero failures)
-- ✅ Phase 0.3: Observability (Full OpenTelemetry integration)
-- ✅ Phase 0.4: Security Model (Threat model + production implementation)
-- ✅ Phase 0.4.1: Type Safety (Structured errors + NonEmpty collections)
-- ✅ Phase 0.4.2: Standard Benchmark (32-agent tool loop with CI integration)
-- ✅ Phase 0.4.3: API Stability (Formal guarantees + SemVer CI)
-- ✅ Phase 1.1: Memory Backends (SQLite + PostgreSQL + Redis with migrations)
-- ✅ Phase 1.2: Authentication (JWT + API Key + Token Revocation + AES-256-GCM)
-- ✅ Phase 1.3: HTTP Runtime (OpenAPI + WebSocket + Streaming + Compression)
-- ✅ Phase 2.1: Agent Mesh (Full implementation with coordination patterns)
-- ✅ Phase 2.2: MCP Integration (Server + Bridge + Claude Desktop)
-- ✅ Phase 2.3: Kubernetes (Docker + Helm + Health checks)
-- ✅ Real Resource Monitoring (CPU, memory, disk, file descriptors)
-- ✅ Performance Benchmarks (All targets met or exceeded)
-- ✅ Comprehensive Documentation (7 major docs + migration guides)
+- [ ] Test on PyPI test server
+- [ ] Write README for Python package
+- [ ] Create example scripts
+- [ ] Publish to PyPI
 
 ---
 
-## 🎯 v0.5.0 Milestone Goals - ✅ COMPLETED
+## Testing Checklist
 
-**Target Date**: Q1 2026 → **Delivered October 31, 2025** (ahead of schedule!)
-**Focus**: Production Hardening + Metrics + Security
+### MCP Bridge Tests
+- [ ] `test_connect_to_filesystem_server`
+- [ ] `test_list_tools_from_server`
+- [ ] `test_call_tool_success`
+- [ ] `test_call_tool_not_found`
+- [ ] `test_server_disconnect_handling`
+- [ ] `test_connection_timeout`
 
-### ✅ Completed (All Must-Haves):
-1. ✅ Prometheus metrics integration - `/metrics` endpoint complete
-2. ✅ Security config runtime integration - Full HTTP integration
-3. ✅ Auth middleware HTTP integration - Complete
-4. ✅ WebSocket API stabilization - Production-ready, stable
-5. ✅ Deployment guide documentation - 1,590 lines + SRE runbook
+### A2A Tests
+- [ ] `test_agent_card_serialization`
+- [ ] `test_agent_registration`
+- [ ] `test_task_creation`
+- [ ] `test_task_status_updates`
+- [ ] `test_task_completion`
+- [ ] `test_task_cancellation`
+- [ ] `test_sse_streaming`
 
-### ✅ Completed (Should-Haves):
-1. ✅ Advanced CLI scaffolding templates - 3,366 LOC implementation
-2. ✅ Service layer refactoring - TODOs clarified
-3. ✅ Production validation - 492 tests passing
+### Gateway Tests
+- [ ] `test_mcp_to_a2a_translation`
+- [ ] `test_a2a_to_mcp_translation`
+- [ ] `test_gateway_routing`
+- [ ] `test_registry_management`
 
-### 🚀 v0.6.0 Milestone Goals
-
-**Target Date**: Q2 2026 (3-4 months)
-**Focus**: Security Compliance + Advanced Features
-
-### Must Have:
-1. External security audit and certification
-2. WebSocket binary message support
-3. Advanced multi-agent coordination patterns
-4. Performance optimization pass
-
-### Should Have:
-1. Fuzzing integration
-2. Mutation testing in CI (≥70% score)
-3. IDE integrations (VS Code, IntelliJ)
-4. Interactive CLI mode
-
-### Nice to Have:
-1. Hot reload for development
-2. Visual debugging tools
-3. Advanced metrics and dashboards
-4. Multi-region deployment guide
+### Python Tests
+- [ ] `test_mcp_client_basic`
+- [ ] `test_a2a_client_basic`
+- [ ] `test_gateway_integration`
+- [ ] `test_async_operations`
 
 ---
 
-## 📝 Notes
+## Documentation TODO
 
-- This TODO is based on v0.5.0 completion and DEVELOPMENT_PLAN.md v3.1
-- Items prioritized by production impact and user value
-- Performance continues to improve (v0.5.0: 21% faster builds than v0.4.0)
-- 100% backward compatible releases maintained (v0.3 → v0.4 → v0.5)
-- External security audit planned for v0.6.0
-- WebSocket is now **stable** and production-ready in v0.5.0
-- All v0.5.0 priorities completed ahead of schedule
+### New Docs Needed
+- [ ] `docs/mcp-bridge.md` - How to use MCP client
+- [ ] `docs/a2a-protocol.md` - A2A implementation guide
+- [ ] `docs/gateway.md` - Gateway configuration
+- [ ] `docs/python-quickstart.md` - Python package usage
+
+### Update Existing
+- [ ] README.md - New protocol focus
+- [ ] CHANGELOG.md - v0.6.0 changes
+- [ ] API_STABILITY.md - New crate stability levels
 
 ---
 
-**Last Updated**: 2025-10-31
-**Next Review**: Before v0.6.0 release planning
-**Current Status**: v0.5.0 SHIPPED ✅
+## Deferred (v0.7.0+)
+
+### Edge Runtime
+- [ ] Investigate WASM feasibility
+- [ ] Identify no_std compatible types
+- [ ] Binary size analysis
+
+### Guardrails
+- [ ] Policy engine design
+- [ ] Integration with existing security
+
+### Deprecation
+- [ ] skreaver-mesh deprecation warnings
+- [ ] Migration guide to A2A
+
+---
+
+## Completed (v0.5.0)
+
+- [x] Core framework (Agent, Memory, Tool traits)
+- [x] Security framework (A+ grade)
+- [x] Memory backends (File, Redis, SQLite, PostgreSQL)
+- [x] HTTP runtime (Axum, WebSocket, OpenAPI)
+- [x] MCP server (expose tools to Claude Desktop)
+- [x] Mesh coordination (Redis pub/sub)
+- [x] Observability (Prometheus, OpenTelemetry)
+- [x] 400+ tests passing
+
+---
+
+**Last Updated**: January 2026
