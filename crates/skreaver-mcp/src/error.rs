@@ -1,5 +1,6 @@
 //! MCP error types
 
+use rmcp::model::Content;
 use thiserror::Error;
 
 /// MCP operation result type
@@ -39,4 +40,19 @@ pub enum McpError {
     /// Server error
     #[error("Server error: {0}")]
     ServerError(String),
+
+    /// Client error (for MCP bridge)
+    #[error("Client error: {0}")]
+    ClientError(String),
+
+    /// Connection error
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
+}
+
+/// Implement IntoContents for McpError so it can be returned from tool functions
+impl rmcp::model::IntoContents for McpError {
+    fn into_contents(self) -> Vec<Content> {
+        vec![Content::text(self.to_string())]
+    }
 }

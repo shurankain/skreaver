@@ -6,54 +6,38 @@
 //! - Tool discovery via the MCP protocol
 //! - Request/response translation between Skreaver and MCP formats
 //!
-//! # Implementation Notes
-//!
-//! To fully implement MCP client connection:
-//!
-//! 1. Use `rmcp::client::Client` to establish connection
-//! 2. Call `client.list_tools()` to discover available tools
-//! 3. For each tool, create a `BridgedTool` that stores a reference to the client
-//! 4. In `BridgedTool::call()`, use `client.call_tool()` to execute requests
-//!
-//! # Example Implementation Sketch
+//! # Example
 //!
 //! ```rust,ignore
-//! use rmcp::client::{Client, StdioTransport};
-//! use tokio::process::Command;
+//! use skreaver_mcp::bridge::McpBridge;
 //!
-//! // Spawn server process
-//! let mut child = Command::new(server_command)
-//!     .stdin(Stdio::piped())
-//!     .stdout(Stdio::piped())
-//!     .spawn()?;
+//! // Connect to an MCP server
+//! let bridge = McpBridge::connect_stdio("npx @modelcontextprotocol/server-weather").await?;
 //!
-//! // Create transport from child process stdio
-//! let transport = StdioTransport::new(
-//!     child.stdin.take().unwrap(),
-//!     child.stdout.take().unwrap(),
-//! );
+//! // Get discovered tools
+//! let tools = bridge.tools();
 //!
-//! // Create MCP client
-//! let client = Client::new(transport).await?;
-//!
-//! // Discover tools
-//! let tools_response = client.list_tools().await?;
-//! for tool_info in tools_response.tools {
-//!     let bridged = BridgedTool {
-//!         name: tool_info.name,
-//!         description: tool_info.description,
-//!         parameters: tool_info.input_schema,
-//!         client: Arc::clone(&client),
-//!     };
-//!     tools.push(Arc::new(bridged));
+//! // Register tools with Skreaver
+//! for tool in tools {
+//!     registry.register(tool);
 //! }
 //! ```
 
-use crate::error::McpResult;
+use crate::error::{McpError, McpResult};
+use rmcp::{
+    ClientHandler, ServiceExt,
+    model::{
+        CallToolRequestParam, CallToolResult, ClientInfo, Content, RawContent, Tool as McpToolInfo,
+    },
+    service::{Peer, RoleClient, RunningService},
+    transport::child_process::TokioChildProcess,
+};
 use serde_json::Value;
 use skreaver_core::tool::{ExecutionResult, Tool};
+use std::borrow::Cow;
 use std::sync::Arc;
-use tracing::{debug, error};
+use tokio::process::Command;
+use tracing::{debug, error, info, warn};
 
 /// Bridge that connects to an external MCP server and exposes its tools
 /// as Skreaver tools
@@ -61,96 +45,160 @@ use tracing::{debug, error};
 /// The bridge maintains a connection to an external MCP server process and
 /// translates tool calls between Skreaver's format and the MCP protocol.
 pub struct McpBridge {
-    #[allow(dead_code)]
     server_name: String,
     tools: Vec<Arc<BridgedTool>>,
-    // TODO: Add client field when implementing:
-    // client: Arc<rmcp::client::Client>,
+    #[allow(dead_code)]
+    service: RunningService<RoleClient, McpClientHandler>,
+}
+
+/// Simple MCP client handler that implements ClientHandler trait
+#[derive(Clone, Default)]
+struct McpClientHandler {
+    client_info: ClientInfo,
+}
+
+impl ClientHandler for McpClientHandler {
+    fn get_info(&self) -> ClientInfo {
+        self.client_info.clone()
+    }
 }
 
 impl McpBridge {
-    /// Create a new MCP bridge
-    pub fn new(server_name: impl Into<String>) -> Self {
-        Self {
-            server_name: server_name.into(),
-            tools: Vec::new(),
-        }
-    }
-
     /// Connect to an external MCP server via stdio (child process)
     ///
     /// This method spawns an MCP server process and establishes a connection
     /// via standard input/output streams.
     ///
-    /// # Implementation Steps
-    ///
-    /// 1. **Spawn Server Process**
-    ///    ```rust,ignore
-    ///    use tokio::process::{Command, Stdio};
-    ///    let mut child = Command::new(server_command)
-    ///        .stdin(Stdio::piped())
-    ///        .stdout(Stdio::piped())
-    ///        .stderr(Stdio::piped())  // Capture errors
-    ///        .spawn()?;
-    ///    ```
-    ///
-    /// 2. **Create MCP Client**
-    ///    ```rust,ignore
-    ///    use rmcp::client::{Client, StdioTransport};
-    ///    let transport = StdioTransport::new(
-    ///        child.stdin.take().unwrap(),
-    ///        child.stdout.take().unwrap(),
-    ///    );
-    ///    let client = Arc::new(Client::new(transport).await?);
-    ///    ```
-    ///
-    /// 3. **Initialize and Discover Tools**
-    ///    ```rust,ignore
-    ///    // Initialize connection
-    ///    client.initialize().await?;
-    ///
-    ///    // List available tools
-    ///    let tools_response = client.list_tools().await?;
-    ///    let tools: Vec<Arc<BridgedTool>> = tools_response.tools
-    ///        .into_iter()
-    ///        .map(|tool_info| {
-    ///            Arc::new(BridgedTool {
-    ///                name: tool_info.name,
-    ///                description: tool_info.description.unwrap_or_default(),
-    ///                parameters: tool_info.input_schema,
-    ///                // Store client reference for call execution
-    ///            })
-    ///        })
-    ///        .collect();
-    ///    ```
-    ///
-    /// # Error Handling
-    ///
-    /// - Process spawn failures
-    /// - Connection initialization failures
-    /// - Tool discovery errors
-    /// - Protocol version mismatches
-    ///
     /// # Parameters
     ///
-    /// * `server_command` - Command to spawn the MCP server (e.g., "npx @modelcontextprotocol/server-weather")
+    /// * `server_command` - Command to spawn the MCP server
+    ///   (e.g., "npx @modelcontextprotocol/server-weather")
     ///
     /// # Returns
     ///
     /// A connected `McpBridge` with all discovered tools, or an error
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let bridge = McpBridge::connect_stdio("npx @modelcontextprotocol/server-weather").await?;
+    /// println!("Connected! Found {} tools", bridge.tools().len());
+    /// ```
     pub async fn connect_stdio(server_command: &str) -> McpResult<Self> {
-        debug!(command = %server_command, "Connecting to MCP server");
+        info!(command = %server_command, "Connecting to MCP server");
 
-        // Placeholder implementation until rmcp client API is stable
-        // The rmcp crate is under active development and APIs may change
-        //
-        // Once ready, implement following the documentation above
+        // Parse command into program and arguments
+        let parts: Vec<&str> = server_command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(McpError::InvalidParameters(
+                "Empty server command".to_string(),
+            ));
+        }
+
+        let program = parts[0];
+        let args = &parts[1..];
+
+        debug!(program = %program, args = ?args, "Spawning MCP server process");
+
+        // Build tokio Command
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+
+        // Create child process transport
+        let (transport, stderr) = TokioChildProcess::builder(cmd)
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| McpError::ConnectionError(format!("Failed to spawn process: {}", e)))?;
+
+        // Spawn a task to log stderr
+        if let Some(mut stderr) = stderr {
+            let cmd_name = server_command.to_string();
+            tokio::spawn(async move {
+                use tokio::io::AsyncBufReadExt;
+                let mut reader = tokio::io::BufReader::new(&mut stderr);
+                let mut line = String::new();
+                while let Ok(n) = reader.read_line(&mut line).await {
+                    if n == 0 {
+                        break;
+                    }
+                    debug!(server = %cmd_name, stderr = %line.trim(), "MCP server stderr");
+                    line.clear();
+                }
+            });
+        }
+
+        // Create MCP client handler with info
+        let handler = McpClientHandler {
+            client_info: ClientInfo {
+                protocol_version: Default::default(),
+                capabilities: Default::default(),
+                client_info: rmcp::model::Implementation {
+                    name: "skreaver-mcp-bridge".to_string(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                    ..Default::default()
+                },
+            },
+        };
+
+        // Connect to the MCP server
+        let service = handler.serve(transport).await.map_err(|e| {
+            McpError::ConnectionError(format!("Failed to initialize MCP client: {}", e))
+        })?;
+
+        info!("MCP client connected, discovering tools...");
+
+        // Get the peer to make requests
+        let peer = service.peer();
+
+        // List all available tools
+        let mcp_tools = peer
+            .list_all_tools()
+            .await
+            .map_err(|e| McpError::ClientError(format!("Failed to list tools: {}", e)))?;
+
+        info!(count = mcp_tools.len(), "Discovered MCP tools");
+
+        // Create bridged tools
+        let tools: Vec<Arc<BridgedTool>> = mcp_tools
+            .into_iter()
+            .map(|tool_info| {
+                debug!(
+                    name = %tool_info.name,
+                    description = ?tool_info.description,
+                    "Creating bridged tool"
+                );
+                Arc::new(BridgedTool::new(tool_info, peer.clone()))
+            })
+            .collect();
 
         Ok(Self {
             server_name: server_command.to_string(),
-            tools: Vec::new(),
-            // client: client,
+            tools,
+            service,
         })
+    }
+
+    /// Connect to an external MCP server with custom arguments
+    ///
+    /// This is a more flexible version that allows specifying the program
+    /// and arguments separately.
+    ///
+    /// # Parameters
+    ///
+    /// * `program` - The program to run (e.g., "npx", "python")
+    /// * `args` - Arguments to pass to the program
+    ///
+    /// # Returns
+    ///
+    /// A connected `McpBridge` with all discovered tools, or an error
+    pub async fn connect_with_args<I, S>(program: &str, args: I) -> McpResult<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let args_vec: Vec<String> = args.into_iter().map(|s| s.as_ref().to_string()).collect();
+        let full_command = format!("{} {}", program, args_vec.join(" "));
+        Self::connect_stdio(&full_command).await
     }
 
     /// Get all bridged tools
@@ -160,6 +208,24 @@ impl McpBridge {
             .map(|t| Arc::clone(t) as Arc<dyn Tool>)
             .collect()
     }
+
+    /// Get the server name/command
+    pub fn server_name(&self) -> &str {
+        &self.server_name
+    }
+
+    /// Get the number of available tools
+    pub fn tool_count(&self) -> usize {
+        self.tools.len()
+    }
+
+    /// Find a tool by name
+    pub fn find_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools
+            .iter()
+            .find(|t| t.name() == name)
+            .map(|t| Arc::clone(t) as Arc<dyn Tool>)
+    }
 }
 
 /// A tool from an external MCP server, adapted to Skreaver's Tool trait
@@ -167,14 +233,61 @@ impl McpBridge {
 /// Each `BridgedTool` represents a tool exposed by an external MCP server.
 /// When called, it translates the request to MCP format, sends it to the
 /// external server, and translates the response back to Skreaver format.
-struct BridgedTool {
+pub struct BridgedTool {
     name: String,
-    #[allow(dead_code)]
     description: String,
-    #[allow(dead_code)]
-    parameters: Value,
-    // TODO: Add client reference when implementing:
-    // client: Arc<rmcp::client::Client>,
+    input_schema: Value,
+    peer: Peer<RoleClient>,
+}
+
+impl BridgedTool {
+    /// Create a new bridged tool from MCP tool info
+    fn new(info: McpToolInfo, peer: Peer<RoleClient>) -> Self {
+        Self {
+            name: info.name.to_string(),
+            description: info.description.map(|s| s.to_string()).unwrap_or_default(),
+            input_schema: Value::Object((*info.input_schema).clone()),
+            peer,
+        }
+    }
+
+    /// Get the tool's input schema
+    pub fn input_schema(&self) -> &Value {
+        &self.input_schema
+    }
+
+    /// Get the tool's description
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// Call the tool asynchronously
+    pub async fn call_async(&self, input: Value) -> McpResult<Value> {
+        debug!(tool = %self.name, "Calling MCP tool");
+
+        // Build the call request
+        let params = CallToolRequestParam {
+            name: Cow::Owned(self.name.clone()),
+            arguments: Some(input.as_object().cloned().unwrap_or_default()),
+        };
+
+        // Call the tool via MCP
+        let result: CallToolResult = self
+            .peer
+            .call_tool(params)
+            .await
+            .map_err(|e| McpError::ToolExecutionFailed(format!("MCP call failed: {}", e)))?;
+
+        // Check for tool error
+        if result.is_error.unwrap_or(false) {
+            let error_msg = extract_text_from_contents(&result.content);
+            return Err(McpError::ToolExecutionFailed(error_msg));
+        }
+
+        // Convert result to JSON
+        let output = contents_to_json(&result.content);
+        Ok(output)
+    }
 }
 
 impl Tool for BridgedTool {
@@ -182,67 +295,140 @@ impl Tool for BridgedTool {
         &self.name
     }
 
-    fn call(&self, _input: String) -> ExecutionResult {
-        // Implementation guide for MCP tool execution:
-        //
-        // 1. Parse input as JSON to match tool's parameter schema
-        //    ```rust,ignore
-        //    let arguments: Value = serde_json::from_str(&input)
-        //        .unwrap_or(json!({ "input": input }));
-        //    ```
-        //
-        // 2. Send call_tool request to MCP server
-        //    ```rust,ignore
-        //    let response = tokio::runtime::Handle::current()
-        //        .block_on(async {
-        //            self.client.call_tool(&self.name, arguments).await
-        //        })?;
-        //    ```
-        //
-        // 3. Translate MCP response to ExecutionResult
-        //    ```rust,ignore
-        //    match response {
-        //        ToolResponse::Success { content } => {
-        //            // Extract text/data from content array
-        //            let output = content.iter()
-        //                .filter_map(|c| c.as_text())
-        //                .collect::<Vec<_>>()
-        //                .join("\n");
-        //            ExecutionResult::Success { output }
-        //        }
-        //        ToolResponse::Error { error, .. } => {
-        //            ExecutionResult::Failure { error: error.message }
-        //        }
-        //    }
-        //    ```
-        //
-        // 4. Handle errors gracefully
-        //    - Network errors
-        //    - Protocol errors
-        //    - Tool execution errors
-        //
-        // Note: The Tool trait is synchronous but MCP calls are async.
-        // Use tokio::runtime::Handle::current().block_on() to bridge them,
-        // or consider making Tool trait async in the future.
+    fn call(&self, input: String) -> ExecutionResult {
+        debug!(tool = %self.name, "Bridged MCP tool called");
 
-        debug!(
-            tool = %self.name,
-            "Bridged MCP tool called (placeholder implementation)"
-        );
+        // Parse input as JSON
+        let input_value: Value = match serde_json::from_str(&input) {
+            Ok(v) => v,
+            Err(e) => {
+                // Try wrapping as object with "input" key
+                warn!(
+                    tool = %self.name,
+                    error = %e,
+                    "Failed to parse input as JSON, wrapping in object"
+                );
+                serde_json::json!({ "input": input })
+            }
+        };
 
-        error!(
-            "MCP bridge tool execution not yet implemented. \
-            Add rmcp client integration following the implementation guide above."
-        );
+        // The Tool trait is synchronous but MCP calls are async.
+        // Use tokio::runtime::Handle to bridge them.
+        let handle = match tokio::runtime::Handle::try_current() {
+            Ok(h) => h,
+            Err(e) => {
+                error!(error = %e, "No tokio runtime available");
+                return ExecutionResult::Failure {
+                    reason: skreaver_core::FailureReason::InternalError {
+                        message: "No async runtime available for MCP call".to_string(),
+                    },
+                };
+            }
+        };
 
-        ExecutionResult::Failure {
-            reason: skreaver_core::FailureReason::InternalError {
-                message: format!(
-                    "MCP bridge not yet fully implemented for tool '{}'. \
-                    See bridge.rs for implementation guide.",
-                    self.name
-                ),
-            },
+        // Clone what we need for the async block
+        let name = self.name.clone();
+        let peer = self.peer.clone();
+
+        // Execute the async call
+        let result = handle.block_on(async move {
+            let params = CallToolRequestParam {
+                name: Cow::Owned(name),
+                arguments: Some(input_value.as_object().cloned().unwrap_or_default()),
+            };
+
+            peer.call_tool(params).await
+        });
+
+        match result {
+            Ok(call_result) => {
+                if call_result.is_error.unwrap_or(false) {
+                    let error_msg = extract_text_from_contents(&call_result.content);
+                    ExecutionResult::Failure {
+                        reason: skreaver_core::FailureReason::Custom {
+                            category: "mcp_tool_error".to_string(),
+                            message: error_msg,
+                        },
+                    }
+                } else {
+                    let output = contents_to_json(&call_result.content);
+                    ExecutionResult::Success {
+                        output: serde_json::to_string(&output)
+                            .unwrap_or_else(|_| output.to_string()),
+                    }
+                }
+            }
+            Err(e) => {
+                error!(tool = %self.name, error = %e, "MCP tool call failed");
+                ExecutionResult::Failure {
+                    reason: skreaver_core::FailureReason::NetworkError {
+                        message: format!("MCP call failed: {}", e),
+                    },
+                }
+            }
+        }
+    }
+}
+
+/// Extract text content from MCP Content array
+fn extract_text_from_contents(contents: &[Content]) -> String {
+    contents
+        .iter()
+        .filter_map(|c| match &c.raw {
+            RawContent::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Convert MCP Content array to JSON value
+fn contents_to_json(contents: &[Content]) -> Value {
+    if contents.is_empty() {
+        return Value::Null;
+    }
+
+    if contents.len() == 1 {
+        return content_to_json(&contents[0]);
+    }
+
+    Value::Array(contents.iter().map(content_to_json).collect())
+}
+
+/// Convert single MCP Content to JSON value
+fn content_to_json(content: &Content) -> Value {
+    match &content.raw {
+        RawContent::Text(text) => {
+            // Try to parse as JSON, otherwise return as string
+            serde_json::from_str(&text.text).unwrap_or_else(|_| Value::String(text.text.clone()))
+        }
+        RawContent::Image(image) => {
+            serde_json::json!({
+                "type": "image",
+                "data": image.data,
+                "mime_type": image.mime_type
+            })
+        }
+        RawContent::Audio(audio) => {
+            serde_json::json!({
+                "type": "audio",
+                "data": audio.data,
+                "mime_type": audio.mime_type
+            })
+        }
+        RawContent::Resource(resource) => {
+            serde_json::json!({
+                "type": "resource",
+                "resource": resource.resource
+            })
+        }
+        RawContent::ResourceLink(link) => {
+            serde_json::json!({
+                "type": "resource_link",
+                "uri": link.uri,
+                "name": link.name,
+                "mime_type": link.mime_type
+            })
         }
     }
 }
@@ -251,18 +437,38 @@ impl Tool for BridgedTool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_bridge_creation() {
-        let bridge = McpBridge::new("test-server");
-        assert_eq!(bridge.server_name, "test-server");
-        assert_eq!(bridge.tools().len(), 0);
+    fn make_text_content(text: &str) -> Content {
+        Content::text(text)
     }
 
-    #[tokio::test]
-    async fn test_bridge_connect_placeholder() {
-        // This is a placeholder test
-        // Real implementation would test actual MCP server connection
-        let result = McpBridge::connect_stdio("echo").await;
-        assert!(result.is_ok());
+    #[test]
+    fn test_extract_text_from_contents() {
+        let contents = vec![make_text_content("Hello"), make_text_content("World")];
+
+        let result = extract_text_from_contents(&contents);
+        assert_eq!(result, "Hello\nWorld");
+    }
+
+    #[test]
+    fn test_contents_to_json_single_text() {
+        let contents = vec![make_text_content("{\"key\": \"value\"}")];
+
+        let result = contents_to_json(&contents);
+        assert_eq!(result, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_contents_to_json_plain_text() {
+        let contents = vec![make_text_content("plain text")];
+
+        let result = contents_to_json(&contents);
+        assert_eq!(result, Value::String("plain text".to_string()));
+    }
+
+    #[test]
+    fn test_contents_to_json_empty() {
+        let contents: Vec<Content> = vec![];
+        let result = contents_to_json(&contents);
+        assert_eq!(result, Value::Null);
     }
 }

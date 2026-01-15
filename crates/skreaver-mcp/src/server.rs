@@ -1,95 +1,96 @@
 //! MCP Server implementation that exposes Skreaver tools
+//!
+//! This module provides an MCP server that exposes Skreaver tools via the
+//! Model Context Protocol, making them accessible to Claude Desktop and
+//! other MCP clients.
 
 use crate::adapter::AdaptedToolRegistry;
 use crate::error::{McpError, McpResult};
 use rmcp::{
     ServerHandler, ServiceExt,
-    handler::server::{router::tool::ToolRouter, tool::Parameters},
-    model::{CallToolResult, Content, ErrorCode, ErrorData as RmcpError},
-    tool, tool_handler, tool_router,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{Implementation, ServerCapabilities, ServerInfo},
+    schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
+use skreaver_core::tool::Tool;
 use skreaver_tools::InMemoryToolRegistry;
-use std::borrow::Cow;
+use std::sync::Arc;
 use tracing::{debug, error, info};
 
 /// MCP Server that exposes Skreaver tools as MCP resources
 #[derive(Clone)]
 pub struct McpServer {
-    registry: AdaptedToolRegistry,
-    server_info: ServerInfo,
-    tool_router: ToolRouter<McpServer>,
-}
-
-/// Server information
-#[derive(Debug, Clone)]
-pub struct ServerInfo {
-    pub name: String,
-    pub version: String,
-    pub description: String,
-}
-
-impl Default for ServerInfo {
-    fn default() -> Self {
-        Self {
-            name: "skreaver-mcp-server".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            description: "Skreaver MCP Server - Expose Skreaver tools via Model Context Protocol"
-                .to_string(),
-        }
-    }
+    registry: Arc<AdaptedToolRegistry>,
+    server_name: String,
+    server_version: String,
+    tool_router: ToolRouter<Self>,
 }
 
 /// Generic tool call request that can handle any tool
-#[derive(Debug, Deserialize, Serialize, rmcp::schemars::JsonSchema)]
-pub struct GenericToolRequest {
-    #[schemars(description = "Tool-specific parameters as JSON")]
-    pub params: serde_json::Value,
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct ExecuteToolRequest {
+    /// Name of the tool to execute
+    #[schemars(description = "Name of the Skreaver tool to execute")]
+    pub tool_name: String,
+
+    /// Tool-specific arguments as JSON
+    #[schemars(description = "Tool-specific arguments as JSON object")]
+    #[serde(default)]
+    pub arguments: serde_json::Value,
 }
 
-#[tool_router]
+#[tool_router(router = tool_router)]
 impl McpServer {
     /// Create a new MCP server
     pub fn new(tool_registry: &InMemoryToolRegistry) -> Self {
-        // Convert Skreaver tools to MCP format
         let registry = AdaptedToolRegistry::from_registry(tool_registry);
 
         Self {
-            registry,
-            server_info: ServerInfo::default(),
+            registry: Arc::new(registry),
+            server_name: "skreaver-mcp-server".to_string(),
+            server_version: env!("CARGO_PKG_VERSION").to_string(),
             tool_router: Self::tool_router(),
         }
     }
 
-    /// Create a new MCP server with custom server info
-    pub fn with_info(tool_registry: &InMemoryToolRegistry, server_info: ServerInfo) -> Self {
+    /// Create a new MCP server with custom name and version
+    pub fn with_info(
+        tool_registry: &InMemoryToolRegistry,
+        name: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Self {
         let mut server = Self::new(tool_registry);
-        server.server_info = server_info;
+        server.server_name = name.into();
+        server.server_version = version.into();
         server
     }
 
     /// Create a new empty MCP server
     pub fn new_empty() -> Self {
         Self {
-            registry: AdaptedToolRegistry::new(),
-            server_info: ServerInfo::default(),
+            registry: Arc::new(AdaptedToolRegistry::new()),
+            server_name: "skreaver-mcp-server".to_string(),
+            server_version: env!("CARGO_PKG_VERSION").to_string(),
             tool_router: Self::tool_router(),
         }
     }
 
-    /// Get mutable access to the tool registry
-    pub fn registry_mut(&mut self) -> &mut AdaptedToolRegistry {
-        &mut self.registry
-    }
-
-    /// Get server information
-    pub fn info(&self) -> &ServerInfo {
-        &self.server_info
+    /// Add a tool to the registry
+    pub fn add_tool(&mut self, tool: Arc<dyn Tool>) {
+        let mut registry = (*self.registry).clone();
+        registry.add_tool(tool);
+        self.registry = Arc::new(registry);
     }
 
     /// Get the tool registry
     pub fn registry(&self) -> &AdaptedToolRegistry {
         &self.registry
+    }
+
+    /// List all available tools
+    pub fn list_tools(&self) -> Vec<crate::adapter::McpToolDefinition> {
+        self.registry.list_tools()
     }
 
     /// Serve via stdio (stdin/stdout) - standard MCP transport
@@ -98,8 +99,8 @@ impl McpServer {
     /// compatible with Claude Desktop and other MCP clients.
     pub async fn serve_stdio(self) -> McpResult<()> {
         info!(
-            server = %self.server_info.name,
-            version = %self.server_info.version,
+            server = %self.server_name,
+            version = %self.server_version,
             tools = self.registry.tools().len(),
             "Starting MCP server on stdio"
         );
@@ -111,13 +112,11 @@ impl McpServer {
 
         info!("MCP server ready - waiting for client connections");
 
-        // Use rmcp stdio transport
         let service = self
             .serve(rmcp::transport::stdio())
             .await
             .map_err(|e| McpError::ServerError(format!("Failed to start server: {}", e)))?;
 
-        // Wait for the service to complete
         service
             .waiting()
             .await
@@ -127,123 +126,113 @@ impl McpServer {
         Ok(())
     }
 
-    /// List all available tools
-    pub fn list_tools(&self) -> Vec<crate::adapter::McpToolDefinition> {
-        self.registry.list_tools()
-    }
-
     /// Dynamic tool dispatcher - routes calls to registered Skreaver tools
-    ///
-    /// This is a generic handler that works with any tool in the registry.
-    /// The rmcp framework requires us to define tools at compile time with the #[tool]
-    /// attribute, but we want to support dynamically registered tools.
-    ///
-    /// As a workaround, we define one generic tool handler that dispatches to
-    /// the appropriate tool at runtime based on the tool name in the request.
-    #[tool(description = "Execute a Skreaver tool")]
+    #[tool(
+        name = "execute_tool",
+        description = "Execute a Skreaver tool by name. Use 'list_skreaver_tools' to see available tools."
+    )]
     async fn execute_tool(
         &self,
-        Parameters(request): Parameters<GenericToolRequest>,
-    ) -> Result<CallToolResult, RmcpError> {
-        debug!("Executing tool with params: {:?}", request.params);
+        request: Parameters<ExecuteToolRequest>,
+    ) -> Result<String, String> {
+        let tool_name = &request.0.tool_name;
 
-        // Extract tool name from params
-        let tool_name = request
-            .params
-            .get("tool_name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| RmcpError {
-                code: ErrorCode(-32602),
-                message: Cow::from("Missing 'tool_name' in params"),
-                data: None,
-            })?;
+        debug!(tool = %tool_name, "Executing Skreaver tool");
 
-        // MEDIUM-35: Validate tool name to prevent DoS and injection attacks
-        // - Reject empty names
-        // - Limit length to prevent memory exhaustion
-        // - Validate characters to prevent log injection and path traversal
+        // Validate tool name
         const MAX_TOOL_NAME_LEN: usize = 256;
         if tool_name.is_empty() {
-            return Err(RmcpError {
-                code: ErrorCode(-32602),
-                message: Cow::from("Tool name cannot be empty"),
-                data: None,
-            });
+            return Err("Tool name cannot be empty".to_string());
         }
         if tool_name.len() > MAX_TOOL_NAME_LEN {
-            return Err(RmcpError {
-                code: ErrorCode(-32602),
-                message: Cow::from(format!(
-                    "Tool name too long: {} chars (max {})",
-                    tool_name.len(),
-                    MAX_TOOL_NAME_LEN
-                )),
-                data: None,
-            });
+            return Err(format!(
+                "Tool name too long: {} chars (max {})",
+                tool_name.len(),
+                MAX_TOOL_NAME_LEN
+            ));
         }
-        // Only allow alphanumeric, underscore, hyphen, and dot (for namespacing)
         if !tool_name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
         {
-            return Err(RmcpError {
-                code: ErrorCode(-32602),
-                message: Cow::from(
-                    "Tool name contains invalid characters (only alphanumeric, _, -, . allowed)",
-                ),
-                data: None,
-            });
+            return Err(
+                "Tool name contains invalid characters (only alphanumeric, _, -, . allowed)"
+                    .to_string(),
+            );
         }
 
-        // Get tool arguments
-        let tool_args = request
-            .params
-            .get("arguments")
-            .cloned()
-            .unwrap_or(serde_json::json!({}));
-
-        debug!(tool = %tool_name, "Calling tool");
-
         // Find the tool in our registry
-        let tool = self.registry.find(tool_name).ok_or_else(|| RmcpError {
-            code: ErrorCode(-32601),
-            message: Cow::from(format!("Tool not found: {}", tool_name)),
-            data: None,
-        })?;
+        let tool = match self.registry.find(tool_name) {
+            Some(t) => t,
+            None => {
+                return Err(format!("Tool not found: {}", tool_name));
+            }
+        };
 
         // Call the tool
-        let result = tool.call(tool_args).map_err(|e| {
-            error!(tool = %tool_name, error = %e, "Tool execution failed");
-            RmcpError {
-                code: ErrorCode(-32603),
-                message: Cow::from(format!("Tool execution failed: {}", e)),
-                data: None,
+        let result = match tool.call(request.0.arguments.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                error!(tool = %tool_name, error = %e, "Tool execution failed");
+                return Err(format!("Tool execution failed: {}", e));
             }
-        })?;
+        };
 
         debug!(tool = %tool_name, "Tool execution completed successfully");
 
-        // Convert result to MCP format
-        let content = Content::text(
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{:?}", result)),
-        );
+        Ok(serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{:?}", result)))
+    }
 
-        Ok(CallToolResult::success(vec![content]))
+    /// List all available Skreaver tools
+    #[tool(
+        name = "list_skreaver_tools",
+        description = "List all available Skreaver tools with their descriptions"
+    )]
+    async fn list_skreaver_tools(&self) -> String {
+        let tools = self.registry.list_tools();
+
+        let tool_list: Vec<serde_json::Value> = tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.name,
+                    "description": t.description
+                })
+            })
+            .collect();
+
+        serde_json::to_string_pretty(&tool_list).unwrap_or_else(|_| "[]".to_string())
     }
 }
 
-/// Implement the ServerHandler trait for MCP protocol support
-#[tool_handler]
+/// Implement ServerHandler trait for MCP protocol
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for McpServer {
-    // The tool_handler macro automatically implements the required methods
-    // based on the #[tool] annotations above
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            protocol_version: Default::default(),
+            capabilities: ServerCapabilities {
+                tools: Some(rmcp::model::ToolsCapability::default()),
+                ..Default::default()
+            },
+            server_info: Implementation {
+                name: self.server_name.clone(),
+                version: self.server_version.clone(),
+                title: None,
+                icons: None,
+                website_url: None,
+            },
+            instructions: Some(
+                "This server exposes Skreaver tools. Use 'list_skreaver_tools' to see available tools, then 'execute_tool' to run them.".to_string()
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skreaver_core::tool::{ExecutionResult, Tool};
-    use std::sync::Arc;
+    use skreaver_core::tool::ExecutionResult;
 
     struct TestTool;
 
@@ -253,7 +242,8 @@ mod tests {
         }
 
         fn call(&self, input: String) -> ExecutionResult {
-            let parsed: serde_json::Value = serde_json::from_str(&input).unwrap();
+            let parsed: serde_json::Value =
+                serde_json::from_str(&input).unwrap_or(serde_json::json!({}));
             let message = parsed
                 .get("message")
                 .and_then(|v| v.as_str())
@@ -268,16 +258,16 @@ mod tests {
     #[test]
     fn test_server_creation() {
         let mut server = McpServer::new_empty();
-        server.registry_mut().add_tool(Arc::new(TestTool));
+        server.add_tool(Arc::new(TestTool));
 
-        assert_eq!(server.info().name, "skreaver-mcp-server");
+        assert_eq!(server.server_name, "skreaver-mcp-server");
         assert_eq!(server.registry().tools().len(), 1);
     }
 
     #[test]
     fn test_list_tools() {
         let mut server = McpServer::new_empty();
-        server.registry_mut().add_tool(Arc::new(TestTool));
+        server.add_tool(Arc::new(TestTool));
 
         let tools = server.list_tools();
 
@@ -286,9 +276,10 @@ mod tests {
     }
 
     #[test]
-    fn test_server_has_tool_router() {
+    fn test_server_info() {
         let server = McpServer::new_empty();
-        // Just verify the server was created successfully with tool_router
-        assert_eq!(server.info().name, "skreaver-mcp-server");
+        let info = server.get_info();
+        assert_eq!(info.server_info.name, "skreaver-mcp-server");
+        assert!(!info.server_info.version.is_empty());
     }
 }
