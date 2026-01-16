@@ -51,6 +51,15 @@ pub struct McpBridge {
     service: RunningService<RoleClient, McpClientHandler>,
 }
 
+impl std::fmt::Debug for McpBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpBridge")
+            .field("server_name", &self.server_name)
+            .field("tool_count", &self.tools.len())
+            .finish()
+    }
+}
+
 /// Simple MCP client handler that implements ClientHandler trait
 #[derive(Clone, Default)]
 struct McpClientHandler {
