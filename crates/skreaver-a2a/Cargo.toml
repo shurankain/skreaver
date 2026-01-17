@@ -1,0 +1,54 @@
+[package]
+name = "skreaver-a2a"
+version = "0.5.0"
+edition = "2024"
+description = "Agent2Agent (A2A) protocol types and client for Skreaver"
+license = "MIT"
+
+[features]
+default = []
+client = ["reqwest", "tokio-tungstenite"]
+server = ["axum", "tower", "tower-http"]
+
+[dependencies]
+# Skreaver crates
+skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# HTTP client (optional, for client feature)
+reqwest = { workspace = true, optional = true }
+
+# WebSocket support (optional, for streaming)
+tokio-tungstenite = { version = "0.26", optional = true }
+
+# HTTP server (optional, for server feature)
+axum = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+
+# URL handling
+url = "2.5"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID for identifiers
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[lints]
+workspace = true
