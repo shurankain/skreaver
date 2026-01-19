@@ -1,0 +1,48 @@
+[package]
+name = "skreaver-agent"
+version = "0.5.0"
+edition = "2024"
+description = "Unified agent interface for MCP and A2A protocols"
+license = "MIT"
+
+[features]
+default = []
+mcp = ["skreaver-mcp/client"]
+a2a = ["skreaver-a2a/client", "skreaver-a2a/server"]
+full = ["mcp", "a2a"]
+
+[dependencies]
+# Skreaver crates
+skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
+skreaver-mcp = { path = "../skreaver-mcp", version = "0.5.0", optional = true }
+skreaver-a2a = { path = "../skreaver-a2a", version = "0.5.0", optional = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Streaming
+async-stream = "0.3"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# UUID for identifiers
+uuid = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[lints]
+workspace = true
