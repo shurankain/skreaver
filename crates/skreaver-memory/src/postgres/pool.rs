@@ -174,7 +174,7 @@ impl PostgresPool {
                 return Ok(PooledConnection::new(
                     client,
                     Arc::clone(&self.connections),
-                    self.config.pool_size,
+                    self.config.pool_size.get(),
                 ));
             }
             // Connection is bad, drop it and create a new one below
@@ -182,7 +182,7 @@ impl PostgresPool {
 
         // Check if we can create new connection - atomic read
         let current_active = *self.active_count.read().await;
-        if current_active >= self.config.pool_size {
+        if current_active >= self.config.pool_size.get() {
             return Err(MemoryError::ConnectionFailed {
                 backend: skreaver_core::error::MemoryBackend::Postgres,
                 kind: skreaver_core::error::MemoryErrorKind::ResourceExhausted {
@@ -227,7 +227,7 @@ impl PostgresPool {
         Ok(PooledConnection::new(
             client,
             Arc::clone(&self.connections),
-            self.config.pool_size,
+            self.config.pool_size.get(),
         ))
     }
 
@@ -252,7 +252,7 @@ impl PostgresPool {
 
         Ok(PostgresPoolHealth {
             available_connections,
-            total_connections: self.config.pool_size,
+            total_connections: self.config.pool_size.get(),
             active_connections,
             server_version,
             last_check: std::time::Instant::now(),

@@ -21,15 +21,14 @@ impl SqliteMemory {
                 },
             })?;
 
-        let mut stmt = conn
-            .get_connection()
-            .prepare("SELECT key, value FROM memory")
-            .map_err(|e| MemoryError::SnapshotFailed {
+        let mut stmt = conn.prepare("SELECT key, value FROM memory").map_err(|e| {
+            MemoryError::SnapshotFailed {
                 backend: MemoryBackend::Sqlite,
                 kind: MemoryErrorKind::IoError {
                     details: SqlitePool::sanitize_error(&e),
                 },
-            })?;
+            }
+        })?;
 
         let mut snapshot = std::collections::HashMap::new();
         let rows = stmt
@@ -83,10 +82,9 @@ impl SnapshotableMemory for SqliteMemory {
                 },
             })?;
 
-        let mut conn = self.pool.acquire()?;
+        let conn = self.pool.acquire()?;
 
         let tx = conn
-            .get_connection_mut()
             .unchecked_transaction()
             .map_err(|e| MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,

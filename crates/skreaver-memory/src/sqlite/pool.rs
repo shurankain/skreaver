@@ -226,13 +226,15 @@ impl SqlitePool {
     /// Validate connection health before returning it
     fn validate_connection(conn: &Connection) -> Result<(), MemoryError> {
         // Simple connectivity test - just check if SQLite responds
-        conn.execute("SELECT 1", [])
-            .map_err(|e| MemoryError::ConnectionFailed {
+        // Use query_row since SELECT returns a result set
+        conn.query_row("SELECT 1", [], |_row| Ok(())).map_err(|e| {
+            MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,
                 kind: MemoryErrorKind::IoError {
                     details: Self::sanitize_error(&e),
                 },
-            })?;
+            }
+        })?;
 
         Ok(())
     }

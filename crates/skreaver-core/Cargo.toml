@@ -37,7 +37,7 @@ base64 = { workspace = true }
 rand = { workspace = true }
 jsonwebtoken = { workspace = true }
 toml = "0.8"
-url = "2.5"
+url = { version = "2.5", features = ["serde"] }
 once_cell = { version = "1.19", optional = true }
 
 # Encryption for secure storage

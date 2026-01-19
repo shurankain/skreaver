@@ -12,21 +12,20 @@ impl MemoryWriter for SqliteMemory {
         let conn = self.pool.acquire()?;
         let namespaced_key = self.namespaced_key(&update.key);
 
-        conn.get_connection()
-            .execute(
-                "INSERT INTO memory (key, value) VALUES (?1, ?2)
+        conn.execute(
+            "INSERT INTO memory (key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = strftime('%s', 'now')",
-                params![namespaced_key, update.value],
-            )
-            .map_err(|e| MemoryError::StoreFailed {
-                key: update.key.clone(),
-                backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::IoError {
-                    details: e.to_string(),
-                },
-            })?;
+            params![namespaced_key, update.value],
+        )
+        .map_err(|e| MemoryError::StoreFailed {
+            key: update.key.clone(),
+            backend: MemoryBackend::Sqlite,
+            kind: MemoryErrorKind::IoError {
+                details: e.to_string(),
+            },
+        })?;
 
         Ok(())
     }
@@ -36,10 +35,9 @@ impl MemoryWriter for SqliteMemory {
             return Ok(());
         }
 
-        let mut conn = self.pool.acquire()?;
+        let conn = self.pool.acquire()?;
 
         let tx = conn
-            .get_connection_mut()
             .unchecked_transaction()
             .map_err(|e| MemoryError::ConnectionFailed {
                 backend: MemoryBackend::Sqlite,

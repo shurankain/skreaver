@@ -47,7 +47,7 @@ impl SqliteMemory {
 
         // Run migrations on first connection
         let conn = pool.acquire()?;
-        migration_engine.migrate(conn.get_connection(), None)?;
+        migration_engine.migrate(&conn, None)?;
 
         Ok(Self {
             pool,
@@ -118,7 +118,6 @@ mod tests {
 
         // Verify WAL mode is enabled
         let mode: String = conn
-            .get_connection()
             .query_row("PRAGMA journal_mode", [], |row| row.get(0))
             .unwrap();
         assert_eq!(mode, "wal");
@@ -134,7 +133,6 @@ mod tests {
 
         // Check that migrations were applied
         let version: u32 = conn
-            .get_connection()
             .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
                 row.get(0)
             })
@@ -143,7 +141,6 @@ mod tests {
 
         // Check that table exists
         let table_count: i64 = conn
-            .get_connection()
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory'",
                 [],

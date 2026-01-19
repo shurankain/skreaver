@@ -32,19 +32,6 @@
 //! └─────────────────────────────────────────────┘
 //! ```
 
-use async_trait::async_trait;
-use futures::Stream;
-use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::Arc;
-use tracing::{debug, info};
-
-use crate::error::{AgentError, AgentResult};
-use crate::traits::UnifiedAgent;
-use crate::types::{
-    AgentInfo, Capability, ContentPart, Protocol, StreamEvent, UnifiedMessage, UnifiedTask,
-};
-
 // ============================================================================
 // McpToA2aBridge - Expose MCP tools as A2A agent
 // ============================================================================
@@ -130,7 +117,10 @@ impl McpToA2aBridge {
         .with_protocol(Protocol::A2a)
         .with_description(format!(
             "A2A bridge to MCP agent: {}",
-            source_info.description.as_deref().unwrap_or(&source_info.name)
+            source_info
+                .description
+                .as_deref()
+                .unwrap_or(&source_info.name)
         ));
 
         // Copy capabilities with A2A tag
@@ -215,10 +205,9 @@ impl UnifiedAgent for McpToA2aBridge {
         result
             .metadata
             .insert("bridged_from".to_string(), serde_json::json!("mcp"));
-        result.metadata.insert(
-            "bridge_id".to_string(),
-            serde_json::json!(self.info.id),
-        );
+        result
+            .metadata
+            .insert("bridge_id".to_string(), serde_json::json!(self.info.id));
 
         // Store task
         self.tasks
@@ -315,10 +304,7 @@ impl A2aToMcpBridge {
                 SkillToToolMapping {
                     skill_id: cap.id.clone(),
                     tool_name: sanitize_tool_name(&cap.id),
-                    description: cap
-                        .description
-                        .clone()
-                        .unwrap_or_else(|| cap.name.clone()),
+                    description: cap.description.clone().unwrap_or_else(|| cap.name.clone()),
                     input_schema: cap.input_schema.clone(),
                 },
             );
@@ -332,7 +318,10 @@ impl A2aToMcpBridge {
         .with_protocol(Protocol::Mcp)
         .with_description(format!(
             "MCP bridge to A2A agent: {}",
-            source_info.description.as_deref().unwrap_or(&source_info.name)
+            source_info
+                .description
+                .as_deref()
+                .unwrap_or(&source_info.name)
         ));
 
         // Copy capabilities with MCP tag
@@ -428,10 +417,9 @@ impl UnifiedAgent for A2aToMcpBridge {
         result
             .metadata
             .insert("bridged_from".to_string(), serde_json::json!("a2a"));
-        result.metadata.insert(
-            "bridge_id".to_string(),
-            serde_json::json!(self.info.id),
-        );
+        result
+            .metadata
+            .insert("bridge_id".to_string(), serde_json::json!(self.info.id));
 
         // Store task
         self.tasks
@@ -694,6 +682,7 @@ impl ProtocolGateway {
 /// Sanitize a name to be MCP-tool compatible.
 ///
 /// MCP tools have naming restrictions - this ensures compatibility.
+#[cfg(feature = "a2a")]
 fn sanitize_tool_name(name: &str) -> String {
     name.chars()
         .map(|c| {
@@ -731,14 +720,20 @@ pub fn a2a_parts_to_mcp_result(parts: &[ContentPart]) -> serde_json::Value {
                 // Try to parse as JSON
                 serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!(text))
             }
-            ContentPart::Data { data, mime_type, .. } => {
+            ContentPart::Data {
+                data, mime_type, ..
+            } => {
                 serde_json::json!({
                     "type": "data",
                     "data": data,
                     "mime_type": mime_type
                 })
             }
-            ContentPart::File { uri, mime_type, name } => {
+            ContentPart::File {
+                uri,
+                mime_type,
+                name,
+            } => {
                 serde_json::json!({
                     "type": "file",
                     "uri": uri,
@@ -756,12 +751,18 @@ pub fn a2a_parts_to_mcp_result(parts: &[ContentPart]) -> serde_json::Value {
             .iter()
             .filter_map(|p| match p {
                 ContentPart::Text { text } => Some(serde_json::json!(text)),
-                ContentPart::Data { data, mime_type, .. } => Some(serde_json::json!({
+                ContentPart::Data {
+                    data, mime_type, ..
+                } => Some(serde_json::json!({
                     "type": "data",
                     "data": data,
                     "mime_type": mime_type
                 })),
-                ContentPart::File { uri, mime_type, name } => Some(serde_json::json!({
+                ContentPart::File {
+                    uri,
+                    mime_type,
+                    name,
+                } => Some(serde_json::json!({
                     "type": "file",
                     "uri": uri,
                     "mime_type": mime_type,
@@ -779,8 +780,8 @@ pub fn a2a_parts_to_mcp_result(parts: &[ContentPart]) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_sanitize_tool_name() {
         assert_eq!(sanitize_tool_name("simple_tool"), "simple_tool");

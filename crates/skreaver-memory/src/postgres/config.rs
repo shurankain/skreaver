@@ -2,7 +2,7 @@
 //!
 //! This module provides configuration structures and validation for PostgreSQL connections.
 
-use skreaver_core::database::{DatabaseName, HostAddress, PoolSize};
+use skreaver_core::database::PoolSize;
 use skreaver_core::error::MemoryError;
 use std::time::Duration;
 use tokio_postgres::{Config, Error as PgError};

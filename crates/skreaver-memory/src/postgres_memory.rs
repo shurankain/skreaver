@@ -113,7 +113,6 @@ impl PostgresMemory {
         let namespaced_key = self.namespaced_key(key);
 
         let row = conn
-            .client()
             .query_opt(
                 "SELECT value FROM memory_entries WHERE key = $1",
                 &[&namespaced_key],
@@ -177,7 +176,6 @@ impl PostgresMemory {
         // to prevent SQL injection attacks via namespace field
         let namespace_value = self.namespace.as_deref().unwrap_or("");
         let rows = conn
-            .client()
             .query(
                 "SELECT key, value FROM memory_entries WHERE namespace = $1",
                 &[&namespace_value],
@@ -347,7 +345,6 @@ impl TransactionalMemory for PostgresMemory {
                     })?;
 
             let tx = conn
-                .client_mut()
                 .build_transaction()
                 .isolation_level(IsolationLevel::Serializable)
                 .start()
@@ -396,7 +393,6 @@ impl MemoryAdmin for PostgresMemory {
 
             // Query all entries
             let rows = conn
-                .client()
                 .query("SELECT key, value FROM memory_entries ORDER BY key", &[])
                 .await
                 .map_err(|e| MemoryError::SnapshotFailed {
@@ -568,7 +564,6 @@ impl MemoryAdmin for PostgresMemory {
 
             // Get current version
             let current_version: i32 = conn
-                .client()
                 .query_one(
                     "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
                     &[],
@@ -579,7 +574,6 @@ impl MemoryAdmin for PostgresMemory {
 
             // Get applied migrations
             let rows = conn
-                .client()
                 .query(
                     "SELECT version, description, applied_at FROM schema_migrations ORDER BY version",
                     &[],

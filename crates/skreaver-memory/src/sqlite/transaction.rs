@@ -14,7 +14,7 @@ impl TransactionalMemory for SqliteMemory {
         let savepoint_name = format!("sp_{}", rand::random::<u32>());
 
         // Get a connection and start savepoint
-        let mut conn = self
+        let conn = self
             .pool
             .acquire()
             .map_err(|e| TransactionError::TransactionFailed {
@@ -22,8 +22,7 @@ impl TransactionalMemory for SqliteMemory {
             })?;
 
         // Begin savepoint for transaction isolation
-        conn.get_connection_mut()
-            .execute(&format!("SAVEPOINT {}", savepoint_name), [])
+        conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])
             .map_err(|e| TransactionError::TransactionFailed {
                 reason: format!("Failed to begin transaction savepoint: {}", e),
             })?;
@@ -35,7 +34,7 @@ impl TransactionalMemory for SqliteMemory {
         let result = f(self);
 
         // Reacquire connection to commit/rollback
-        let mut conn = self
+        let conn = self
             .pool
             .acquire()
             .map_err(|e| TransactionError::TransactionFailed {
@@ -48,8 +47,7 @@ impl TransactionalMemory for SqliteMemory {
         match result {
             Ok(value) => {
                 // Release the savepoint (commit)
-                conn.get_connection_mut()
-                    .execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), [])
+                conn.execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), [])
                     .map_err(|e| TransactionError::TransactionFailed {
                         reason: format!("Failed to commit transaction: {}", e),
                     })?;
@@ -57,16 +55,13 @@ impl TransactionalMemory for SqliteMemory {
             }
             Err(tx_error) => {
                 // Rollback to savepoint
-                if let Err(rollback_err) = conn
-                    .get_connection_mut()
-                    .execute(&format!("ROLLBACK TO SAVEPOINT {}", savepoint_name), [])
+                if let Err(rollback_err) =
+                    conn.execute(&format!("ROLLBACK TO SAVEPOINT {}", savepoint_name), [])
                 {
                     eprintln!("Warning: Failed to rollback transaction: {}", rollback_err);
                 }
                 // Also release the savepoint after rollback
-                let _ = conn
-                    .get_connection_mut()
-                    .execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), []);
+                let _ = conn.execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), []);
                 Err(tx_error)
             }
         }

@@ -120,6 +120,4 @@ pub use protocol_bridge::{InputTransform, McpToA2aBridge, ToolMapping};
 pub use protocol_bridge::{A2aToMcpBridge, SkillToToolMapping};
 
 #[cfg(all(feature = "mcp", feature = "a2a"))]
-pub use protocol_bridge::{
-    ProtocolGateway, a2a_parts_to_mcp_result, mcp_result_to_a2a_parts,
-};
+pub use protocol_bridge::{ProtocolGateway, a2a_parts_to_mcp_result, mcp_result_to_a2a_parts};

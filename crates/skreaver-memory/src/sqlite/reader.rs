@@ -12,20 +12,19 @@ impl MemoryReader for SqliteMemory {
         let conn = self.pool.acquire()?;
         let namespaced_key = self.namespaced_key(key);
 
-        conn.get_connection()
-            .query_row(
-                "SELECT value FROM memory WHERE key = ?1",
-                params![namespaced_key],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| MemoryError::LoadFailed {
-                key: key.clone(),
-                backend: MemoryBackend::Sqlite,
-                kind: MemoryErrorKind::IoError {
-                    details: e.to_string(),
-                },
-            })
+        conn.query_row(
+            "SELECT value FROM memory WHERE key = ?1",
+            params![namespaced_key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| MemoryError::LoadFailed {
+            key: key.clone(),
+            backend: MemoryBackend::Sqlite,
+            kind: MemoryErrorKind::IoError {
+                details: e.to_string(),
+            },
+        })
     }
 
     fn load_many(&self, keys: &[MemoryKey]) -> Result<Vec<Option<String>>, MemoryError> {
