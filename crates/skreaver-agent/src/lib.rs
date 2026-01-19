@@ -67,6 +67,7 @@
 
 pub mod bridge;
 pub mod error;
+pub mod orchestration;
 pub mod traits;
 pub mod types;
 
@@ -91,6 +92,12 @@ pub use types::{
 
 // Re-export bridge types
 pub use bridge::{AgentRegistry, FanOutAgent, ProxyAgent};
+
+// Re-export orchestration types
+pub use orchestration::{
+    AggregationMode, CapabilityBasedSupervisor, ParallelAgent, RouterAgent, RoutingRule,
+    SequentialPipeline, SupervisorAgent, SupervisorDecision, SupervisorLogic, TransformMode,
+};
 
 // Re-export MCP adapter
 #[cfg(feature = "mcp")]
