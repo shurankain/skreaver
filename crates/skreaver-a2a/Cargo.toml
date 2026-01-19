@@ -7,7 +7,7 @@ license = "MIT"
 
 [features]
 default = []
-client = ["reqwest", "tokio-tungstenite"]
+client = ["reqwest", "futures", "tokio-stream", "async-trait"]
 server = ["axum", "tower", "tower-http"]
 
 [dependencies]
@@ -28,10 +28,12 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 # HTTP client (optional, for client feature)
-reqwest = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true, features = ["json", "stream"] }
 
-# WebSocket support (optional, for streaming)
-tokio-tungstenite = { version = "0.26", optional = true }
+# Streaming support
+futures = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
 
 # HTTP server (optional, for server feature)
 axum = { workspace = true, optional = true }

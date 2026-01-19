@@ -55,6 +55,10 @@
 pub mod error;
 pub mod types;
 
+// Client module (requires client feature)
+#[cfg(feature = "client")]
+pub mod client;
+
 // Re-export core types
 pub use error::{A2aError, A2aResult, ErrorResponse};
 pub use types::{
@@ -93,3 +97,7 @@ pub use types::{
     TaskStatusUpdateEvent,
     TextPart,
 };
+
+// Re-export client types
+#[cfg(feature = "client")]
+pub use client::{A2aClient, AuthConfig};
