@@ -68,6 +68,7 @@
 pub mod bridge;
 pub mod error;
 pub mod orchestration;
+pub mod protocol_bridge;
 pub mod traits;
 pub mod types;
 
@@ -110,3 +111,15 @@ pub use a2a::A2aAgentAdapter;
 // Re-export A2A bridge handler
 #[cfg(feature = "a2a")]
 pub use bridge::A2aBridgeHandler;
+
+// Re-export protocol bridge types
+#[cfg(feature = "mcp")]
+pub use protocol_bridge::{InputTransform, McpToA2aBridge, ToolMapping};
+
+#[cfg(feature = "a2a")]
+pub use protocol_bridge::{A2aToMcpBridge, SkillToToolMapping};
+
+#[cfg(all(feature = "mcp", feature = "a2a"))]
+pub use protocol_bridge::{
+    ProtocolGateway, a2a_parts_to_mcp_result, mcp_result_to_a2a_parts,
+};
