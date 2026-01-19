@@ -59,6 +59,10 @@ pub mod types;
 #[cfg(feature = "client")]
 pub mod client;
 
+// Server module (requires server feature)
+#[cfg(feature = "server")]
+pub mod server;
+
 // Re-export core types
 pub use error::{A2aError, A2aResult, ErrorResponse};
 pub use types::{
@@ -101,3 +105,7 @@ pub use types::{
 // Re-export client types
 #[cfg(feature = "client")]
 pub use client::{A2aClient, AuthConfig};
+
+// Re-export server types
+#[cfg(feature = "server")]
+pub use server::{A2aServer, AgentHandler, send_artifact_update, send_status_update};

@@ -8,7 +8,7 @@ license = "MIT"
 [features]
 default = []
 client = ["reqwest", "futures", "tokio-stream", "async-trait"]
-server = ["axum", "tower", "tower-http"]
+server = ["axum", "tower", "tower-http", "futures", "tokio-stream", "async-trait", "async-stream"]
 
 [dependencies]
 # Skreaver crates
@@ -39,6 +39,9 @@ async-trait = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true }
+
+# Async stream generators
+async-stream = { version = "0.3", optional = true }
 
 # URL handling
 url = "2.5"
