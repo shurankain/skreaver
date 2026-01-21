@@ -3,6 +3,104 @@
 //! This module provides an HTTP client for interacting with A2A-compatible agents.
 //! It supports agent discovery, task management, and streaming updates.
 //!
+//! # Overview
+//!
+//! The [`A2aClient`] is the primary interface for connecting to A2A agents. It handles:
+//!
+//! - **Agent Discovery**: Fetch agent capabilities from `/.well-known/agent.json`
+//! - **Message Sending**: Create tasks and send messages (sync and streaming)
+//! - **Task Management**: Get status, cancel tasks, and poll for completion
+//! - **Streaming**: Receive real-time updates via Server-Sent Events (SSE)
+//!
+//! # Connection Behavior
+//!
+//! ## Timeouts
+//!
+//! | Operation | Default Timeout | Notes |
+//! |-----------|-----------------|-------|
+//! | Regular requests | 30 seconds | Agent card, send, get task |
+//! | Streaming requests | 5 minutes | SSE connections for long tasks |
+//!
+//! ## Connection Pooling
+//!
+//! The client uses `reqwest`'s built-in connection pooling. Connections are
+//! reused across requests to the same host, reducing latency for repeated calls.
+//! The client is `Clone`-able and safe to share across tasks.
+//!
+//! ## Retry Policy
+//!
+//! The client does **not** automatically retry failed requests. Implement your
+//! own retry logic for resilience:
+//!
+//! ```rust,ignore
+//! async fn send_with_retry(client: &A2aClient, msg: &str, retries: u32) -> A2aResult<Task> {
+//!     let mut last_error = None;
+//!     for _ in 0..retries {
+//!         match client.send_message(msg).await {
+//!             Ok(task) => return Ok(task),
+//!             Err(e) if e.is_retryable() => {
+//!                 last_error = Some(e);
+//!                 tokio::time::sleep(Duration::from_millis(100)).await;
+//!             }
+//!             Err(e) => return Err(e),
+//!         }
+//!     }
+//!     Err(last_error.unwrap())
+//! }
+//! ```
+//!
+//! # Authentication
+//!
+//! The client supports multiple authentication methods:
+//!
+//! ```rust,ignore
+//! // Bearer token (OAuth2, JWT)
+//! let client = A2aClient::new(url)?
+//!     .with_bearer_token("eyJhbGciOiJIUzI1NiIs...");
+//!
+//! // API key in header
+//! let client = A2aClient::new(url)?
+//!     .with_api_key("X-API-Key", "sk-1234567890");
+//!
+//! // API key in query parameter
+//! let client = A2aClient::new(url)?
+//!     .with_auth(AuthConfig::ApiKeyQuery {
+//!         name: "api_key".into(),
+//!         value: "sk-1234567890".into(),
+//!     });
+//! ```
+//!
+//! # Streaming
+//!
+//! Streaming uses Server-Sent Events (SSE) to receive real-time updates:
+//!
+//! ```rust,ignore
+//! use futures::StreamExt;
+//!
+//! let mut stream = client.send_message_streaming("Process this").await?;
+//!
+//! while let Some(event) = stream.next().await {
+//!     match event? {
+//!         StreamingEvent::TaskStatusUpdate(update) => {
+//!             println!("Status: {:?}", update.status);
+//!             if update.status.is_terminal() {
+//!                 break;
+//!             }
+//!         }
+//!         StreamingEvent::TaskArtifactUpdate(update) => {
+//!             println!("Artifact: {}", update.artifact.id);
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! ## Backpressure
+//!
+//! The streaming implementation uses a bounded channel (32 events). If events
+//! arrive faster than they're consumed, the oldest events are dropped with a
+//! warning logged. Increase processing speed or reduce agent output rate if
+//! you see "lagged" warnings.
+//!
 //! # Example
 //!
 //! ```rust,ignore
@@ -24,6 +122,20 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! # Error Handling
+//!
+//! The client maps HTTP status codes to specific error types:
+//!
+//! | Status | Error Type | Retryable |
+//! |--------|------------|-----------|
+//! | 400 | `InvalidMessage` | No |
+//! | 401 | `AuthenticationRequired` | No |
+//! | 403 | `NotAuthorized` | No |
+//! | 404 | `AgentNotFound` or `TaskNotFound` | No |
+//! | 429 | `RateLimitExceeded` | Yes |
+//! | 500 | `InternalError` | Maybe |
+//! | 502/504 | `ConnectionError` | Yes |
 
 use crate::error::{A2aError, A2aResult};
 use crate::types::{

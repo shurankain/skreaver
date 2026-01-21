@@ -1,10 +1,144 @@
 //! Agent orchestration patterns for running multiple agents together.
 //!
-//! This module provides various orchestration patterns:
-//! - **SequentialPipeline**: Chain agents where output of one becomes input of next
-//! - **ParallelAgent**: Run multiple agents concurrently and aggregate results
-//! - **RouterAgent**: Route messages to agents based on rules or capabilities
-//! - **SupervisorAgent**: Coordinate complex workflows with decision-making
+//! This module provides composable orchestration patterns that enable building
+//! complex multi-agent workflows. Each pattern implements [`UnifiedAgent`], so
+//! patterns can be nested arbitrarily to create sophisticated architectures.
+//!
+//! # Available Patterns
+//!
+//! | Pattern | Use Case | Example |
+//! |---------|----------|---------|
+//! | [`SequentialPipeline`] | Multi-step processing | Preprocess → Analyze → Summarize |
+//! | [`ParallelAgent`] | Fan-out/fan-in | Query multiple search engines |
+//! | [`RouterAgent`] | Capability-based routing | Route to specialist agents |
+//! | [`SupervisorAgent`] | Complex decision workflows | Dynamic agent coordination |
+//!
+//! # Architecture Overview
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │                     Orchestration Patterns                       │
+//! │                                                                   │
+//! │   SequentialPipeline         ParallelAgent      RouterAgent      │
+//! │   ┌───┐ ┌───┐ ┌───┐        ┌───────────┐      ┌───────────┐    │
+//! │   │ A │→│ B │→│ C │        │  ┌───┐    │      │ Rules/    │    │
+//! │   └───┘ └───┘ └───┘        │  │ A │    │      │ Caps      │    │
+//! │                            │  └───┘    │      │   ↓       │    │
+//! │                            │  ┌───┐    │      │ ┌───┐     │    │
+//! │                            │  │ B │    │──→   │ │ ? │     │    │
+//! │                            │  └───┘    │      │ └───┘     │    │
+//! │                            └───────────┘      └───────────┘    │
+//! │                                                                   │
+//! │                       SupervisorAgent                            │
+//! │   ┌─────────────────────────────────────────────────────────┐   │
+//! │   │  ┌────────────┐     ┌─────────────────────────────┐     │   │
+//! │   │  │ Supervisor │────→│ Agents: A, B, C, ...        │     │   │
+//! │   │  │   Logic    │     │ (dynamic selection/routing) │     │   │
+//! │   │  └────────────┘     └─────────────────────────────┘     │   │
+//! │   └─────────────────────────────────────────────────────────┘   │
+//! └─────────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! # Quick Start
+//!
+//! ## Sequential Pipeline
+//!
+//! Chain agents where the output of one becomes the input for the next:
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{SequentialPipeline, TransformMode};
+//!
+//! let pipeline = SequentialPipeline::new("analysis-pipeline", "Document Analysis")
+//!     .add_stage(preprocessor)    // Clean and normalize input
+//!     .add_stage(analyzer)        // Extract key information
+//!     .add_stage(summarizer)      // Generate summary
+//!     .with_transform(TransformMode::LastMessage);
+//!
+//! let result = pipeline.send_message(UnifiedMessage::user("Analyze this...")).await?;
+//! ```
+//!
+//! ## Parallel Agent (Fan-Out)
+//!
+//! Execute multiple agents concurrently and aggregate results:
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{ParallelAgent, AggregationMode};
+//!
+//! let parallel = ParallelAgent::new("multi-search", "Multi-Source Search")
+//!     .add_agent(google_agent)
+//!     .add_agent(bing_agent)
+//!     .add_agent(duckduckgo_agent)
+//!     .with_aggregation(AggregationMode::ConcatenateAll);
+//!
+//! // All three search agents run simultaneously
+//! let result = parallel.send_message(UnifiedMessage::user("rust async")).await?;
+//! ```
+//!
+//! ## Router Agent
+//!
+//! Route messages to appropriate agents based on rules or capabilities:
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{RouterAgent, RoutingRule};
+//!
+//! let router = RouterAgent::new("task-router", "Task Router")
+//!     .add_agent(code_agent)
+//!     .add_agent(search_agent)
+//!     .add_agent(math_agent)
+//!     .add_rule(RoutingRule::contains("code", "code_agent"))
+//!     .add_rule(RoutingRule::contains("search", "search_agent"))
+//!     .add_rule(RoutingRule::capability_based("calculate", "math_agent"));
+//! ```
+//!
+//! ## Supervisor Agent
+//!
+//! Coordinate complex workflows with custom decision logic:
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{SupervisorAgent, SupervisorLogic, SupervisorDecision};
+//!
+//! // Use capability-based supervisor for automatic routing
+//! let supervisor = SupervisorAgent::with_capability_supervisor(
+//!     "smart-coordinator",
+//!     "Smart Coordinator"
+//! )
+//! .add_agent(analysis_agent)
+//! .add_agent(code_agent)
+//! .add_agent(search_agent);
+//!
+//! // Or implement custom logic
+//! struct MyLogic;
+//! impl SupervisorLogic for MyLogic {
+//!     fn decide(&self, task: &UnifiedTask, agents: &[Arc<dyn UnifiedAgent>])
+//!         -> SupervisorDecision { /* custom logic */ }
+//! }
+//! ```
+//!
+//! # Composability
+//!
+//! Since all patterns implement `UnifiedAgent`, they can be nested:
+//!
+//! ```rust,ignore
+//! // A pipeline that contains a parallel stage
+//! let pipeline = SequentialPipeline::new("complex", "Complex Workflow")
+//!     .add_stage(preprocessor)
+//!     .add_stage(Arc::new(parallel_search))  // ParallelAgent as a stage
+//!     .add_stage(postprocessor);
+//!
+//! // A supervisor that manages routers
+//! let supervisor = SupervisorAgent::new("meta-supervisor", "Meta")
+//!     .add_agent(Arc::new(code_router))      // RouterAgent as child
+//!     .add_agent(Arc::new(search_router));   // Another RouterAgent
+//! ```
+//!
+//! # Error Handling
+//!
+//! Each pattern has different error semantics:
+//!
+//! - **SequentialPipeline**: Fails fast on first stage error
+//! - **ParallelAgent**: Collects all results, partial success possible
+//! - **RouterAgent**: Returns error if no matching agent or agent fails
+//! - **SupervisorAgent**: Depends on supervisor logic implementation
 
 use async_trait::async_trait;
 use futures::Stream;

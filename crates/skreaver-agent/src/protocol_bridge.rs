@@ -3,9 +3,19 @@
 //! This module provides bridges that enable seamless interoperability between
 //! the Model Context Protocol (MCP) and Agent-to-Agent (A2A) protocols:
 //!
-//! - **McpToA2aBridge**: Exposes MCP tools as an A2A-compatible agent
-//! - **A2aToMcpBridge**: Exposes A2A agent skills as MCP tools
-//! - **ProtocolGateway**: Unified gateway managing multiple protocol bridges
+//! - `McpToA2aBridge`: Exposes MCP tools as an A2A-compatible agent (requires `mcp` feature)
+//! - `A2aToMcpBridge`: Exposes A2A agent skills as MCP tools (requires `a2a` feature)
+//! - `ProtocolGateway`: Unified gateway managing multiple protocol bridges (requires both features)
+//!
+//! # Protocol Comparison
+//!
+//! | Aspect | MCP | A2A |
+//! |--------|-----|-----|
+//! | Purpose | Tool access for LLMs | Agent interoperability |
+//! | Primitives | Tools, Resources, Prompts | Tasks, Messages, Artifacts |
+//! | Communication | Bidirectional JSON-RPC | HTTP REST + SSE |
+//! | State | Stateless tool calls | Stateful task lifecycle |
+//! | Streaming | Native protocol support | Server-Sent Events |
 //!
 //! # Architecture
 //!
@@ -31,6 +41,101 @@
 //! │         Unified Agent Registry              │
 //! └─────────────────────────────────────────────┘
 //! ```
+//!
+//! # Type Mapping
+//!
+//! ## MCP → A2A Conversion
+//!
+//! | MCP Concept | A2A Equivalent | Notes |
+//! |-------------|----------------|-------|
+//! | Tool | Skill | 1:1 mapping, input schemas preserved |
+//! | Tool Call | Message + ToolCall part | Wrapped in task context |
+//! | Tool Result | Message + ToolResult part | Added to task history |
+//! | Resource | Artifact | URI-based content |
+//! | Prompt | N/A | No direct equivalent |
+//!
+//! ## A2A → MCP Conversion
+//!
+//! | A2A Concept | MCP Equivalent | Notes |
+//! |-------------|----------------|-------|
+//! | Skill | Tool | Skill becomes callable tool |
+//! | Task | Tool call session | Task ID tracks conversation |
+//! | Message | Tool call/result | Depends on direction |
+//! | Artifact | Tool result content | Serialized as JSON |
+//! | Status updates | N/A | Polling required |
+//!
+//! # Usage Examples
+//!
+//! ## Exposing MCP Server as A2A Agent
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{McpToA2aBridge, McpAgentAdapter};
+//!
+//! // Connect to an MCP server (e.g., filesystem tools)
+//! let mcp_agent = McpAgentAdapter::connect("npx @anthropic/mcp-server-fs").await?;
+//!
+//! // Create A2A bridge
+//! let bridge = McpToA2aBridge::new(Arc::new(mcp_agent))
+//!     .with_name("Filesystem Agent")
+//!     .with_description("Access filesystem via A2A protocol");
+//!
+//! // Now 'bridge' can be used with A2A clients or A2aServer
+//! ```
+//!
+//! ## Exposing A2A Agent as MCP Tools
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{A2aToMcpBridge, A2aAgentAdapter};
+//!
+//! // Connect to an A2A agent
+//! let a2a_agent = A2aAgentAdapter::connect("https://agent.example.com").await?;
+//!
+//! // Create MCP bridge - each A2A skill becomes an MCP tool
+//! let bridge = A2aToMcpBridge::new(Arc::new(a2a_agent));
+//!
+//! // Get skill mappings for MCP server registration
+//! for (skill_id, mapping) in bridge.skill_mappings() {
+//!     println!("Tool '{}' maps to skill '{}'", mapping.tool_name, skill_id);
+//! }
+//! ```
+//!
+//! ## Unified Gateway
+//!
+//! ```rust,ignore
+//! use skreaver_agent::{ProtocolGateway, Protocol};
+//!
+//! let mut gateway = ProtocolGateway::new();
+//!
+//! // Register agents from both protocols
+//! gateway.register_mcp_agent(mcp_filesystem);
+//! gateway.register_mcp_agent(mcp_database);
+//! gateway.register_a2a_agent(a2a_search);
+//! gateway.register_a2a_agent(a2a_analysis);
+//!
+//! // Query agents by protocol
+//! let a2a_agents = gateway.agents_for_protocol(Protocol::A2a);
+//!
+//! // Find by capability
+//! let search_agents = gateway.find_by_capability("search");
+//!
+//! // Route message to best agent
+//! let result = gateway.route_message(message, None).await?;
+//! ```
+//!
+//! # Feature Flags
+//!
+//! - `mcp`: Enables MCP-related bridges (`McpToA2aBridge`)
+//! - `a2a`: Enables A2A-related bridges (`A2aToMcpBridge`)
+//! - Both: Enables `ProtocolGateway` for full bidirectional bridging
+//!
+//! # Error Handling
+//!
+//! Protocol bridges preserve error context while translating error types:
+//!
+//! - MCP errors → `AgentError::Internal` with original message
+//! - A2A errors → `AgentError::ConnectionError` or `AgentError::Internal`
+//! - Task not found → `AgentError::TaskNotFound`
+//! - Capability not found → `AgentError::CapabilityNotFound`
 
 use std::collections::HashMap;
 use std::pin::Pin;
