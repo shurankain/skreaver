@@ -126,6 +126,7 @@ chrono = { workspace = true }
 tracing-subscriber = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
+async-stream = "0.3"
 # Core crates
 skreaver-core = { path = "crates/skreaver-core" }
 skreaver-memory = { path = "crates/skreaver-memory" }
@@ -134,6 +135,9 @@ skreaver-http = { path = "crates/skreaver-http" }
 skreaver-mesh = { path = "crates/skreaver-mesh", features = ["redis"] }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
+# A2A and Agent crates for protocol examples
+skreaver-a2a = { path = "crates/skreaver-a2a", features = ["client", "server"] }
+skreaver-agent = { path = "crates/skreaver-agent", features = ["a2a"] }
 
 # Testing and benchmarking dependencies
 [dev-dependencies]
@@ -228,3 +232,16 @@ harness = false
 [[bench]]
 name = "memory_operations"
 harness = false
+
+# A2A/MCP Protocol Examples
+[[example]]
+name = "a2a_server"
+path = "examples/a2a_server.rs"
+
+[[example]]
+name = "a2a_client"
+path = "examples/a2a_client.rs"
+
+[[example]]
+name = "protocol_bridge_demo"
+path = "examples/protocol_bridge_demo.rs"

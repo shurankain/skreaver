@@ -41,7 +41,9 @@ use async_trait::async_trait;
 #[cfg(any(feature = "mcp", feature = "a2a"))]
 use futures::Stream;
 #[cfg(any(feature = "mcp", feature = "a2a"))]
-use tracing::{debug, info};
+use tracing::debug;
+#[cfg(all(feature = "mcp", feature = "a2a"))]
+use tracing::info;
 
 use crate::error::{AgentError, AgentResult};
 #[cfg(any(feature = "mcp", feature = "a2a"))]
