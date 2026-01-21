@@ -32,6 +32,24 @@
 //! └─────────────────────────────────────────────┘
 //! ```
 
+use std::collections::HashMap;
+use std::pin::Pin;
+use std::sync::Arc;
+
+#[cfg(any(feature = "mcp", feature = "a2a"))]
+use async_trait::async_trait;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
+use futures::Stream;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
+use tracing::{debug, info};
+
+use crate::error::{AgentError, AgentResult};
+#[cfg(any(feature = "mcp", feature = "a2a"))]
+use crate::traits::UnifiedAgent;
+use crate::types::{
+    AgentInfo, Capability, ContentPart, Protocol, StreamEvent, UnifiedMessage, UnifiedTask,
+};
+
 // ============================================================================
 // McpToA2aBridge - Expose MCP tools as A2A agent
 // ============================================================================
@@ -780,6 +798,8 @@ pub fn a2a_parts_to_mcp_result(parts: &[ContentPart]) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::*;
 
     #[cfg(feature = "a2a")]
     #[test]

@@ -54,6 +54,10 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sync", "net"] }
+futures = { workspace = true }
+uuid = { version = "1.11", features = ["v4"] }
+axum = { workspace = true }
 
 [lints]
 workspace = true
