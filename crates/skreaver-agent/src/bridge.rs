@@ -582,6 +582,7 @@ fn unified_to_a2a_status(status: TaskStatus) -> skreaver_a2a::TaskStatus {
         TaskStatus::Completed => skreaver_a2a::TaskStatus::Completed,
         TaskStatus::Failed => skreaver_a2a::TaskStatus::Failed,
         TaskStatus::Cancelled => skreaver_a2a::TaskStatus::Cancelled,
+        TaskStatus::Rejected => skreaver_a2a::TaskStatus::Rejected,
     }
 }
 

@@ -191,6 +191,33 @@ impl UnifiedAgent for A2aAgentAdapter {
 // Conversion Functions
 // ============================================================================
 
+/// Convert an A2A Part to a unified ContentPart.
+fn a2a_part_to_content_part(part: &A2aPart) -> ContentPart {
+    match part {
+        A2aPart::Text(text) => ContentPart::Text {
+            text: text.text.clone(),
+        },
+        A2aPart::Data(data) => {
+            // Try to extract base64 if present, otherwise serialize data
+            let data_str = if let Some(base64) = data.data.get("base64").and_then(|v| v.as_str()) {
+                base64.to_string()
+            } else {
+                serde_json::to_string(&data.data).unwrap_or_default()
+            };
+            ContentPart::Data {
+                data: data_str,
+                mime_type: data.media_type.clone(),
+                name: None,
+            }
+        }
+        A2aPart::File(file) => ContentPart::File {
+            uri: file.uri.clone(),
+            mime_type: Some(file.media_type.clone()),
+            name: file.name.clone(),
+        },
+    }
+}
+
 /// Extract base URL from AgentCard interfaces.
 fn get_base_url_from_card(card: &AgentCard) -> Option<String> {
     for interface in &card.interfaces {
@@ -324,34 +351,7 @@ fn a2a_to_unified_message(message: &A2aMessage) -> UnifiedMessage {
         skreaver_a2a::Role::Agent => MessageRole::Agent,
     };
 
-    let content: Vec<ContentPart> = message
-        .parts
-        .iter()
-        .map(|part| match part {
-            A2aPart::Text(text) => ContentPart::Text {
-                text: text.text.clone(),
-            },
-            A2aPart::Data(data) => {
-                // Try to extract base64 if present, otherwise serialize data
-                let data_str =
-                    if let Some(base64) = data.data.get("base64").and_then(|v| v.as_str()) {
-                        base64.to_string()
-                    } else {
-                        serde_json::to_string(&data.data).unwrap_or_default()
-                    };
-                ContentPart::Data {
-                    data: data_str,
-                    mime_type: data.media_type.clone(),
-                    name: None,
-                }
-            }
-            A2aPart::File(file) => ContentPart::File {
-                uri: file.uri.clone(),
-                mime_type: Some(file.media_type.clone()),
-                name: file.name.clone(),
-            },
-        })
-        .collect();
+    let content: Vec<ContentPart> = message.parts.iter().map(a2a_part_to_content_part).collect();
 
     let mut unified = UnifiedMessage::new(role, "");
     unified.id = message.id.clone().unwrap_or(unified.id);
@@ -366,29 +366,7 @@ fn a2a_to_unified_artifact(artifact: &skreaver_a2a::Artifact) -> Artifact {
     let content: Vec<ContentPart> = artifact
         .parts
         .iter()
-        .map(|part| match part {
-            A2aPart::Text(text) => ContentPart::Text {
-                text: text.text.clone(),
-            },
-            A2aPart::Data(data) => {
-                let data_str =
-                    if let Some(base64) = data.data.get("base64").and_then(|v| v.as_str()) {
-                        base64.to_string()
-                    } else {
-                        serde_json::to_string(&data.data).unwrap_or_default()
-                    };
-                ContentPart::Data {
-                    data: data_str,
-                    mime_type: data.media_type.clone(),
-                    name: None,
-                }
-            }
-            A2aPart::File(file) => ContentPart::File {
-                uri: file.uri.clone(),
-                mime_type: Some(file.media_type.clone()),
-                name: file.name.clone(),
-            },
-        })
+        .map(a2a_part_to_content_part)
         .collect();
 
     Artifact {
@@ -411,7 +389,7 @@ fn a2a_to_unified_status(status: &A2aTaskStatus) -> TaskStatus {
         A2aTaskStatus::Completed => TaskStatus::Completed,
         A2aTaskStatus::Failed => TaskStatus::Failed,
         A2aTaskStatus::Cancelled => TaskStatus::Cancelled,
-        A2aTaskStatus::Rejected => TaskStatus::Failed, // Map rejected to failed
+        A2aTaskStatus::Rejected => TaskStatus::Rejected,
     }
 }
 

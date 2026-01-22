@@ -103,6 +103,7 @@ match task.status {
     TaskStatus::Completed => println!("Done!"),
     TaskStatus::InputRequired => println!("Need more input"),
     TaskStatus::Failed => println!("Task failed"),
+    TaskStatus::Rejected => println!("Task rejected"),
     _ => {}
 }
 
@@ -298,6 +299,13 @@ match agent.send_message(msg).await {
     }
     Err(e) => println!("Error: {}", e),
 }
+
+// Errors include helpful methods
+let err = AgentError::ConnectionError("timeout".into());
+if err.is_retryable() {
+    // Retry the operation
+}
+println!("Error code: {}", err.error_code()); // "CONNECTION_ERROR"
 ```
 
 ## Related Crates

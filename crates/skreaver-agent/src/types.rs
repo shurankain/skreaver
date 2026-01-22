@@ -211,6 +211,8 @@ pub enum TaskStatus {
     Failed,
     /// Task was cancelled
     Cancelled,
+    /// Task was rejected by the system
+    Rejected,
 }
 
 impl TaskStatus {
@@ -218,8 +220,25 @@ impl TaskStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
+            TaskStatus::Completed
+                | TaskStatus::Failed
+                | TaskStatus::Cancelled
+                | TaskStatus::Rejected
         )
+    }
+}
+
+impl std::fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskStatus::Pending => write!(f, "pending"),
+            TaskStatus::Working => write!(f, "working"),
+            TaskStatus::InputRequired => write!(f, "input-required"),
+            TaskStatus::Completed => write!(f, "completed"),
+            TaskStatus::Failed => write!(f, "failed"),
+            TaskStatus::Cancelled => write!(f, "cancelled"),
+            TaskStatus::Rejected => write!(f, "rejected"),
+        }
     }
 }
 
@@ -241,6 +260,22 @@ pub struct Artifact {
 }
 
 impl Artifact {
+    /// Create a new empty artifact with the given ID and name.
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            mime_type: None,
+            content: Vec::new(),
+            metadata: HashMap::new(),
+        }
+    }
+
+    /// Create a new artifact with a generated UUID.
+    pub fn new_with_uuid(name: impl Into<String>) -> Self {
+        Self::new(Uuid::new_v4().to_string(), name)
+    }
+
     /// Create a new artifact with text content.
     pub fn text(name: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
@@ -266,6 +301,32 @@ impl Artifact {
             content: vec![ContentPart::data(data, mime)],
             metadata: HashMap::new(),
         }
+    }
+
+    /// Add a content part to the artifact.
+    pub fn with_content(mut self, part: ContentPart) -> Self {
+        self.content.push(part);
+        self
+    }
+
+    /// Set the MIME type.
+    pub fn with_mime_type(mut self, mime_type: impl Into<String>) -> Self {
+        self.mime_type = Some(mime_type.into());
+        self
+    }
+
+    /// Add metadata to the artifact.
+    pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+        self.metadata.insert(key.into(), value);
+        self
+    }
+
+    /// Get text content from the artifact, if any.
+    pub fn text_content(&self) -> Option<String> {
+        self.content
+            .iter()
+            .filter_map(|p| p.as_text().map(|s| s.to_string()))
+            .next()
     }
 }
 
@@ -613,5 +674,17 @@ mod tests {
         assert!(TaskStatus::Completed.is_terminal());
         assert!(TaskStatus::Failed.is_terminal());
         assert!(TaskStatus::Cancelled.is_terminal());
+        assert!(TaskStatus::Rejected.is_terminal());
+    }
+
+    #[test]
+    fn test_task_status_display() {
+        assert_eq!(TaskStatus::Pending.to_string(), "pending");
+        assert_eq!(TaskStatus::Working.to_string(), "working");
+        assert_eq!(TaskStatus::InputRequired.to_string(), "input-required");
+        assert_eq!(TaskStatus::Completed.to_string(), "completed");
+        assert_eq!(TaskStatus::Failed.to_string(), "failed");
+        assert_eq!(TaskStatus::Cancelled.to_string(), "cancelled");
+        assert_eq!(TaskStatus::Rejected.to_string(), "rejected");
     }
 }
