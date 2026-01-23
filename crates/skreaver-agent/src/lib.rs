@@ -66,6 +66,7 @@
 //! ```
 
 pub mod bridge;
+pub mod discovery;
 pub mod error;
 pub mod orchestration;
 pub mod protocol_bridge;
@@ -93,6 +94,12 @@ pub use types::{
 
 // Re-export bridge types
 pub use bridge::{AgentRegistry, FanOutAgent, ProxyAgent};
+
+// Re-export discovery types
+pub use discovery::{
+    AgentRegistration, BackgroundTaskHandle, DeregistrationReason, DiscoveryConfig, DiscoveryEvent,
+    DiscoveryProvider, DiscoveryQuery, DiscoveryService, HealthStatus, InMemoryDiscoveryProvider,
+};
 
 // Re-export orchestration types
 pub use orchestration::{

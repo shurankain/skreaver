@@ -138,6 +138,81 @@ if let Some(agent) = registry.find("my-agent") {
 }
 ```
 
+## Agent Discovery Service
+
+For more advanced discovery with health checking and event notifications:
+
+```rust
+use skreaver_agent::{
+    DiscoveryService, AgentRegistration, DiscoveryQuery,
+    HealthStatus, Protocol
+};
+
+// Create discovery service
+let discovery = DiscoveryService::new();
+
+// Register an agent with metadata
+let registration = AgentRegistration::new("search-agent", "Search Agent")
+    .with_protocol(Protocol::A2a)
+    .with_capability("web-search")
+    .with_capability("document-search")
+    .with_endpoint("https://search.example.com")
+    .with_tag("production")
+    .with_ttl(300); // 5 minute heartbeat TTL
+
+let registration_id = discovery.register(registration).await?;
+
+// Query for agents by capability
+let search_agents = discovery.find_by_capability("web-search").await?;
+
+// Query with multiple filters
+let agents = discovery.query(
+    DiscoveryQuery::new()
+        .with_protocol(Protocol::A2a)
+        .with_capability("search")
+        .with_tag("production")
+        .with_health_status(HealthStatus::Healthy)
+).await?;
+
+// Send heartbeats to keep registration alive
+discovery.heartbeat(&registration_id).await?;
+
+// Start background health checking and cleanup
+let handle = Arc::new(discovery).start_background_tasks();
+
+// Later, stop background tasks
+handle.stop();
+```
+
+### Discovery Events
+
+Subscribe to agent lifecycle events:
+
+```rust
+use skreaver_agent::{InMemoryDiscoveryProvider, DiscoveryEvent};
+
+let provider = InMemoryDiscoveryProvider::new();
+let mut events = provider.subscribe();
+
+// In another task, listen for events
+tokio::spawn(async move {
+    while let Ok(event) = events.recv().await {
+        match event {
+            DiscoveryEvent::AgentRegistered { agent_id, name, .. } => {
+                println!("New agent: {} ({})", name, agent_id);
+            }
+            DiscoveryEvent::AgentDeregistered { agent_id, reason, .. } => {
+                println!("Agent left: {} ({:?})", agent_id, reason);
+            }
+            DiscoveryEvent::HealthStatusChanged { agent_id, new_status, .. } => {
+                println!("Health changed: {} -> {}", agent_id, new_status);
+            }
+            _ => {}
+        }
+    }
+});
+```
+
 ## Orchestration Patterns
 
 ### Sequential Pipeline
