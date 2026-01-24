@@ -70,6 +70,7 @@ pub mod discovery;
 pub mod error;
 pub mod orchestration;
 pub mod protocol_bridge;
+pub mod storage;
 pub mod traits;
 pub mod types;
 
@@ -106,6 +107,9 @@ pub use orchestration::{
     AggregationMode, CapabilityBasedSupervisor, ParallelAgent, RouterAgent, RoutingRule,
     SequentialPipeline, SupervisorAgent, SupervisorDecision, SupervisorLogic, TransformMode,
 };
+
+// Re-export storage types
+pub use storage::{FileTaskStore, InMemoryTaskStore, TaskQuery, TaskStore, TaskStoreExt};
 
 // Re-export MCP adapter
 #[cfg(feature = "mcp")]

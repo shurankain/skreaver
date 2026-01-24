@@ -9,10 +9,11 @@ use tracing::{debug, info};
 
 use crate::error::{AgentError, AgentResult};
 use crate::traits::UnifiedAgent;
-use crate::types::{
-    AgentInfo, ContentPart, MessageRole, Protocol, StreamEvent, TaskStatus, UnifiedMessage,
-    UnifiedTask,
-};
+use crate::types::{AgentInfo, Protocol, StreamEvent, TaskStatus, UnifiedMessage, UnifiedTask};
+
+// Used in feature-gated code
+#[cfg(feature = "a2a")]
+use crate::types::{ContentPart, MessageRole};
 
 /// A registry of agents that can be discovered and used.
 pub struct AgentRegistry {

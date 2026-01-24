@@ -137,22 +137,26 @@
 //! - Task not found → `AgentError::TaskNotFound`
 //! - Capability not found → `AgentError::CapabilityNotFound`
 
-use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::Arc;
-
 #[cfg(any(feature = "mcp", feature = "a2a"))]
 use async_trait::async_trait;
 #[cfg(any(feature = "mcp", feature = "a2a"))]
 use futures::Stream;
 #[cfg(any(feature = "mcp", feature = "a2a"))]
+use std::collections::HashMap;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
+use std::pin::Pin;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
+use std::sync::Arc;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
 use tracing::debug;
 #[cfg(all(feature = "mcp", feature = "a2a"))]
 use tracing::info;
 
+#[cfg(any(feature = "mcp", feature = "a2a"))]
 use crate::error::{AgentError, AgentResult};
 #[cfg(any(feature = "mcp", feature = "a2a"))]
 use crate::traits::UnifiedAgent;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
 use crate::types::{
     AgentInfo, Capability, ContentPart, Protocol, StreamEvent, UnifiedMessage, UnifiedTask,
 };
