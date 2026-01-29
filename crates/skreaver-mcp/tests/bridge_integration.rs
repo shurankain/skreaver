@@ -124,8 +124,9 @@ async fn run_server_and_client_test() {
     let client_transport =
         rmcp::transport::async_rw::AsyncRwTransport::new(client_read, client_write);
 
-    // Create a simple client handler
+    // Create a simple client handler (2025-11-25 spec: meta field added)
     let client_handler = rmcp::model::ClientInfo {
+        meta: None,
         protocol_version: Default::default(),
         capabilities: Default::default(),
         client_info: Implementation {

@@ -48,6 +48,26 @@ pub enum McpError {
     /// Connection error
     #[error("Connection error: {0}")]
     ConnectionError(String),
+
+    /// Task not found (2025-11-25 spec)
+    #[error("Task not found: {0}")]
+    TaskNotFound(String),
+
+    /// Task already in terminal state (2025-11-25 spec)
+    #[error("Task already terminal: {0}")]
+    TaskTerminal(String),
+
+    /// Task operation timed out (2025-11-25 spec)
+    #[error("Task timed out: {0}")]
+    TaskTimeout(String),
+
+    /// Elicitation declined by user (2025-11-25 spec)
+    #[error("Elicitation declined: {0}")]
+    ElicitationDeclined(String),
+
+    /// Elicitation cancelled by user (2025-11-25 spec)
+    #[error("Elicitation cancelled: {0}")]
+    ElicitationCancelled(String),
 }
 
 /// Implement IntoContents for McpError so it can be returned from tool functions

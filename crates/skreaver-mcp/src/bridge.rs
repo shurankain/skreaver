@@ -27,7 +27,8 @@ use crate::error::{McpError, McpResult};
 use rmcp::{
     ClientHandler, ServiceExt,
     model::{
-        CallToolRequestParam, CallToolResult, ClientInfo, Content, RawContent, Tool as McpToolInfo,
+        CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, Content,
+        Implementation, RawContent, Tool as McpToolInfo,
     },
     service::{Peer, RoleClient, RunningService},
     transport::child_process::TokioChildProcess,
@@ -139,9 +140,15 @@ impl McpBridge {
         // Create MCP client handler with info
         let handler = McpClientHandler {
             client_info: ClientInfo {
+                meta: None,
                 protocol_version: Default::default(),
-                capabilities: Default::default(),
-                client_info: rmcp::model::Implementation {
+                capabilities: ClientCapabilities {
+                    sampling: Some(Default::default()),
+                    elicitation: Some(Default::default()),
+                    tasks: Some(rmcp::model::TasksCapability::client_default()),
+                    ..Default::default()
+                },
+                client_info: Implementation {
                     name: "skreaver-mcp-bridge".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     ..Default::default()
@@ -274,10 +281,12 @@ impl BridgedTool {
     pub async fn call_async(&self, input: Value) -> McpResult<Value> {
         debug!(tool = %self.name, "Calling MCP tool");
 
-        // Build the call request
-        let params = CallToolRequestParam {
+        // Build the call request (2025-11-25 spec: includes meta and task fields)
+        let params = CallToolRequestParams {
+            meta: None,
             name: Cow::Owned(self.name.clone()),
             arguments: Some(input.as_object().cloned().unwrap_or_default()),
+            task: None,
         };
 
         // Call the tool via MCP
@@ -339,11 +348,13 @@ impl Tool for BridgedTool {
         let name = self.name.clone();
         let peer = self.peer.clone();
 
-        // Execute the async call
+        // Execute the async call (2025-11-25 spec: CallToolRequestParams with meta/task)
         let result = handle.block_on(async move {
-            let params = CallToolRequestParam {
+            let params = CallToolRequestParams {
+                meta: None,
                 name: Cow::Owned(name),
                 arguments: Some(input_value.as_object().cloned().unwrap_or_default()),
+                task: None,
             };
 
             peer.call_tool(params).await

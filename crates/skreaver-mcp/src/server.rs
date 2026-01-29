@@ -9,7 +9,7 @@ use crate::error::{McpError, McpResult};
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{Implementation, ServerCapabilities, ServerInfo},
+    model::{Implementation, ServerCapabilities, ServerInfo, TasksCapability},
     schemars, tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
@@ -205,25 +205,28 @@ impl McpServer {
     }
 }
 
-/// Implement ServerHandler trait for MCP protocol
+/// Implement ServerHandler trait for MCP protocol (2025-11-25 spec)
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: Default::default(),
             capabilities: ServerCapabilities {
-                tools: Some(rmcp::model::ToolsCapability::default()),
+                tools: Some(rmcp::model::ToolsCapability {
+                    list_changed: Some(true),
+                }),
+                tasks: Some(TasksCapability::server_default()),
                 ..Default::default()
             },
             server_info: Implementation {
                 name: self.server_name.clone(),
                 version: self.server_version.clone(),
-                title: None,
+                title: Some(format!("Skreaver MCP Server ({})", self.server_name)),
                 icons: None,
                 website_url: None,
             },
             instructions: Some(
-                "This server exposes Skreaver tools. Use 'list_skreaver_tools' to see available tools, then 'execute_tool' to run them.".to_string()
+                "This server exposes Skreaver tools via MCP 2025-11-25. Use 'list_skreaver_tools' to see available tools, then 'execute_tool' to run them.".to_string()
             ),
         }
     }

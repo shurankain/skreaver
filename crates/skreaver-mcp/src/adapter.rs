@@ -53,10 +53,11 @@ impl ToolAdapter {
         }
     }
 
-    /// Convert to MCP tool definition
+    /// Convert to MCP tool definition (2025-11-25 spec)
     pub fn to_mcp_tool(&self) -> McpToolDefinition {
         McpToolDefinition {
             name: self.name().to_string(),
+            title: None,
             description: format!("Skreaver tool: {}", self.name()),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -68,19 +69,60 @@ impl ToolAdapter {
                 },
                 "required": ["input"]
             }),
+            output_schema: None,
+            annotations: None,
         }
+    }
+
+    /// Convert to MCP tool definition with annotations
+    pub fn to_mcp_tool_with_annotations(
+        &self,
+        annotations: McpToolAnnotations,
+    ) -> McpToolDefinition {
+        let mut def = self.to_mcp_tool();
+        def.annotations = Some(annotations);
+        def
     }
 }
 
-/// MCP tool definition format
+/// MCP tool definition format (2025-11-25 spec)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct McpToolDefinition {
-    /// Tool name
+    /// Tool name (1-128 chars, alphanumeric + _ - .)
     pub name: String,
+    /// Human-readable display title
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// Tool description
     pub description: String,
-    /// Input schema (JSON Schema)
+    /// Input schema (JSON Schema, defaults to 2020-12)
     pub input_schema: Value,
+    /// Output schema (JSON Schema) - new in 2025-11-25
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
+    /// Tool behavior annotations - new in 2025-11-25
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<McpToolAnnotations>,
+}
+
+/// Tool behavior annotations (2025-11-25 spec)
+///
+/// These are hints about tool behavior. Clients should not make
+/// tool use decisions based on annotations from untrusted servers.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct McpToolAnnotations {
+    /// Whether the tool only reads without modifying its environment (default: false)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+    /// Whether modifications are destructive vs additive (default: true when not read-only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+    /// Whether repeated identical calls produce no additional effects (default: false)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotent_hint: Option<bool>,
+    /// Whether the tool interacts with external entities (default: true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_world_hint: Option<bool>,
 }
 
 /// Registry of adapted tools
