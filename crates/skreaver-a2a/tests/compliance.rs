@@ -137,8 +137,14 @@ fn test_message_and_role() {
 fn test_part_types_and_serialization() {
     let parts = [
         (Part::text("Hello"), "text"),
-        (Part::file("https://example.com/doc.pdf", "application/pdf"), "file"),
-        (Part::data(json!({"key": "value"}), "application/json"), "data"),
+        (
+            Part::file("https://example.com/doc.pdf", "application/pdf"),
+            "file",
+        ),
+        (
+            Part::data(json!({"key": "value"}), "application/json"),
+            "data",
+        ),
     ];
 
     for (part, expected_type) in parts {
@@ -172,7 +178,10 @@ fn test_artifact_structure() {
 
     // JSON artifact helper
     let json_artifact = Artifact::json("art-2", json!({"x": 1}));
-    assert_eq!(json_artifact.media_type, Some("application/json".to_string()));
+    assert_eq!(
+        json_artifact.media_type,
+        Some("application/json".to_string())
+    );
 }
 
 // =============================================================================
@@ -204,16 +213,33 @@ fn test_request_response_structures() {
     assert!(json.get("taskId").is_some());
 
     // SendMessageResponse
-    let send_resp = SendMessageResponse { task: Task::new("t1") };
+    let send_resp = SendMessageResponse {
+        task: Task::new("t1"),
+    };
     let json = serde_json::to_value(&send_resp).unwrap();
     assert!(json.get("task").is_some());
 
     // GetTaskRequest / CancelTaskRequest
-    let get_req = GetTaskRequest { task_id: "t1".into() };
-    let cancel_req = CancelTaskRequest { task_id: "t1".into(), reason: Some("test".into()) };
+    let get_req = GetTaskRequest {
+        task_id: "t1".into(),
+    };
+    let cancel_req = CancelTaskRequest {
+        task_id: "t1".into(),
+        reason: Some("test".into()),
+    };
 
-    assert!(serde_json::to_value(&get_req).unwrap().get("taskId").is_some());
-    assert!(serde_json::to_value(&cancel_req).unwrap().get("reason").is_some());
+    assert!(
+        serde_json::to_value(&get_req)
+            .unwrap()
+            .get("taskId")
+            .is_some()
+    );
+    assert!(
+        serde_json::to_value(&cancel_req)
+            .unwrap()
+            .get("reason")
+            .is_some()
+    );
 }
 
 // =============================================================================
@@ -267,7 +293,9 @@ fn test_security_schemes() {
             "apiKey",
         ),
         (
-            SecurityScheme::Http { scheme: "bearer".into() },
+            SecurityScheme::Http {
+                scheme: "bearer".into(),
+            },
             "http",
         ),
         (
@@ -291,8 +319,14 @@ fn test_security_schemes() {
     }
 
     // ApiKeyLocation
-    assert_eq!(serde_json::to_string(&ApiKeyLocation::Header).unwrap(), "\"header\"");
-    assert_eq!(serde_json::to_string(&ApiKeyLocation::Query).unwrap(), "\"query\"");
+    assert_eq!(
+        serde_json::to_string(&ApiKeyLocation::Header).unwrap(),
+        "\"header\""
+    );
+    assert_eq!(
+        serde_json::to_string(&ApiKeyLocation::Query).unwrap(),
+        "\"query\""
+    );
 }
 
 // =============================================================================
