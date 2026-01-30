@@ -39,7 +39,7 @@
 
 use async_trait::async_trait;
 use skreaver_agent::{
-    AgentInfo, AgentRegistry, Capability, ContentPart, MessageRole, Protocol, StreamEvent,
+    AgentInfo, Capability, ContentPart, DiscoveryService, MessageRole, Protocol, StreamEvent,
     TaskStatus, UnifiedAgent, UnifiedMessage, UnifiedTask,
 };
 use std::collections::HashMap;
@@ -409,30 +409,36 @@ impl UnifiedAgent for MockA2aConversationalAgent {
 // Demo Functions
 // =============================================================================
 
-/// Demonstrate the Agent Registry for unified discovery
+/// Demonstrate the Discovery Service for unified discovery
 async fn demo_agent_registry() {
-    println!("=== Agent Registry Demo ===");
+    println!("=== Discovery Service Demo ===");
     println!();
 
-    let mut registry = AgentRegistry::new();
+    let service = DiscoveryService::new();
 
     // Register agents
     let mcp_agent: Arc<dyn UnifiedAgent> = Arc::new(MockMcpToolAgent::new());
     let a2a_agent: Arc<dyn UnifiedAgent> = Arc::new(MockA2aConversationalAgent::new());
 
-    registry.register(mcp_agent);
-    registry.register(a2a_agent);
+    let mcp_id = service
+        .register_agent(mcp_agent.clone())
+        .await
+        .expect("Failed to register MCP agent");
+    let a2a_id = service
+        .register_agent(a2a_agent.clone())
+        .await
+        .expect("Failed to register A2A agent");
 
     // List all agents
     println!("Registered Agents:");
-    for agent in registry.list() {
-        let info = agent.info();
-        println!("  - {} ({:?})", info.name, info.protocols);
-        if let Some(desc) = &info.description {
+    let registrations = service.list().await.expect("Failed to list agents");
+    for reg in &registrations {
+        println!("  - {} ({:?})", reg.name, reg.protocols);
+        if let Some(desc) = &reg.description {
             println!("    {}", desc);
         }
         println!("    Capabilities:");
-        for cap in &info.capabilities {
+        for cap in &reg.capabilities {
             println!("      * {} - {}", cap.id, cap.name);
         }
         println!();
@@ -440,27 +446,52 @@ async fn demo_agent_registry() {
 
     // Find by protocol
     println!("MCP Protocol Agents:");
-    for agent in registry.find_by_protocol(Protocol::Mcp) {
-        println!("  - {}", agent.info().name);
+    for reg in service
+        .find_by_protocol(Protocol::Mcp)
+        .await
+        .expect("query failed")
+    {
+        println!("  - {}", reg.name);
     }
     println!();
 
     println!("A2A Protocol Agents:");
-    for agent in registry.find_by_protocol(Protocol::A2a) {
-        println!("  - {}", agent.info().name);
+    for reg in service
+        .find_by_protocol(Protocol::A2a)
+        .await
+        .expect("query failed")
+    {
+        println!("  - {}", reg.name);
     }
     println!();
 
     // Find by capability
-    println!("Agents with 'filesystem' capability:");
-    for agent in registry.find_by_capability("read_file") {
-        println!("  - {}", agent.info().name);
+    println!("Agents with 'read_file' capability:");
+    for reg in service
+        .find_by_capability("read_file")
+        .await
+        .expect("query failed")
+    {
+        println!("  - {}", reg.name);
     }
     println!();
 
     println!("Agents with 'chat' capability:");
-    for agent in registry.find_by_capability("chat") {
-        println!("  - {}", agent.info().name);
+    for reg in service
+        .find_by_capability("chat")
+        .await
+        .expect("query failed")
+    {
+        println!("  - {}", reg.name);
+    }
+    println!();
+
+    // Cleanup: show we can get agent by ID
+    if let Some(agent) = service.get_agent(&mcp_id).await {
+        println!("Retrieved MCP agent by ID: {}", agent.info().name);
+    }
+    if let Some(agent) = service.get_agent(&a2a_id).await {
+        println!("Retrieved A2A agent by ID: {}", agent.info().name);
     }
     println!();
 }
@@ -470,17 +501,23 @@ async fn demo_message_routing() {
     println!("=== Cross-Protocol Message Routing Demo ===");
     println!();
 
-    let mut registry = AgentRegistry::new();
+    let service = DiscoveryService::new();
 
     let mcp_agent: Arc<dyn UnifiedAgent> = Arc::new(MockMcpToolAgent::new());
     let a2a_agent: Arc<dyn UnifiedAgent> = Arc::new(MockA2aConversationalAgent::new());
 
-    registry.register(mcp_agent);
-    registry.register(a2a_agent);
+    let mcp_id = service
+        .register_agent(mcp_agent)
+        .await
+        .expect("Failed to register MCP agent");
+    let _a2a_id = service
+        .register_agent(a2a_agent)
+        .await
+        .expect("Failed to register A2A agent");
 
     // Send message to MCP agent
     println!("Sending tool call to MCP agent...");
-    if let Some(agent) = registry.find("mock-mcp-tools") {
+    if let Some(agent) = service.get_agent(&mcp_id).await {
         let mut message = UnifiedMessage::user("Call a tool");
         message.content = vec![ContentPart::ToolCall {
             id: "call-1".to_string(),
@@ -517,7 +554,7 @@ async fn demo_message_routing() {
 
     // Send message to A2A agent
     println!("Sending conversation message to A2A agent...");
-    if let Some(agent) = registry.find("mock-a2a-assistant") {
+    if let Some(agent) = service.get_agent(&_a2a_id).await {
         let message = UnifiedMessage::user("Hello! Can you help me?");
 
         match agent.send_message(message).await {
@@ -651,7 +688,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("==============================================");
     println!();
     println!("Key Concepts Demonstrated:");
-    println!("  1. AgentRegistry - Unified discovery across protocols");
+    println!("  1. DiscoveryService - Unified discovery across protocols");
     println!("  2. Protocol-agnostic messaging via UnifiedMessage");
     println!("  3. ProxyAgent - Transform requests/responses");
     println!("  4. FanOutAgent - Broadcast to multiple agents");

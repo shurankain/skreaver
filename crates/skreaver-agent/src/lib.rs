@@ -47,22 +47,22 @@
 //! }
 //! ```
 //!
-//! ## Example: Agent Registry
+//! ## Example: Agent Discovery
 //!
 //! ```rust,ignore
-//! use skreaver_agent::{AgentRegistry, Protocol};
+//! use skreaver_agent::{DiscoveryService, Protocol};
 //!
-//! let mut registry = AgentRegistry::new();
+//! let service = DiscoveryService::new();
 //!
 //! // Register agents
-//! registry.register(mcp_agent.into());
-//! registry.register(a2a_agent.into());
+//! service.register_agent(mcp_agent).await?;
+//! service.register_agent(a2a_agent).await?;
 //!
 //! // Find agents by protocol
-//! let a2a_agents = registry.find_by_protocol(Protocol::A2a);
+//! let a2a_agents = service.find_by_protocol(Protocol::A2a).await?;
 //!
 //! // Find agents by capability
-//! let search_agents = registry.find_by_capability("search");
+//! let search_agents = service.find_by_capability("search").await?;
 //! ```
 
 pub mod bridge;
@@ -94,7 +94,7 @@ pub use types::{
 };
 
 // Re-export bridge types
-pub use bridge::{AgentRegistry, FanOutAgent, ProxyAgent};
+pub use bridge::{FanOutAgent, ProxyAgent};
 
 // Re-export discovery types
 pub use discovery::{

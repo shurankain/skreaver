@@ -5,81 +5,15 @@
 
 use async_trait::async_trait;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::error::{AgentError, AgentResult};
 use crate::traits::UnifiedAgent;
-use crate::types::{AgentInfo, Protocol, StreamEvent, TaskStatus, UnifiedMessage, UnifiedTask};
+use crate::types::{AgentInfo, StreamEvent, TaskStatus, UnifiedMessage, UnifiedTask};
 
 // Used in feature-gated code
 #[cfg(feature = "a2a")]
 use crate::types::{ContentPart, MessageRole};
-
-/// A registry of agents that can be discovered and used.
-pub struct AgentRegistry {
-    agents: Vec<Arc<dyn UnifiedAgent>>,
-}
-
-impl Default for AgentRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AgentRegistry {
-    /// Create a new empty registry.
-    pub fn new() -> Self {
-        Self { agents: Vec::new() }
-    }
-
-    /// Register an agent.
-    pub fn register(&mut self, agent: Arc<dyn UnifiedAgent>) {
-        info!(
-            agent_id = %agent.info().id,
-            name = %agent.info().name,
-            "Registering agent"
-        );
-        self.agents.push(agent);
-    }
-
-    /// Find an agent by ID.
-    pub fn find(&self, id: &str) -> Option<Arc<dyn UnifiedAgent>> {
-        self.agents.iter().find(|a| a.info().id == id).cloned()
-    }
-
-    /// Find agents by protocol.
-    pub fn find_by_protocol(&self, protocol: Protocol) -> Vec<Arc<dyn UnifiedAgent>> {
-        self.agents
-            .iter()
-            .filter(|a| a.supports_protocol(protocol))
-            .cloned()
-            .collect()
-    }
-
-    /// Find agents by capability.
-    pub fn find_by_capability(&self, capability_id: &str) -> Vec<Arc<dyn UnifiedAgent>> {
-        self.agents
-            .iter()
-            .filter(|a| a.capabilities().iter().any(|c| c.id == capability_id))
-            .cloned()
-            .collect()
-    }
-
-    /// List all registered agents.
-    pub fn list(&self) -> &[Arc<dyn UnifiedAgent>] {
-        &self.agents
-    }
-
-    /// Get count of registered agents.
-    pub fn len(&self) -> usize {
-        self.agents.len()
-    }
-
-    /// Check if registry is empty.
-    pub fn is_empty(&self) -> bool {
-        self.agents.is_empty()
-    }
-}
 
 /// A bridge that exposes a unified agent as an A2A server handler.
 ///
@@ -623,13 +557,6 @@ fn unified_to_a2a_stream_event(event: &StreamEvent) -> Option<skreaver_a2a::Stre
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_agent_registry() {
-        let registry = AgentRegistry::new();
-        assert!(registry.is_empty());
-        assert_eq!(registry.len(), 0);
-    }
 
     #[test]
     fn test_fan_out_agent_creation() {

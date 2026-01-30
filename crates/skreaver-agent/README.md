@@ -113,34 +113,9 @@ for msg in &task.messages {
 }
 ```
 
-## Agent Registry
-
-Manage multiple agents with unified discovery:
-
-```rust
-use skreaver_agent::{AgentRegistry, Protocol};
-
-let mut registry = AgentRegistry::new();
-
-// Register agents
-registry.register(mcp_agent.into());
-registry.register(a2a_agent.into());
-
-// Find by protocol
-let mcp_agents = registry.find_by_protocol(Protocol::Mcp);
-
-// Find by capability
-let search_agents = registry.find_by_capability("search");
-
-// Find by ID
-if let Some(agent) = registry.find("my-agent") {
-    agent.send_message(message).await?;
-}
-```
-
 ## Agent Discovery Service
 
-For more advanced discovery with health checking and event notifications:
+Manage multiple agents with unified discovery, health checking, and event notifications:
 
 ```rust
 use skreaver_agent::{
