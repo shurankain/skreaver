@@ -1,25 +1,10 @@
 //! Security policies for different tool types
 
 use super::errors::SecurityError;
+use super::path_to_string_checked;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
-
-/// Convert path to string with logging for lossy conversions (LOW-3)
-///
-/// This helper logs when UTF-8 conversion is lossy, which can hide encoding
-/// issues in security-critical paths.
-fn path_to_string_checked(path: &Path) -> String {
-    let lossy = path.to_string_lossy();
-    if matches!(lossy, std::borrow::Cow::Owned(_)) {
-        tracing::warn!(
-            path_debug = ?path,
-            path_lossy = %lossy,
-            "Path contains invalid UTF-8 - using lossy conversion in security context"
-        );
-    }
-    lossy.to_string()
-}
 
 /// Validated file size limit in bytes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -3,6 +3,24 @@
 //! This module provides security controls, policy enforcement, and audit logging
 //! to enable secure deployment of AI agents in production environments.
 
+use std::path::Path;
+
+/// Convert path to string with logging for lossy conversions (LOW-3)
+///
+/// This helper logs when UTF-8 conversion is lossy, which can hide encoding
+/// issues in security-critical paths.
+pub(crate) fn path_to_string_checked(path: &Path) -> String {
+    let lossy = path.to_string_lossy();
+    if matches!(lossy, std::borrow::Cow::Owned(_)) {
+        tracing::warn!(
+            path_debug = ?path,
+            path_lossy = %lossy,
+            "Path contains invalid UTF-8 - using lossy conversion in security context"
+        );
+    }
+    lossy.to_string()
+}
+
 #[cfg(feature = "security-audit")]
 pub mod audit;
 pub mod config;

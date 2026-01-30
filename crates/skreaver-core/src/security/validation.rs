@@ -1,6 +1,7 @@
 //! Input validation and sanitization
 
 use super::errors::SecurityError;
+use super::path_to_string_checked;
 use super::policy::{FileSystemPolicy, HttpPolicy, SecurityPolicy};
 use super::validated_url::ValidatedUrl;
 #[cfg(feature = "security-basic")]
@@ -10,19 +11,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use url::Url;
-
-/// Convert path to string with logging for lossy conversions (LOW-3)
-fn path_to_string_checked(path: &Path) -> String {
-    let lossy = path.to_string_lossy();
-    if matches!(lossy, std::borrow::Cow::Owned(_)) {
-        tracing::warn!(
-            path_debug = ?path,
-            path_lossy = %lossy,
-            "Path contains invalid UTF-8 - using lossy conversion in security context"
-        );
-    }
-    lossy.to_string()
-}
 
 /// Lazy-compiled secret detection patterns for optimal performance
 #[cfg(feature = "security-basic")]
