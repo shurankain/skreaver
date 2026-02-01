@@ -597,51 +597,7 @@ impl A2aClient {
             return Err(self.handle_error_response(status, response).await);
         }
 
-        // Create a channel for streaming events
-        let (tx, rx) = tokio::sync::mpsc::channel::<A2aResult<StreamingEvent>>(32);
-
-        // Spawn a task to process the SSE stream
-        tokio::spawn(async move {
-            let mut stream = response.bytes_stream();
-            use futures::StreamExt;
-
-            let mut buffer = String::new();
-
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        let chunk_str = match std::str::from_utf8(&chunk) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                warn!(error = %e, "Invalid UTF-8 in SSE stream");
-                                continue;
-                            }
-                        };
-
-                        buffer.push_str(chunk_str);
-
-                        // Process complete SSE events
-                        while let Some(event) = parse_sse_event(&mut buffer) {
-                            if tx.send(event).await.is_err() {
-                                // Receiver dropped
-                                return;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx
-                            .send(Err(A2aError::connection_error(format!(
-                                "Stream error: {}",
-                                e
-                            ))))
-                            .await;
-                        return;
-                    }
-                }
-            }
-        });
-
-        Ok(Box::pin(ReceiverStream::new(rx)))
+        Ok(spawn_sse_processor(response))
     }
 
     /// Subscribe to updates for an existing task
@@ -679,42 +635,7 @@ impl A2aClient {
             return Err(self.handle_error_response(status, response).await);
         }
 
-        // Create streaming channel
-        let (tx, rx) = tokio::sync::mpsc::channel::<A2aResult<StreamingEvent>>(32);
-
-        tokio::spawn(async move {
-            let mut stream = response.bytes_stream();
-            use futures::StreamExt;
-
-            let mut buffer = String::new();
-
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        if let Ok(chunk_str) = std::str::from_utf8(&chunk) {
-                            buffer.push_str(chunk_str);
-
-                            while let Some(event) = parse_sse_event(&mut buffer) {
-                                if tx.send(event).await.is_err() {
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx
-                            .send(Err(A2aError::connection_error(format!(
-                                "Stream error: {}",
-                                e
-                            ))))
-                            .await;
-                        return;
-                    }
-                }
-            }
-        });
-
-        Ok(Box::pin(ReceiverStream::new(rx)))
+        Ok(spawn_sse_processor(response))
     }
 
     // =========================================================================
@@ -833,6 +754,58 @@ fn parse_sse_event(buffer: &mut String) -> Option<A2aResult<StreamingEvent>> {
             ))))
         }
     }
+}
+
+/// Process an SSE response stream and return a channel-based stream of events.
+///
+/// This spawns a background task that reads from the HTTP response,
+/// parses SSE events, and sends them through the returned channel.
+fn spawn_sse_processor(
+    response: reqwest::Response,
+) -> Pin<Box<dyn Stream<Item = A2aResult<StreamingEvent>> + Send>> {
+    use futures::StreamExt;
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<A2aResult<StreamingEvent>>(32);
+
+    tokio::spawn(async move {
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let chunk_str = match std::str::from_utf8(&chunk) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            warn!(error = %e, "Invalid UTF-8 in SSE stream");
+                            continue;
+                        }
+                    };
+
+                    buffer.push_str(chunk_str);
+
+                    // Process complete SSE events
+                    while let Some(event) = parse_sse_event(&mut buffer) {
+                        if tx.send(event).await.is_err() {
+                            // Receiver dropped
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let _ = tx
+                        .send(Err(A2aError::connection_error(format!(
+                            "Stream error: {}",
+                            e
+                        ))))
+                        .await;
+                    return;
+                }
+            }
+        }
+    });
+
+    Box::pin(ReceiverStream::new(rx))
 }
 
 #[cfg(test)]
