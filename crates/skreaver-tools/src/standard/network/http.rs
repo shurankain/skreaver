@@ -7,7 +7,27 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use skreaver_core::{ExecutionResult, Tool};
 use std::collections::HashMap;
+use std::future::Future;
 use std::time::Duration;
+
+/// Execute an async operation using the current runtime or creating a new one.
+///
+/// This helper safely handles runtime creation, returning an error result
+/// instead of panicking if runtime creation fails.
+fn run_async<F, Fut>(f: F) -> ExecutionResult
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = ExecutionResult>,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(f()))
+    } else {
+        match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt.block_on(f()),
+            Err(e) => ExecutionResult::failure(format!("Failed to create async runtime: {}", e)),
+        }
+    }
+}
 
 /// Configuration for HTTP requests
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -72,21 +92,12 @@ impl Tool for HttpGetTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        // Check if we're already in a runtime context
-        if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current()
-                    .block_on(async { self.http_get_async(input).await })
-            })
-        } else {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async { self.http_get_async(input).await })
-        }
+        run_async(|| self.execute_async(input))
     }
 }
 
 impl HttpGetTool {
-    async fn http_get_async(&self, input: String) -> ExecutionResult {
+    async fn execute_async(&self, input: String) -> ExecutionResult {
         let config: HttpConfig = match serde_json::from_str(&input) {
             Ok(config) => config,
             Err(_) => HttpConfig::new(input), // Fallback to simple URL
@@ -151,50 +162,53 @@ impl Tool for HttpPostTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let config: HttpConfig = match serde_json::from_str(&input) {
-                Ok(config) => config,
-                Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
-            };
+        run_async(|| self.execute_async(input))
+    }
+}
 
-            let mut request = self.client.post(&config.url);
+impl HttpPostTool {
+    async fn execute_async(&self, input: String) -> ExecutionResult {
+        let config: HttpConfig = match serde_json::from_str(&input) {
+            Ok(config) => config,
+            Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
+        };
 
-            // Add headers
-            for (key, value) in &config.headers {
-                request = request.header(key, value);
-            }
+        let mut request = self.client.post(&config.url);
 
-            // Add body
-            if let Some(body) = &config.body {
-                request = request.body(body.clone());
-            }
+        // Add headers
+        for (key, value) in &config.headers {
+            request = request.header(key, value);
+        }
 
-            // Set timeout
-            if let Some(timeout) = config.timeout_secs {
-                request = request.timeout(Duration::from_secs(timeout));
-            }
+        // Add body
+        if let Some(body) = &config.body {
+            request = request.body(body.clone());
+        }
 
-            match request.send().await {
-                Ok(response) => {
-                    let status = response.status().as_u16();
-                    match response.text().await {
-                        Ok(body) => {
-                            let result = serde_json::json!({
-                                "status": status,
-                                "body": body,
-                                "success": (200..300).contains(&status)
-                            });
-                            ExecutionResult::success(result.to_string())
-                        }
-                        Err(e) => {
-                            ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                        }
+        // Set timeout
+        if let Some(timeout) = config.timeout_secs {
+            request = request.timeout(Duration::from_secs(timeout));
+        }
+
+        match request.send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.text().await {
+                    Ok(body) => {
+                        let result = serde_json::json!({
+                            "status": status,
+                            "body": body,
+                            "success": (200..300).contains(&status)
+                        });
+                        ExecutionResult::success(result.to_string())
+                    }
+                    Err(e) => {
+                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
                     }
                 }
-                Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
             }
-        })
+            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
+        }
     }
 }
 
@@ -223,50 +237,53 @@ impl Tool for HttpPutTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let config: HttpConfig = match serde_json::from_str(&input) {
-                Ok(config) => config,
-                Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
-            };
+        run_async(|| self.execute_async(input))
+    }
+}
 
-            let mut request = self.client.put(&config.url);
+impl HttpPutTool {
+    async fn execute_async(&self, input: String) -> ExecutionResult {
+        let config: HttpConfig = match serde_json::from_str(&input) {
+            Ok(config) => config,
+            Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
+        };
 
-            // Add headers
-            for (key, value) in &config.headers {
-                request = request.header(key, value);
-            }
+        let mut request = self.client.put(&config.url);
 
-            // Add body
-            if let Some(body) = &config.body {
-                request = request.body(body.clone());
-            }
+        // Add headers
+        for (key, value) in &config.headers {
+            request = request.header(key, value);
+        }
 
-            // Set timeout
-            if let Some(timeout) = config.timeout_secs {
-                request = request.timeout(Duration::from_secs(timeout));
-            }
+        // Add body
+        if let Some(body) = &config.body {
+            request = request.body(body.clone());
+        }
 
-            match request.send().await {
-                Ok(response) => {
-                    let status = response.status().as_u16();
-                    match response.text().await {
-                        Ok(body) => {
-                            let result = serde_json::json!({
-                                "status": status,
-                                "body": body,
-                                "success": (200..300).contains(&status)
-                            });
-                            ExecutionResult::success(result.to_string())
-                        }
-                        Err(e) => {
-                            ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                        }
+        // Set timeout
+        if let Some(timeout) = config.timeout_secs {
+            request = request.timeout(Duration::from_secs(timeout));
+        }
+
+        match request.send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.text().await {
+                    Ok(body) => {
+                        let result = serde_json::json!({
+                            "status": status,
+                            "body": body,
+                            "success": (200..300).contains(&status)
+                        });
+                        ExecutionResult::success(result.to_string())
+                    }
+                    Err(e) => {
+                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
                     }
                 }
-                Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
             }
-        })
+            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
+        }
     }
 }
 
@@ -295,44 +312,47 @@ impl Tool for HttpDeleteTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let config: HttpConfig = match serde_json::from_str(&input) {
-                Ok(config) => config,
-                Err(_) => HttpConfig::new(input), // Fallback to simple URL
-            };
+        run_async(|| self.execute_async(input))
+    }
+}
 
-            let mut request = self.client.delete(&config.url);
+impl HttpDeleteTool {
+    async fn execute_async(&self, input: String) -> ExecutionResult {
+        let config: HttpConfig = match serde_json::from_str(&input) {
+            Ok(config) => config,
+            Err(_) => HttpConfig::new(input), // Fallback to simple URL
+        };
 
-            // Add headers
-            for (key, value) in &config.headers {
-                request = request.header(key, value);
-            }
+        let mut request = self.client.delete(&config.url);
 
-            // Set timeout
-            if let Some(timeout) = config.timeout_secs {
-                request = request.timeout(Duration::from_secs(timeout));
-            }
+        // Add headers
+        for (key, value) in &config.headers {
+            request = request.header(key, value);
+        }
 
-            match request.send().await {
-                Ok(response) => {
-                    let status = response.status().as_u16();
-                    match response.text().await {
-                        Ok(body) => {
-                            let result = serde_json::json!({
-                                "status": status,
-                                "body": body,
-                                "success": (200..300).contains(&status)
-                            });
-                            ExecutionResult::success(result.to_string())
-                        }
-                        Err(e) => {
-                            ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                        }
+        // Set timeout
+        if let Some(timeout) = config.timeout_secs {
+            request = request.timeout(Duration::from_secs(timeout));
+        }
+
+        match request.send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                match response.text().await {
+                    Ok(body) => {
+                        let result = serde_json::json!({
+                            "status": status,
+                            "body": body,
+                            "success": (200..300).contains(&status)
+                        });
+                        ExecutionResult::success(result.to_string())
+                    }
+                    Err(e) => {
+                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
                     }
                 }
-                Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
             }
-        })
+            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
+        }
     }
 }
