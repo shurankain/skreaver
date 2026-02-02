@@ -61,16 +61,21 @@ static SUSPICIOUS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 });
 
 /// Input validator for security checks
+///
+/// Validates input strings for security issues like embedded secrets,
+/// suspicious patterns (injection attempts), and excessive length.
 pub struct InputValidator {
-    #[allow(dead_code)]
-    policy: SecurityPolicy,
+    // Note: Currently uses global patterns. Future versions may use
+    // policy-based configuration for custom validation rules.
 }
 
 impl InputValidator {
-    pub fn new(policy: &SecurityPolicy) -> Self {
-        Self {
-            policy: policy.clone(),
-        }
+    /// Create a new input validator.
+    ///
+    /// The policy parameter is accepted for API compatibility and future
+    /// policy-based validation configuration, but is not currently used.
+    pub fn new(_policy: &SecurityPolicy) -> Self {
+        Self {}
     }
 
     pub fn validate(&self, input: &str) -> Result<(), SecurityError> {
