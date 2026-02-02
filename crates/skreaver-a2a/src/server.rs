@@ -383,36 +383,7 @@ async fn send_message_subscribe<H: AgentHandler>(
     });
 
     // Create SSE stream
-    let stream = async_stream::stream! {
-        let mut rx = event_rx;
-        loop {
-            match rx.recv().await {
-                Ok(event) => {
-                    let data = serde_json::to_string(&event).unwrap_or_default();
-                    let event_type = match &event {
-                        StreamingEvent::TaskStatusUpdate(_) => "taskStatusUpdate",
-                        StreamingEvent::TaskArtifactUpdate(_) => "taskArtifactUpdate",
-                    };
-                    yield Ok(Event::default().event(event_type).data(data));
-
-                    // Check if this is a terminal event
-                    if let StreamingEvent::TaskStatusUpdate(update) = &event
-                        && matches!(
-                            update.status,
-                            TaskStatus::Completed
-                                | TaskStatus::Failed
-                                | TaskStatus::Cancelled
-                                | TaskStatus::Rejected
-                        )
-                    {
-                        break;
-                    }
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            }
-        }
-    };
+    let stream = create_sse_stream(event_rx, None);
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
@@ -500,47 +471,9 @@ async fn subscribe_task<H: AgentHandler>(
         None
     };
 
-    // Subscribe to updates
+    // Subscribe to updates and create SSE stream
     let rx = state.store.subscribe(&task_id).await;
-
-    let stream = async_stream::stream! {
-        // If already terminal, just send the final event
-        if let Some(event) = initial_event {
-            let data = serde_json::to_string(&event).unwrap_or_default();
-            yield Ok(Event::default().event("taskStatusUpdate").data(data));
-            return;
-        }
-
-        // Otherwise, subscribe to live updates
-        let mut rx = rx;
-        loop {
-            match rx.recv().await {
-                Ok(event) => {
-                    let data = serde_json::to_string(&event).unwrap_or_default();
-                    let event_type = match &event {
-                        StreamingEvent::TaskStatusUpdate(_) => "taskStatusUpdate",
-                        StreamingEvent::TaskArtifactUpdate(_) => "taskArtifactUpdate",
-                    };
-                    yield Ok(Event::default().event(event_type).data(data));
-
-                    // Check if terminal
-                    if let StreamingEvent::TaskStatusUpdate(update) = &event
-                        && matches!(
-                            update.status,
-                            TaskStatus::Completed
-                                | TaskStatus::Failed
-                                | TaskStatus::Cancelled
-                                | TaskStatus::Rejected
-                        )
-                    {
-                        break;
-                    }
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            }
-        }
-    };
+    let stream = create_sse_stream(rx, initial_event);
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
@@ -612,6 +545,70 @@ pub fn send_status_update(
         message,
         timestamp: Utc::now(),
     }));
+}
+
+/// Create an SSE stream from a broadcast receiver.
+///
+/// If `initial_event` is provided, it will be sent immediately before processing
+/// the broadcast receiver. If the initial event is terminal, the stream ends after
+/// sending it.
+fn create_sse_stream(
+    rx: broadcast::Receiver<StreamingEvent>,
+    initial_event: Option<StreamingEvent>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    async_stream::stream! {
+        // Send initial event if provided
+        if let Some(event) = initial_event {
+            let is_terminal = is_terminal_event(&event);
+            yield Ok(streaming_event_to_sse(&event));
+            if is_terminal {
+                return;
+            }
+        }
+
+        // Process live updates from the broadcast receiver
+        let mut rx = rx;
+        loop {
+            match rx.recv().await {
+                Ok(event) => {
+                    let is_terminal = is_terminal_event(&event);
+                    yield Ok(streaming_event_to_sse(&event));
+                    if is_terminal {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            }
+        }
+    }
+}
+
+/// Convert a StreamingEvent to an SSE Event.
+#[inline]
+fn streaming_event_to_sse(event: &StreamingEvent) -> Event {
+    let data = serde_json::to_string(event).unwrap_or_default();
+    let event_type = match event {
+        StreamingEvent::TaskStatusUpdate(_) => "taskStatusUpdate",
+        StreamingEvent::TaskArtifactUpdate(_) => "taskArtifactUpdate",
+    };
+    Event::default().event(event_type).data(data)
+}
+
+/// Check if a StreamingEvent represents a terminal status.
+#[inline]
+fn is_terminal_event(event: &StreamingEvent) -> bool {
+    matches!(
+        event,
+        StreamingEvent::TaskStatusUpdate(update)
+            if matches!(
+                update.status,
+                TaskStatus::Completed
+                    | TaskStatus::Failed
+                    | TaskStatus::Cancelled
+                    | TaskStatus::Rejected
+            )
+    )
 }
 
 #[cfg(test)]
