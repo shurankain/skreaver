@@ -48,7 +48,6 @@ use tracing::{debug, error, info, warn};
 pub struct McpBridge {
     server_name: String,
     tools: Vec<Arc<BridgedTool>>,
-    #[allow(dead_code)]
     service: RunningService<RoleClient, McpClientHandler>,
 }
 
@@ -241,6 +240,46 @@ impl McpBridge {
             .iter()
             .find(|t| t.name() == name)
             .map(|t| Arc::clone(t) as Arc<dyn Tool>)
+    }
+
+    /// Check if the connection to the MCP server is closed.
+    pub fn is_closed(&self) -> bool {
+        self.service.is_closed()
+    }
+
+    /// Gracefully close the connection to the MCP server.
+    ///
+    /// This cancels the service and waits for cleanup to complete, ensuring
+    /// the child process is properly terminated.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let mut bridge = McpBridge::connect_stdio("npx server").await?;
+    /// // ... use the bridge ...
+    /// bridge.close().await?;
+    /// ```
+    pub async fn close(&mut self) -> McpResult<()> {
+        info!(server = %self.server_name, "Closing MCP bridge connection");
+        self.service
+            .close()
+            .await
+            .map_err(|e| McpError::ConnectionError(format!("Failed to close connection: {}", e)))?;
+        Ok(())
+    }
+
+    /// Gracefully close the connection with a timeout.
+    ///
+    /// Returns `Ok(true)` if shutdown completed within the timeout,
+    /// `Ok(false)` if the timeout was reached.
+    pub async fn close_with_timeout(&mut self, timeout: std::time::Duration) -> McpResult<bool> {
+        info!(server = %self.server_name, ?timeout, "Closing MCP bridge with timeout");
+        let result = self
+            .service
+            .close_with_timeout(timeout)
+            .await
+            .map_err(|e| McpError::ConnectionError(format!("Failed to close connection: {}", e)))?;
+        Ok(result.is_some())
     }
 }
 
