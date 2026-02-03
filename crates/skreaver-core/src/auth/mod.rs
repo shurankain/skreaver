@@ -224,9 +224,10 @@ impl AuthManager {
 
     /// Authenticate with username and password
     async fn authenticate_basic(&self, _username: &str, _password: &str) -> AuthResult<Principal> {
-        // This would typically check against a user database
-        // For now, return an error as this is a placeholder
-        Err(AuthError::InvalidCredentials)
+        Err(AuthError::ValidationError(
+            "Basic authentication is not implemented. Use API key or JWT authentication instead."
+                .to_string(),
+        ))
     }
 
     /// Generate a new API key
