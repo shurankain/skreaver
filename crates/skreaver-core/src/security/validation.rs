@@ -520,9 +520,12 @@ impl DomainValidator {
 }
 
 /// Content scanner for detecting sensitive data in file contents
+///
+/// Uses byte-level heuristics for binary detection and regex patterns
+/// for secret detection in text content.
 pub struct ContentScanner {
-    #[allow(dead_code)]
-    binary_patterns: Vec<Regex>,
+    // Note: Binary detection uses efficient byte-level heuristics rather than
+    // regex patterns. Secret detection uses the global SECRET_PATTERNS.
 }
 
 impl Default for ContentScanner {
@@ -533,11 +536,7 @@ impl Default for ContentScanner {
 
 impl ContentScanner {
     pub fn new() -> Self {
-        let binary_patterns = vec![
-            Regex::new(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]").unwrap(), // Control characters
-        ];
-
-        Self { binary_patterns }
+        Self {}
     }
 
     pub fn scan_content(&self, content: &[u8]) -> Result<ScanResult, SecurityError> {
