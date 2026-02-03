@@ -123,11 +123,6 @@ impl TaskStore {
         self.tasks.read().await.get(task_id).cloned()
     }
 
-    #[allow(dead_code)]
-    async fn insert(&self, task: Task) {
-        self.tasks.write().await.insert(task.id.clone(), task);
-    }
-
     async fn update(&self, task: Task) {
         self.tasks.write().await.insert(task.id.clone(), task);
     }
