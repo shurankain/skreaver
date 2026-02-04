@@ -945,10 +945,44 @@ impl DiscoveryService {
     }
 
     /// Check health of a single endpoint.
+    ///
+    /// When the `discovery-health` feature is enabled, this performs an actual
+    /// HTTP GET request to the health endpoint. A 2xx response is considered
+    /// `Healthy`, a 5xx response is `Unhealthy`, and anything else is `Degraded`.
+    ///
+    /// Without the feature, this always returns `Unknown`.
+    #[cfg(feature = "discovery-health")]
+    async fn check_health(&self, url: &str) -> HealthStatus {
+        let client = reqwest::Client::new();
+        match client
+            .get(url)
+            .timeout(self.config.health_check_timeout)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                if (200..300).contains(&status) {
+                    HealthStatus::Healthy
+                } else if status >= 500 {
+                    HealthStatus::Unhealthy
+                } else {
+                    HealthStatus::Degraded
+                }
+            }
+            Err(e) => {
+                debug!(url = %url, error = %e, "Health check request failed");
+                HealthStatus::Unhealthy
+            }
+        }
+    }
+
+    /// Check health of a single endpoint (stub without `discovery-health` feature).
+    #[cfg(not(feature = "discovery-health"))]
     async fn check_health(&self, _url: &str) -> HealthStatus {
-        // For now, just return Unknown. In a full implementation,
-        // this would make an HTTP request to the health endpoint.
-        // We avoid adding reqwest as a hard dependency here.
+        debug!(
+            "Health check skipped: enable the 'discovery-health' feature for HTTP health checks"
+        );
         HealthStatus::Unknown
     }
 }

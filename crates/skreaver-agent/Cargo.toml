@@ -9,7 +9,8 @@ license = "MIT"
 default = []
 mcp = ["skreaver-mcp/client"]
 a2a = ["skreaver-a2a/client", "skreaver-a2a/server"]
-full = ["mcp", "a2a"]
+discovery-health = ["dep:reqwest"]
+full = ["mcp", "a2a", "discovery-health"]
 
 [dependencies]
 # Skreaver crates
@@ -37,6 +38,9 @@ tracing = { workspace = true }
 
 # UUID for identifiers
 uuid = { workspace = true }
+
+# HTTP client (optional, for discovery health checks)
+reqwest = { workspace = true, optional = true }
 
 # Time handling
 chrono = { workspace = true }
