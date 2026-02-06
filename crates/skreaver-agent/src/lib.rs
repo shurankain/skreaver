@@ -125,7 +125,7 @@ pub use bridge::A2aBridgeHandler;
 
 // Re-export protocol bridge types
 #[cfg(feature = "mcp")]
-pub use protocol_bridge::{InputTransform, McpToA2aBridge, ToolMapping};
+pub use protocol_bridge::{McpToA2aBridge, ToolMapping};
 
 #[cfg(feature = "a2a")]
 pub use protocol_bridge::{A2aToMcpBridge, SkillToToolMapping};

@@ -6,6 +6,7 @@
 
 use crate::adapter::AdaptedToolRegistry;
 use crate::error::{McpError, McpResult};
+use crate::tasks::McpTaskManager;
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -25,6 +26,8 @@ pub struct McpServer {
     server_name: String,
     server_version: String,
     tool_router: ToolRouter<Self>,
+    /// Task manager for long-running operations (2025-11-25 spec)
+    task_manager: McpTaskManager,
 }
 
 /// Generic tool call request that can handle any tool
@@ -51,6 +54,7 @@ impl McpServer {
             server_name: "skreaver-mcp-server".to_string(),
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             tool_router: Self::tool_router(),
+            task_manager: McpTaskManager::new(),
         }
     }
 
@@ -73,7 +77,13 @@ impl McpServer {
             server_name: "skreaver-mcp-server".to_string(),
             server_version: env!("CARGO_PKG_VERSION").to_string(),
             tool_router: Self::tool_router(),
+            task_manager: McpTaskManager::new(),
         }
+    }
+
+    /// Get the task manager for managing long-running operations
+    pub fn task_manager(&self) -> &McpTaskManager {
+        &self.task_manager
     }
 
     /// Add a tool to the registry

@@ -202,20 +202,6 @@ pub struct ToolMapping {
     pub a2a_skill_id: String,
     /// Description for A2A
     pub description: Option<String>,
-    /// Input transformation (if needed)
-    pub input_transform: Option<InputTransform>,
-}
-
-/// Input transformation rules.
-#[cfg(feature = "mcp")]
-#[derive(Debug, Clone)]
-pub enum InputTransform {
-    /// Pass through unchanged
-    PassThrough,
-    /// Extract from specific field
-    ExtractField(String),
-    /// Apply custom JSON transformation
-    JsonPath(String),
 }
 
 #[cfg(feature = "mcp")]
@@ -233,7 +219,6 @@ impl McpToA2aBridge {
                     mcp_name: cap.id.clone(),
                     a2a_skill_id: cap.id.clone(),
                     description: cap.description.clone(),
-                    input_transform: None,
                 },
             );
         }
@@ -956,7 +941,6 @@ mod tests {
             mcp_name: "read_file".to_string(),
             a2a_skill_id: "file_read".to_string(),
             description: Some("Read a file".to_string()),
-            input_transform: None,
         };
         assert_eq!(mapping.mcp_name, "read_file");
         assert_eq!(mapping.a2a_skill_id, "file_read");

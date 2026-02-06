@@ -55,11 +55,19 @@ impl ToolAdapter {
 
     /// Convert to MCP tool definition (2025-11-25 spec)
     pub fn to_mcp_tool(&self) -> McpToolDefinition {
-        McpToolDefinition {
-            name: self.name().to_string(),
-            title: None,
-            description: format!("Skreaver tool: {}", self.name()),
-            input_schema: serde_json::json!({
+        // Use tool's own description if available, otherwise generate one
+        let description = {
+            let desc = self.tool.description();
+            if desc.is_empty() {
+                format!("Skreaver tool: {}", self.name())
+            } else {
+                desc.to_string()
+            }
+        };
+
+        // Use tool's own input schema if available, otherwise use generic string input
+        let input_schema = self.tool.input_schema().unwrap_or_else(|| {
+            serde_json::json!({
                 "type": "object",
                 "properties": {
                     "input": {
@@ -68,7 +76,14 @@ impl ToolAdapter {
                     }
                 },
                 "required": ["input"]
-            }),
+            })
+        });
+
+        McpToolDefinition {
+            name: self.name().to_string(),
+            title: None,
+            description,
+            input_schema,
             output_schema: None,
             annotations: None,
         }

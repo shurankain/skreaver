@@ -11,9 +11,6 @@ client = ["reqwest", "futures", "tokio-stream", "async-trait"]
 server = ["axum", "tower", "tower-http", "futures", "tokio-stream", "async-trait", "async-stream"]
 
 [dependencies]
-# Skreaver crates
-skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
-
 # Async runtime
 tokio = { workspace = true }
 

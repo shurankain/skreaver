@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::warn;
+
+/// The default hardcoded salt value - used to detect when warning should be shown
+const DEFAULT_SALT: &str = "skreaver-default-salt-change-in-production";
 
 /// API Key rotation policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,8 +97,12 @@ impl ApiKeyConfig {
     ///
     /// MEDIUM-34: In production, set SKREAVER_API_KEY_SALT to a unique random value
     fn default_hash_salt() -> String {
-        std::env::var("SKREAVER_API_KEY_SALT")
-            .unwrap_or_else(|_| "skreaver-default-salt-change-in-production".to_string())
+        std::env::var("SKREAVER_API_KEY_SALT").unwrap_or_else(|_| DEFAULT_SALT.to_string())
+    }
+
+    /// Check if using the default hardcoded salt
+    pub fn is_using_default_salt(&self) -> bool {
+        self.hash_salt == DEFAULT_SALT
     }
 
     /// Create config with automatic rotation
@@ -761,7 +769,20 @@ pub struct ApiKeyManager {
 
 impl ApiKeyManager {
     /// Create a new API key manager
+    ///
+    /// # Security Warning
+    ///
+    /// If using the default salt, a warning will be logged. In production,
+    /// set the `SKREAVER_API_KEY_SALT` environment variable to a unique random value.
     pub fn new(config: ApiKeyConfig) -> Self {
+        if config.is_using_default_salt() {
+            warn!(
+                "API key manager is using the default hardcoded salt. \
+                 This is insecure for production use. \
+                 Set SKREAVER_API_KEY_SALT environment variable to a unique random value."
+            );
+        }
+
         Self {
             config,
             store: ApiKeyStore::new(),

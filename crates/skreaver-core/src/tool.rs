@@ -699,6 +699,10 @@ impl std::fmt::Display for ToolInput {
 ///         "calculator"
 ///     }
 ///
+///     fn description(&self) -> &str {
+///         "Multiplies a number by 2"
+///     }
+///
 ///     fn call(&self, input: String) -> ExecutionResult {
 ///         if let Ok(num) = input.parse::<f64>() {
 ///             ExecutionResult::Success { output: (num * 2.0).to_string() }
@@ -723,6 +727,31 @@ pub trait Tool: Send + Sync {
     ///
     /// A string slice containing the tool's name
     fn name(&self) -> &str;
+
+    /// Returns a human-readable description of the tool.
+    ///
+    /// This description is used in tool listings and help text.
+    /// Override this to provide a meaningful description.
+    ///
+    /// # Returns
+    ///
+    /// A string slice containing the tool's description
+    fn description(&self) -> &str {
+        ""
+    }
+
+    /// Returns the JSON Schema for the tool's input.
+    ///
+    /// Override this to provide a specific input schema for the tool.
+    /// The default implementation returns `None`, indicating a generic
+    /// string input schema should be used.
+    ///
+    /// # Returns
+    ///
+    /// An optional JSON Value containing the input schema
+    fn input_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
 
     /// Execute the tool with the provided input.
     ///

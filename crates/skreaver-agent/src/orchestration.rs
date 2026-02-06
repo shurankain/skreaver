@@ -193,12 +193,6 @@ pub enum TransformMode {
 #[derive(Debug, Clone)]
 struct PipelineTask {
     task: UnifiedTask,
-    /// Current stage index (for resumable pipelines - future use)
-    #[allow(dead_code)]
-    current_stage: usize,
-    /// Task IDs from each stage (for debugging/tracing - future use)
-    #[allow(dead_code)]
-    stage_tasks: Vec<String>,
 }
 
 impl SequentialPipeline {
@@ -284,7 +278,6 @@ impl UnifiedAgent for SequentialPipeline {
         pipeline_task.add_message(message.clone());
 
         let mut current_input = message;
-        let mut stage_task_ids = Vec::new();
 
         for (idx, stage) in self.stages.iter().enumerate() {
             debug!(
@@ -295,7 +288,6 @@ impl UnifiedAgent for SequentialPipeline {
             );
 
             let stage_result = stage.send_message(current_input.clone()).await?;
-            stage_task_ids.push(stage_result.id.clone());
 
             // Check if stage failed
             if stage_result.status == TaskStatus::Failed {
@@ -334,8 +326,6 @@ impl UnifiedAgent for SequentialPipeline {
             task_id.clone(),
             PipelineTask {
                 task: pipeline_task.clone(),
-                current_stage: self.stages.len(),
-                stage_tasks: stage_task_ids,
             },
         );
 

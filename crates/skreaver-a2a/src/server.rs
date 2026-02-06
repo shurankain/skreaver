@@ -107,24 +107,72 @@ pub trait AgentHandler: Send + Sync + 'static {
     }
 }
 
-/// In-memory task store
-#[derive(Debug, Default)]
+/// Configuration for task store
+#[derive(Debug, Clone)]
+pub struct TaskStoreConfig {
+    /// Default TTL for tasks in seconds (default: 3600 = 1 hour)
+    pub default_ttl_secs: u64,
+    /// How often to run cleanup in seconds (default: 300 = 5 minutes)
+    pub cleanup_interval_secs: u64,
+}
+
+impl Default for TaskStoreConfig {
+    fn default() -> Self {
+        Self {
+            default_ttl_secs: 3600,     // 1 hour
+            cleanup_interval_secs: 300, // 5 minutes
+        }
+    }
+}
+
+/// Task with expiration tracking
+#[derive(Debug, Clone)]
+struct StoredTask {
+    task: Task,
+    expires_at: chrono::DateTime<Utc>,
+}
+
+/// In-memory task store with expiration support
+#[derive(Debug)]
 struct TaskStore {
-    tasks: RwLock<HashMap<String, Task>>,
+    tasks: RwLock<HashMap<String, StoredTask>>,
     subscribers: RwLock<HashMap<String, broadcast::Sender<StreamingEvent>>>,
+    config: TaskStoreConfig,
 }
 
 impl TaskStore {
     fn new() -> Self {
-        Self::default()
+        Self::with_config(TaskStoreConfig::default())
+    }
+
+    fn with_config(config: TaskStoreConfig) -> Self {
+        Self {
+            tasks: RwLock::new(HashMap::new()),
+            subscribers: RwLock::new(HashMap::new()),
+            config,
+        }
     }
 
     async fn get(&self, task_id: &str) -> Option<Task> {
-        self.tasks.read().await.get(task_id).cloned()
+        let tasks = self.tasks.read().await;
+        tasks.get(task_id).and_then(|stored| {
+            // Return None if expired
+            if stored.expires_at < Utc::now() {
+                None
+            } else {
+                Some(stored.task.clone())
+            }
+        })
     }
 
     async fn update(&self, task: Task) {
-        self.tasks.write().await.insert(task.id.clone(), task);
+        let expires_at =
+            Utc::now() + chrono::Duration::seconds(self.config.default_ttl_secs as i64);
+        let stored = StoredTask {
+            task: task.clone(),
+            expires_at,
+        };
+        self.tasks.write().await.insert(task.id.clone(), stored);
     }
 
     async fn subscribe(&self, task_id: &str) -> broadcast::Receiver<StreamingEvent> {
@@ -147,6 +195,40 @@ impl TaskStore {
         let (tx, _) = broadcast::channel(64);
         subscribers.insert(task_id.to_string(), tx.clone());
         tx
+    }
+
+    /// Clean up expired tasks and their subscribers
+    async fn cleanup_expired(&self) -> usize {
+        let now = Utc::now();
+        let mut tasks = self.tasks.write().await;
+        let mut subscribers = self.subscribers.write().await;
+
+        // Find expired task IDs
+        let expired: Vec<String> = tasks
+            .iter()
+            .filter(|(_, stored)| stored.expires_at < now)
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        let count = expired.len();
+
+        // Remove expired tasks and their subscribers
+        for id in &expired {
+            tasks.remove(id);
+            subscribers.remove(id);
+            debug!(task_id = %id, "Cleaned up expired task");
+        }
+
+        if count > 0 {
+            info!(count, "Cleaned up expired A2A tasks");
+        }
+
+        count
+    }
+
+    /// Get total task count
+    async fn task_count(&self) -> usize {
+        self.tasks.read().await.len()
     }
 }
 
@@ -180,6 +262,42 @@ impl<H: AgentHandler> A2aServer<H> {
             handler: Arc::new(handler),
             store: Arc::new(TaskStore::new()),
         }
+    }
+
+    /// Create a new A2A server with custom task store configuration
+    pub fn with_config(handler: H, config: TaskStoreConfig) -> Self {
+        Self {
+            handler: Arc::new(handler),
+            store: Arc::new(TaskStore::with_config(config)),
+        }
+    }
+
+    /// Start a background task that periodically cleans up expired tasks
+    ///
+    /// Returns a handle that can be used to abort the cleanup task.
+    pub fn start_cleanup_task(&self) -> tokio::task::JoinHandle<()> {
+        let store = Arc::clone(&self.store);
+        let interval_secs = store.config.cleanup_interval_secs;
+
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+
+            loop {
+                interval.tick().await;
+                store.cleanup_expired().await;
+            }
+        })
+    }
+
+    /// Manually trigger cleanup of expired tasks
+    pub async fn cleanup_expired_tasks(&self) -> usize {
+        self.store.cleanup_expired().await
+    }
+
+    /// Get the current task count
+    pub async fn task_count(&self) -> usize {
+        self.store.task_count().await
     }
 
     /// Build the Axum router for this server

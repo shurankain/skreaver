@@ -108,4 +108,6 @@ pub use client::{A2aClient, AuthConfig};
 
 // Re-export server types
 #[cfg(feature = "server")]
-pub use server::{A2aServer, AgentHandler, send_artifact_update, send_status_update};
+pub use server::{
+    A2aServer, AgentHandler, TaskStoreConfig, send_artifact_update, send_status_update,
+};
