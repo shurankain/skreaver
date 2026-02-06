@@ -424,7 +424,7 @@ impl UnifiedAgent for SequentialPipeline {
 // ============================================================================
 
 /// How to aggregate results from parallel execution.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum AggregationMode {
     /// Collect all results (messages and artifacts from all agents)
     #[default]
@@ -528,6 +528,49 @@ impl UnifiedAgent for ParallelAgent {
             .map(|a| a.send_message(message.clone()))
             .collect();
 
+        // FirstComplete uses select_all for true racing — return as soon as
+        // the first future resolves, without waiting for the rest.
+        if self.aggregation == AggregationMode::FirstComplete {
+            let race = futures::future::select_all(futures);
+            let result = if let Some(timeout) = self.timeout_ms {
+                match tokio::time::timeout(std::time::Duration::from_millis(timeout), race).await {
+                    Ok((result, _, _)) => result,
+                    Err(_) => {
+                        warn!(
+                            agent = %self.info.id,
+                            timeout_ms = timeout,
+                            "Parallel execution timed out"
+                        );
+                        combined.add_message(UnifiedMessage::agent("All agents timed out"));
+                        combined.set_status(TaskStatus::Failed);
+                        return Ok(combined);
+                    }
+                }
+            } else {
+                let (result, _, _) = race.await;
+                result
+            };
+
+            match result {
+                Ok(task) => {
+                    for msg in task.messages {
+                        combined.add_message(msg);
+                    }
+                    for artifact in task.artifacts {
+                        combined.add_artifact(artifact);
+                    }
+                    combined.set_status(task.status);
+                }
+                Err(e) => {
+                    combined.add_message(UnifiedMessage::agent(format!("Error: {}", e)));
+                    combined.set_status(TaskStatus::Failed);
+                }
+            }
+
+            return Ok(combined);
+        }
+
+        // All other modes wait for every future to complete.
         let results = if let Some(timeout) = self.timeout_ms {
             match tokio::time::timeout(
                 std::time::Duration::from_millis(timeout),
@@ -611,26 +654,8 @@ impl UnifiedAgent for ParallelAgent {
                 }
             }
 
-            AggregationMode::FirstComplete => {
-                // In true first-complete, we'd use select! - here we just take first result
-                if let Some(result) = results.into_iter().next() {
-                    match result {
-                        Ok(task) => {
-                            for msg in task.messages {
-                                combined.add_message(msg);
-                            }
-                            for artifact in task.artifacts {
-                                combined.add_artifact(artifact);
-                            }
-                            combined.set_status(task.status);
-                        }
-                        Err(e) => {
-                            combined.add_message(UnifiedMessage::agent(format!("Error: {}", e)));
-                            combined.set_status(TaskStatus::Failed);
-                        }
-                    }
-                }
-            }
+            // Already handled above via early return
+            AggregationMode::FirstComplete => unreachable!(),
 
             AggregationMode::RequireAll => {
                 let mut all_success = true;
