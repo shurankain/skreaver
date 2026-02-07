@@ -148,6 +148,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::error::{AgentError, AgentResult};
+use crate::storage::TaskCache;
 use crate::traits::UnifiedAgent;
 use crate::types::{AgentInfo, MessageRole, StreamEvent, TaskStatus, UnifiedMessage, UnifiedTask};
 
@@ -450,7 +451,7 @@ pub struct ParallelAgent {
     aggregation: AggregationMode,
     /// Maximum time to wait for all agents (in milliseconds)
     timeout_ms: Option<u64>,
-    tasks: tokio::sync::RwLock<HashMap<String, UnifiedTask>>,
+    tasks: TaskCache,
 }
 
 impl ParallelAgent {
@@ -461,7 +462,7 @@ impl ParallelAgent {
             agents: Vec::new(),
             aggregation: AggregationMode::default(),
             timeout_ms: None,
-            tasks: tokio::sync::RwLock::new(HashMap::new()),
+            tasks: TaskCache::new(),
         }
     }
 
@@ -683,8 +684,7 @@ impl UnifiedAgent for ParallelAgent {
         }
 
         // Store task
-        let task_id = combined.id.clone();
-        self.tasks.write().await.insert(task_id, combined.clone());
+        self.tasks.insert(combined.clone()).await;
 
         Ok(combined)
     }
@@ -730,20 +730,19 @@ impl UnifiedAgent for ParallelAgent {
 
     async fn get_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
         self.tasks
-            .read()
-            .await
             .get(task_id)
-            .cloned()
+            .await
             .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 
     async fn cancel_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))?;
-        task.set_status(TaskStatus::Cancelled);
-        Ok(task.clone())
+        self.tasks
+            .update(task_id, |task| {
+                task.set_status(TaskStatus::Cancelled);
+                task.clone()
+            })
+            .await
+            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 }
 
@@ -1157,7 +1156,7 @@ pub struct SupervisorAgent<L: SupervisorLogic> {
     agents: HashMap<String, Arc<dyn UnifiedAgent>>,
     logic: L,
     max_iterations: usize,
-    tasks: tokio::sync::RwLock<HashMap<String, UnifiedTask>>,
+    tasks: TaskCache,
 }
 
 impl<L: SupervisorLogic> SupervisorAgent<L> {
@@ -1168,7 +1167,7 @@ impl<L: SupervisorLogic> SupervisorAgent<L> {
             agents: HashMap::new(),
             logic,
             max_iterations: 10,
-            tasks: tokio::sync::RwLock::new(HashMap::new()),
+            tasks: TaskCache::new(),
         }
     }
 
@@ -1370,8 +1369,7 @@ impl<L: SupervisorLogic + 'static> UnifiedAgent for SupervisorAgent<L> {
         }
 
         // Store task
-        let task_id = task.id.clone();
-        self.tasks.write().await.insert(task_id, task.clone());
+        self.tasks.insert(task.clone()).await;
 
         Ok(task)
     }
@@ -1381,13 +1379,17 @@ impl<L: SupervisorLogic + 'static> UnifiedAgent for SupervisorAgent<L> {
         task_id: &str,
         message: UnifiedMessage,
     ) -> AgentResult<UnifiedTask> {
-        // Get existing task and continue
-        let mut tasks = self.tasks.write().await;
-        if let Some(task) = tasks.get_mut(task_id) {
-            task.add_message(message.clone());
-            task.set_status(TaskStatus::Working);
-            drop(tasks);
+        // Check if task exists and update it
+        let exists = self
+            .tasks
+            .update(task_id, |task| {
+                task.add_message(message.clone());
+                task.set_status(TaskStatus::Working);
+            })
+            .await
+            .is_some();
 
+        if exists {
             // Re-run supervisor logic
             return self.send_message(message).await;
         }
@@ -1427,20 +1429,19 @@ impl<L: SupervisorLogic + 'static> UnifiedAgent for SupervisorAgent<L> {
 
     async fn get_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
         self.tasks
-            .read()
-            .await
             .get(task_id)
-            .cloned()
+            .await
             .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 
     async fn cancel_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))?;
-        task.set_status(TaskStatus::Cancelled);
-        Ok(task.clone())
+        self.tasks
+            .update(task_id, |task| {
+                task.set_status(TaskStatus::Cancelled);
+                task.clone()
+            })
+            .await
+            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 }
 

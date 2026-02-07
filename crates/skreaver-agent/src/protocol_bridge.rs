@@ -155,6 +155,8 @@ use tracing::info;
 #[cfg(any(feature = "mcp", feature = "a2a"))]
 use crate::error::{AgentError, AgentResult};
 #[cfg(any(feature = "mcp", feature = "a2a"))]
+use crate::storage::TaskCache;
+#[cfg(any(feature = "mcp", feature = "a2a"))]
 use crate::traits::UnifiedAgent;
 #[cfg(any(feature = "mcp", feature = "a2a"))]
 use crate::types::{
@@ -189,7 +191,7 @@ pub struct McpToA2aBridge {
     info: AgentInfo,
     mcp_agent: Arc<dyn UnifiedAgent>,
     tool_mapping: HashMap<String, ToolMapping>,
-    tasks: tokio::sync::RwLock<HashMap<String, UnifiedTask>>,
+    tasks: TaskCache,
 }
 
 /// Mapping between MCP tool and A2A skill.
@@ -255,7 +257,7 @@ impl McpToA2aBridge {
             info,
             mcp_agent,
             tool_mapping,
-            tasks: tokio::sync::RwLock::new(HashMap::new()),
+            tasks: TaskCache::new(),
         }
     }
 
@@ -324,10 +326,7 @@ impl UnifiedAgent for McpToA2aBridge {
             .insert("bridge_id".to_string(), serde_json::json!(self.info.id));
 
         // Store task
-        self.tasks
-            .write()
-            .await
-            .insert(result.id.clone(), result.clone());
+        self.tasks.insert(result.clone()).await;
 
         Ok(result)
     }
@@ -349,8 +348,8 @@ impl UnifiedAgent for McpToA2aBridge {
 
     async fn get_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
         // Try local cache first
-        if let Some(task) = self.tasks.read().await.get(task_id) {
-            return Ok(task.clone());
+        if let Some(task) = self.tasks.get(task_id).await {
+            return Ok(task);
         }
         self.mcp_agent.get_task(task_id).await
     }
@@ -387,7 +386,7 @@ pub struct A2aToMcpBridge {
     info: AgentInfo,
     a2a_agent: Arc<dyn UnifiedAgent>,
     skill_to_tool: HashMap<String, SkillToToolMapping>,
-    tasks: tokio::sync::RwLock<HashMap<String, UnifiedTask>>,
+    tasks: TaskCache,
 }
 
 /// Mapping from A2A skill to MCP tool.
@@ -452,7 +451,7 @@ impl A2aToMcpBridge {
             info,
             a2a_agent,
             skill_to_tool,
-            tasks: tokio::sync::RwLock::new(HashMap::new()),
+            tasks: TaskCache::new(),
         }
     }
 
@@ -536,10 +535,7 @@ impl UnifiedAgent for A2aToMcpBridge {
             .insert("bridge_id".to_string(), serde_json::json!(self.info.id));
 
         // Store task
-        self.tasks
-            .write()
-            .await
-            .insert(result.id.clone(), result.clone());
+        self.tasks.insert(result.clone()).await;
 
         Ok(result)
     }
@@ -560,8 +556,8 @@ impl UnifiedAgent for A2aToMcpBridge {
     }
 
     async fn get_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
-        if let Some(task) = self.tasks.read().await.get(task_id) {
-            return Ok(task.clone());
+        if let Some(task) = self.tasks.get(task_id).await {
+            return Ok(task);
         }
         self.a2a_agent.get_task(task_id).await
     }

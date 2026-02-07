@@ -5,12 +5,12 @@
 
 use async_trait::async_trait;
 use futures::Stream;
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use tracing::{debug, info};
 
 use crate::error::{AgentError, AgentResult};
+use crate::storage::TaskCache;
 use crate::traits::{ToolInvoker, UnifiedAgent};
 use crate::types::{
     AgentInfo, Capability, ContentPart, MessageRole, Protocol, StreamEvent, TaskStatus,
@@ -27,7 +27,7 @@ use skreaver_mcp::McpBridge;
 pub struct McpAgentAdapter {
     info: AgentInfo,
     bridge: Arc<McpBridge>,
-    tasks: tokio::sync::RwLock<HashMap<String, UnifiedTask>>,
+    tasks: TaskCache,
 }
 
 impl std::fmt::Debug for McpAgentAdapter {
@@ -65,7 +65,7 @@ impl McpAgentAdapter {
         Self {
             info: agent_info,
             bridge: Arc::new(bridge),
-            tasks: tokio::sync::RwLock::new(HashMap::new()),
+            tasks: TaskCache::new(),
         }
     }
 
@@ -155,8 +155,7 @@ impl UnifiedAgent for McpAgentAdapter {
         task.set_status(TaskStatus::Completed);
 
         // Store the task
-        let task_id = task.id.clone();
-        self.tasks.write().await.insert(task_id, task.clone());
+        self.tasks.insert(task.clone()).await;
 
         Ok(task)
     }
@@ -166,15 +165,18 @@ impl UnifiedAgent for McpAgentAdapter {
         task_id: &str,
         message: UnifiedMessage,
     ) -> AgentResult<UnifiedTask> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
+        // Get task, update it, store it back
+        let mut task = self
+            .tasks
+            .get(task_id)
+            .await
             .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))?;
 
         task.add_message(message.clone());
-        self.process_message(task, &message).await?;
+        self.process_message(&mut task, &message).await?;
+        self.tasks.insert(task.clone()).await;
 
-        Ok(task.clone())
+        Ok(task)
     }
 
     async fn send_message_streaming(
@@ -222,21 +224,19 @@ impl UnifiedAgent for McpAgentAdapter {
 
     async fn get_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
         self.tasks
-            .read()
-            .await
             .get(task_id)
-            .cloned()
+            .await
             .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 
     async fn cancel_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
-        let mut tasks = self.tasks.write().await;
-        let task = tasks
-            .get_mut(task_id)
-            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))?;
-
-        task.set_status(TaskStatus::Cancelled);
-        Ok(task.clone())
+        self.tasks
+            .update(task_id, |task| {
+                task.set_status(TaskStatus::Cancelled);
+                task.clone()
+            })
+            .await
+            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 }
 

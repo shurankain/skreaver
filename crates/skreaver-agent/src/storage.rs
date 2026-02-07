@@ -323,6 +323,104 @@ pub trait TaskStore: Send + Sync {
 }
 
 // ============================================================================
+// Task Cache (Lightweight)
+// ============================================================================
+
+/// Lightweight in-memory task cache for agent implementations.
+///
+/// This is a simpler alternative to `InMemoryTaskStore` for agents that just need
+/// basic get/save/cancel operations without full query support.
+///
+/// Thread-safe with interior mutability via `RwLock`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use skreaver_agent::storage::TaskCache;
+/// use skreaver_agent::types::UnifiedTask;
+///
+/// let cache = TaskCache::new();
+///
+/// // Store a task
+/// let task = UnifiedTask::new_with_uuid();
+/// cache.insert(task.clone()).await;
+///
+/// // Retrieve it
+/// if let Some(task) = cache.get(&task.id).await {
+///     println!("Found task: {}", task.id);
+/// }
+/// ```
+#[derive(Debug, Default)]
+pub struct TaskCache {
+    tasks: RwLock<HashMap<String, UnifiedTask>>,
+}
+
+impl TaskCache {
+    /// Create a new empty task cache.
+    pub fn new() -> Self {
+        Self {
+            tasks: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Insert or update a task in the cache.
+    pub async fn insert(&self, task: UnifiedTask) {
+        self.tasks.write().await.insert(task.id.clone(), task);
+    }
+
+    /// Get a task by ID.
+    pub async fn get(&self, task_id: &str) -> Option<UnifiedTask> {
+        self.tasks.read().await.get(task_id).cloned()
+    }
+
+    /// Get a mutable reference to a task and apply a function to it.
+    ///
+    /// Returns the result of applying the function, or None if task not found.
+    pub async fn update<F, R>(&self, task_id: &str, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut UnifiedTask) -> R,
+    {
+        let mut tasks = self.tasks.write().await;
+        tasks.get_mut(task_id).map(f)
+    }
+
+    /// Remove a task from the cache.
+    pub async fn remove(&self, task_id: &str) -> Option<UnifiedTask> {
+        self.tasks.write().await.remove(task_id)
+    }
+
+    /// Check if a task exists.
+    pub async fn contains(&self, task_id: &str) -> bool {
+        self.tasks.read().await.contains_key(task_id)
+    }
+
+    /// Get the number of cached tasks.
+    pub async fn len(&self) -> usize {
+        self.tasks.read().await.len()
+    }
+
+    /// Check if the cache is empty.
+    pub async fn is_empty(&self) -> bool {
+        self.tasks.read().await.is_empty()
+    }
+
+    /// Clear all tasks from the cache.
+    pub async fn clear(&self) {
+        self.tasks.write().await.clear();
+    }
+
+    /// Get all task IDs.
+    pub async fn task_ids(&self) -> Vec<String> {
+        self.tasks.read().await.keys().cloned().collect()
+    }
+
+    /// Get all tasks.
+    pub async fn all_tasks(&self) -> Vec<UnifiedTask> {
+        self.tasks.read().await.values().cloned().collect()
+    }
+}
+
+// ============================================================================
 // In-Memory Task Store
 // ============================================================================
 

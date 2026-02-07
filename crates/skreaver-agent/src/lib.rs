@@ -109,7 +109,9 @@ pub use orchestration::{
 };
 
 // Re-export storage types
-pub use storage::{FileTaskStore, InMemoryTaskStore, TaskQuery, TaskStore, TaskStoreExt};
+pub use storage::{
+    FileTaskStore, InMemoryTaskStore, TaskCache, TaskQuery, TaskStore, TaskStoreExt,
+};
 
 // Re-export MCP adapter
 #[cfg(feature = "mcp")]

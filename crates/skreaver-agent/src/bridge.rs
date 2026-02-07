@@ -4,12 +4,11 @@
 //! to another, enabling cross-protocol communication.
 
 use async_trait::async_trait;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::debug;
 
 use crate::error::{AgentError, AgentResult};
+use crate::storage::TaskCache;
 use crate::traits::UnifiedAgent;
 use crate::types::{AgentInfo, StreamEvent, TaskStatus, UnifiedMessage, UnifiedTask};
 
@@ -209,7 +208,7 @@ impl UnifiedAgent for ProxyAgent {
 pub struct FanOutAgent {
     info: AgentInfo,
     targets: Vec<Arc<dyn UnifiedAgent>>,
-    tasks: RwLock<HashMap<String, UnifiedTask>>,
+    tasks: TaskCache,
 }
 
 impl FanOutAgent {
@@ -218,7 +217,7 @@ impl FanOutAgent {
         Self {
             info: AgentInfo::new(id, name),
             targets: Vec::new(),
-            tasks: RwLock::new(HashMap::new()),
+            tasks: TaskCache::new(),
         }
     }
 
@@ -280,10 +279,7 @@ impl UnifiedAgent for FanOutAgent {
         combined.set_status(TaskStatus::Completed);
 
         // Store the task for later retrieval
-        self.tasks
-            .write()
-            .await
-            .insert(combined.id.clone(), combined.clone());
+        self.tasks.insert(combined.clone()).await;
 
         Ok(combined)
     }
@@ -326,21 +322,19 @@ impl UnifiedAgent for FanOutAgent {
 
     async fn get_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
         self.tasks
-            .read()
-            .await
             .get(task_id)
-            .cloned()
+            .await
             .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 
     async fn cancel_task(&self, task_id: &str) -> AgentResult<UnifiedTask> {
-        let mut tasks = self.tasks.write().await;
-        if let Some(task) = tasks.get_mut(task_id) {
-            task.set_status(TaskStatus::Cancelled);
-            Ok(task.clone())
-        } else {
-            Err(AgentError::TaskNotFound(task_id.to_string()))
-        }
+        self.tasks
+            .update(task_id, |task| {
+                task.set_status(TaskStatus::Cancelled);
+                task.clone()
+            })
+            .await
+            .ok_or_else(|| AgentError::TaskNotFound(task_id.to_string()))
     }
 }
 
