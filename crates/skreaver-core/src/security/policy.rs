@@ -6,37 +6,280 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Validated file size limit in bytes
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct FileSizeLimit(u64);
+// ============================================================================
+// Validated Limit Macro
+// ============================================================================
+
+/// Macro to define validated limit types with consistent structure.
+///
+/// This macro generates a newtype wrapper with:
+/// - Validation on construction (zero check, max check, optional min check)
+/// - Serde support
+/// - A getter method
+/// - Default implementation
+/// - Error type with Display and Error trait implementations
+///
+/// # Variants
+///
+/// - `nonzero_max`: Validates value > 0 and <= MAX
+/// - `max_only`: Validates value <= MAX (allows zero)
+/// - `range`: Validates MIN <= value <= MAX
+/// - `nonzero_only`: Validates value > 0 (no max)
+macro_rules! define_validated_limit {
+    // NonZero with Max limit (most common pattern)
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident($inner:ty);
+        error = $error:ident;
+        max = $max:expr;
+        default = $default:expr;
+        getter = $getter:ident;
+        $(unit = $unit:expr;)?
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+        $vis struct $name($inner);
+
+        impl $name {
+            /// Maximum allowed value
+            pub const MAX: $inner = $max;
+
+            /// Create a validated limit
+            pub fn new(value: $inner) -> Result<Self, $error> {
+                if value == 0 {
+                    return Err($error::Zero);
+                }
+                if value > Self::MAX {
+                    return Err($error::TooLarge { value, max: Self::MAX });
+                }
+                Ok($name(value))
+            }
+
+            /// Get the value
+            pub fn $getter(&self) -> $inner {
+                self.0
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                $name($default)
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis enum $error {
+            Zero,
+            TooLarge { value: $inner, max: $inner },
+        }
+
+        impl std::fmt::Display for $error {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let unit = define_validated_limit!(@unit $($unit)?);
+                match self {
+                    Self::Zero => write!(f, "{} cannot be zero", stringify!($name)),
+                    Self::TooLarge { value, max } => {
+                        write!(f, "{} too large: {}{} (max: {}{})",
+                            stringify!($name), value, unit, max, unit)
+                    }
+                }
+            }
+        }
+
+        impl std::error::Error for $error {}
+    };
+
+    // Max only (allows zero)
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident($inner:ty);
+        error = $error:ident;
+        max_only = $max:expr;
+        default = $default:expr;
+        getter = $getter:ident;
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+        $vis struct $name($inner);
+
+        impl $name {
+            /// Maximum allowed value
+            pub const MAX: $inner = $max;
+
+            /// Create a validated limit
+            pub fn new(value: $inner) -> Result<Self, $error> {
+                if value > Self::MAX {
+                    return Err($error::TooLarge { value, max: Self::MAX });
+                }
+                Ok($name(value))
+            }
+
+            /// Get the value
+            pub fn $getter(&self) -> $inner {
+                self.0
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                $name($default)
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis enum $error {
+            TooLarge { value: $inner, max: $inner },
+        }
+
+        impl std::fmt::Display for $error {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::TooLarge { value, max } => {
+                        write!(f, "{} too large: {} (max: {})", stringify!($name), value, max)
+                    }
+                }
+            }
+        }
+
+        impl std::error::Error for $error {}
+    };
+
+    // Range (min and max)
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident($inner:ty);
+        error = $error:ident;
+        min = $min:expr;
+        max = $max:expr;
+        default = $default:expr;
+        getter = $getter:ident;
+        $(unit = $unit:expr;)?
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+        $vis struct $name($inner);
+
+        impl $name {
+            /// Minimum allowed value
+            pub const MIN: $inner = $min;
+            /// Maximum allowed value
+            pub const MAX: $inner = $max;
+
+            /// Create a validated limit
+            pub fn new(value: $inner) -> Result<Self, $error> {
+                if value < Self::MIN {
+                    return Err($error::TooSmall { value, min: Self::MIN });
+                }
+                if value > Self::MAX {
+                    return Err($error::TooLarge { value, max: Self::MAX });
+                }
+                Ok($name(value))
+            }
+
+            /// Get the value
+            pub fn $getter(&self) -> $inner {
+                self.0
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                $name($default)
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis enum $error {
+            TooSmall { value: $inner, min: $inner },
+            TooLarge { value: $inner, max: $inner },
+        }
+
+        impl std::fmt::Display for $error {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let unit = define_validated_limit!(@unit $($unit)?);
+                match self {
+                    Self::TooSmall { value, min } => {
+                        write!(f, "{} too small: {}{} (min: {}{})",
+                            stringify!($name), value, unit, min, unit)
+                    }
+                    Self::TooLarge { value, max } => {
+                        write!(f, "{} too large: {}{} (max: {}{})",
+                            stringify!($name), value, unit, max, unit)
+                    }
+                }
+            }
+        }
+
+        impl std::error::Error for $error {}
+    };
+
+    // NonZero only (no max)
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident($inner:ty);
+        error = $error:ident;
+        nonzero;
+        getter = $getter:ident;
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        $vis struct $name($inner);
+
+        impl $name {
+            /// Create a validated value
+            pub fn new(value: $inner) -> Result<Self, $error> {
+                if value == 0 {
+                    return Err($error::Zero);
+                }
+                Ok($name(value))
+            }
+
+            /// Get the value
+            pub fn $getter(&self) -> $inner {
+                self.0
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis enum $error {
+            Zero,
+        }
+
+        impl std::fmt::Display for $error {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    Self::Zero => write!(f, "{} cannot be zero", stringify!($name)),
+                }
+            }
+        }
+
+        impl std::error::Error for $error {}
+    };
+
+    // Helper for optional unit suffix
+    (@unit) => { "" };
+    (@unit $unit:expr) => { $unit };
+}
+
+// ============================================================================
+// Limit Type Definitions
+// ============================================================================
+
+define_validated_limit! {
+    /// Validated file size limit in bytes
+    pub struct FileSizeLimit(u64);
+    error = FileSizeLimitError;
+    max = 1024 * 1024 * 1024; // 1GB
+    default = 16 * 1024 * 1024; // 16MB
+    getter = bytes;
+    unit = " bytes";
+}
 
 impl FileSizeLimit {
-    /// Maximum allowed file size (1GB)
-    pub const MAX: u64 = 1024 * 1024 * 1024;
-
-    /// Create a validated file size limit
-    pub fn new(bytes: u64) -> Result<Self, FileSizeLimitError> {
-        if bytes == 0 {
-            return Err(FileSizeLimitError::Zero);
-        }
-        if bytes > Self::MAX {
-            return Err(FileSizeLimitError::TooLarge {
-                size: bytes,
-                max: Self::MAX,
-            });
-        }
-        Ok(FileSizeLimit(bytes))
-    }
-
     /// Create file size limit in megabytes
     pub fn megabytes(mb: u32) -> Result<Self, FileSizeLimitError> {
         let bytes = (mb as u64) * 1024 * 1024;
         Self::new(bytes)
-    }
-
-    /// Get the limit in bytes
-    pub fn bytes(&self) -> u64 {
-        self.0
     }
 
     /// Get the limit in megabytes (rounded up)
@@ -45,183 +288,73 @@ impl FileSizeLimit {
     }
 }
 
-impl Default for FileSizeLimit {
-    fn default() -> Self {
-        FileSizeLimit(16 * 1024 * 1024) // 16MB default
-    }
+define_validated_limit! {
+    /// Validated file count limit
+    pub struct FileCountLimit(u32);
+    error = FileCountLimitError;
+    max = 10000;
+    default = 100;
+    getter = count;
 }
 
-/// Validated file count limit
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct FileCountLimit(u32);
-
-impl FileCountLimit {
-    /// Maximum allowed file count per operation
-    pub const MAX: u32 = 10000;
-
-    /// Create a validated file count limit
-    pub fn new(count: u32) -> Result<Self, FileCountLimitError> {
-        if count == 0 {
-            return Err(FileCountLimitError::Zero);
-        }
-        if count > Self::MAX {
-            return Err(FileCountLimitError::TooLarge {
-                count,
-                max: Self::MAX,
-            });
-        }
-        Ok(FileCountLimit(count))
-    }
-
-    /// Get the count limit
-    pub fn count(&self) -> u32 {
-        self.0
-    }
+define_validated_limit! {
+    /// Validated timeout duration in seconds
+    pub struct TimeoutSeconds(u64);
+    error = TimeoutError;
+    min = 1; // 1 second
+    max = 24 * 60 * 60; // 24 hours
+    default = 30;
+    getter = seconds;
+    unit = "s";
 }
-
-impl Default for FileCountLimit {
-    fn default() -> Self {
-        FileCountLimit(100)
-    }
-}
-
-/// Validated timeout duration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TimeoutSeconds(u64);
 
 impl TimeoutSeconds {
-    /// Maximum timeout (24 hours)
-    pub const MAX_SECONDS: u64 = 24 * 60 * 60;
-    /// Minimum timeout (1 second)
-    pub const MIN_SECONDS: u64 = 1;
-
-    /// Create a validated timeout
-    pub fn new(seconds: u64) -> Result<Self, TimeoutError> {
-        if seconds < Self::MIN_SECONDS {
-            return Err(TimeoutError::TooShort {
-                timeout: seconds,
-                min: Self::MIN_SECONDS,
-            });
-        }
-        if seconds > Self::MAX_SECONDS {
-            return Err(TimeoutError::TooLong {
-                timeout: seconds,
-                max: Self::MAX_SECONDS,
-            });
-        }
-        Ok(TimeoutSeconds(seconds))
-    }
-
-    /// Get the timeout in seconds
-    pub fn seconds(&self) -> u64 {
-        self.0
-    }
-
     /// Convert to Duration
     pub fn as_duration(&self) -> Duration {
         Duration::from_secs(self.0)
     }
 }
 
-impl Default for TimeoutSeconds {
-    fn default() -> Self {
-        TimeoutSeconds(30)
-    }
+define_validated_limit! {
+    /// Validated HTTP response size limit in bytes
+    pub struct ResponseSizeLimit(u64);
+    error = ResponseSizeLimitError;
+    max = 500 * 1024 * 1024; // 500MB
+    default = 32 * 1024 * 1024; // 32MB
+    getter = bytes;
+    unit = " bytes";
 }
 
-/// Validated HTTP response size limit
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ResponseSizeLimit(u64);
-
 impl ResponseSizeLimit {
-    /// Maximum allowed response size (500MB)
-    pub const MAX: u64 = 500 * 1024 * 1024;
-
-    /// Create a validated response size limit
-    pub fn new(bytes: u64) -> Result<Self, ResponseSizeLimitError> {
-        if bytes == 0 {
-            return Err(ResponseSizeLimitError::Zero);
-        }
-        if bytes > Self::MAX {
-            return Err(ResponseSizeLimitError::TooLarge {
-                size: bytes,
-                max: Self::MAX,
-            });
-        }
-        Ok(ResponseSizeLimit(bytes))
-    }
-
     /// Create response size limit in megabytes
     pub fn megabytes(mb: u32) -> Result<Self, ResponseSizeLimitError> {
         let bytes = (mb as u64) * 1024 * 1024;
         Self::new(bytes)
     }
-
-    /// Get the limit in bytes
-    pub fn bytes(&self) -> u64 {
-        self.0
-    }
 }
 
-impl Default for ResponseSizeLimit {
-    fn default() -> Self {
-        ResponseSizeLimit(32 * 1024 * 1024) // 32MB default
-    }
+define_validated_limit! {
+    /// Validated redirect count limit
+    pub struct RedirectLimit(u32);
+    error = RedirectLimitError;
+    max_only = 20;
+    default = 3;
+    getter = count;
 }
 
-/// Validated redirect count limit
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RedirectLimit(u32);
-
-impl RedirectLimit {
-    /// Maximum allowed redirects
-    pub const MAX: u32 = 20;
-
-    /// Create a validated redirect limit
-    pub fn new(redirects: u32) -> Result<Self, RedirectLimitError> {
-        if redirects > Self::MAX {
-            return Err(RedirectLimitError::TooMany {
-                redirects,
-                max: Self::MAX,
-            });
-        }
-        Ok(RedirectLimit(redirects))
-    }
-
-    /// Get the redirect count
-    pub fn count(&self) -> u32 {
-        self.0
-    }
+define_validated_limit! {
+    /// Validated network port
+    pub struct NetworkPort(u16);
+    error = NetworkPortError;
+    nonzero;
+    getter = port;
 }
-
-impl Default for RedirectLimit {
-    fn default() -> Self {
-        RedirectLimit(3)
-    }
-}
-
-/// Validated network port
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct NetworkPort(u16);
 
 impl NetworkPort {
     /// Well-known ports (0-1023)
     pub const WELL_KNOWN_MAX: u16 = 1023;
     /// Ephemeral port range start
     pub const EPHEMERAL_MIN: u16 = 32768;
-
-    /// Create a network port with validation
-    pub fn new(port: u16) -> Result<Self, NetworkPortError> {
-        if port == 0 {
-            return Err(NetworkPortError::Zero);
-        }
-        Ok(NetworkPort(port))
-    }
-
-    /// Get the port number
-    pub fn port(&self) -> u16 {
-        self.0
-    }
 
     /// Check if this is a well-known port
     pub fn is_well_known(&self) -> bool {
@@ -233,122 +366,6 @@ impl NetworkPort {
         self.0 >= Self::EPHEMERAL_MIN
     }
 }
-
-/// Validation errors for security policy types
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FileSizeLimitError {
-    Zero,
-    TooLarge { size: u64, max: u64 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FileCountLimitError {
-    Zero,
-    TooLarge { count: u32, max: u32 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TimeoutError {
-    TooShort { timeout: u64, min: u64 },
-    TooLong { timeout: u64, max: u64 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResponseSizeLimitError {
-    Zero,
-    TooLarge { size: u64, max: u64 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RedirectLimitError {
-    TooMany { redirects: u32, max: u32 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NetworkPortError {
-    Zero,
-}
-
-// Display implementations
-impl std::fmt::Display for FileSizeLimitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Zero => write!(f, "File size limit cannot be zero"),
-            Self::TooLarge { size, max } => {
-                write!(
-                    f,
-                    "File size limit too large: {} bytes (max: {} bytes)",
-                    size, max
-                )
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for FileCountLimitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Zero => write!(f, "File count limit cannot be zero"),
-            Self::TooLarge { count, max } => {
-                write!(f, "File count limit too large: {} (max: {})", count, max)
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for TimeoutError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::TooShort { timeout, min } => {
-                write!(f, "Timeout too short: {}s (min: {}s)", timeout, min)
-            }
-            Self::TooLong { timeout, max } => {
-                write!(f, "Timeout too long: {}s (max: {}s)", timeout, max)
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for ResponseSizeLimitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Zero => write!(f, "Response size limit cannot be zero"),
-            Self::TooLarge { size, max } => {
-                write!(
-                    f,
-                    "Response size limit too large: {} bytes (max: {} bytes)",
-                    size, max
-                )
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for RedirectLimitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::TooMany { redirects, max } => {
-                write!(f, "Too many redirects: {} (max: {})", redirects, max)
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for NetworkPortError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Zero => write!(f, "Network port cannot be zero"),
-        }
-    }
-}
-
-// Error trait implementations
-impl std::error::Error for FileSizeLimitError {}
-impl std::error::Error for FileCountLimitError {}
-impl std::error::Error for TimeoutError {}
-impl std::error::Error for ResponseSizeLimitError {}
-impl std::error::Error for RedirectLimitError {}
-impl std::error::Error for NetworkPortError {}
 
 /// Combined security policy for an operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -906,12 +923,12 @@ mod tests {
         // Invalid timeouts
         assert!(matches!(
             TimeoutSeconds::new(0),
-            Err(TimeoutError::TooShort { .. })
+            Err(TimeoutError::TooSmall { .. })
         ));
 
         assert!(matches!(
-            TimeoutSeconds::new(TimeoutSeconds::MAX_SECONDS + 1),
-            Err(TimeoutError::TooLong { .. })
+            TimeoutSeconds::new(TimeoutSeconds::MAX + 1),
+            Err(TimeoutError::TooLarge { .. })
         ));
     }
 
@@ -949,7 +966,7 @@ mod tests {
 
         assert!(matches!(
             RedirectLimit::new(RedirectLimit::MAX + 1),
-            Err(RedirectLimitError::TooMany { .. })
+            Err(RedirectLimitError::TooLarge { .. })
         ));
     }
 }
