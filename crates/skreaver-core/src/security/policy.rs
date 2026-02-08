@@ -368,11 +368,91 @@ impl NetworkPort {
 }
 
 /// Combined security policy for an operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SecurityPolicy {
     pub fs_policy: FileSystemPolicy,
     pub http_policy: HttpPolicy,
     pub network_policy: NetworkPolicy,
+}
+
+impl SecurityPolicy {
+    /// Create a new security policy builder.
+    pub fn builder() -> SecurityPolicyBuilder {
+        SecurityPolicyBuilder::default()
+    }
+
+    /// Create a restrictive policy with all access disabled.
+    pub fn restrictive() -> Self {
+        Self {
+            fs_policy: FileSystemPolicy::disabled(),
+            http_policy: HttpPolicy::disabled(),
+            network_policy: NetworkPolicy::disabled(),
+        }
+    }
+
+    /// Create a permissive policy with sensible defaults.
+    pub fn permissive() -> Self {
+        Self {
+            fs_policy: FileSystemPolicy::default(),
+            http_policy: HttpPolicy::default(),
+            network_policy: NetworkPolicy::enabled(),
+        }
+    }
+}
+
+/// Builder for constructing `SecurityPolicy` with a fluent API.
+#[derive(Debug, Default)]
+pub struct SecurityPolicyBuilder {
+    fs_policy: Option<FileSystemPolicy>,
+    http_policy: Option<HttpPolicy>,
+    network_policy: Option<NetworkPolicy>,
+}
+
+impl SecurityPolicyBuilder {
+    /// Set the file system policy.
+    pub fn fs_policy(mut self, policy: FileSystemPolicy) -> Self {
+        self.fs_policy = Some(policy);
+        self
+    }
+
+    /// Set the HTTP policy.
+    pub fn http_policy(mut self, policy: HttpPolicy) -> Self {
+        self.http_policy = Some(policy);
+        self
+    }
+
+    /// Set the network policy.
+    pub fn network_policy(mut self, policy: NetworkPolicy) -> Self {
+        self.network_policy = Some(policy);
+        self
+    }
+
+    /// Disable file system access.
+    pub fn disable_fs(mut self) -> Self {
+        self.fs_policy = Some(FileSystemPolicy::disabled());
+        self
+    }
+
+    /// Disable HTTP access.
+    pub fn disable_http(mut self) -> Self {
+        self.http_policy = Some(HttpPolicy::disabled());
+        self
+    }
+
+    /// Disable network access.
+    pub fn disable_network(mut self) -> Self {
+        self.network_policy = Some(NetworkPolicy::disabled());
+        self
+    }
+
+    /// Build the security policy.
+    pub fn build(self) -> SecurityPolicy {
+        SecurityPolicy {
+            fs_policy: self.fs_policy.unwrap_or_default(),
+            http_policy: self.http_policy.unwrap_or_default(),
+            network_policy: self.network_policy.unwrap_or_default(),
+        }
+    }
 }
 
 /// Symlink behavior for file system operations
@@ -520,6 +600,120 @@ impl FileSystemPolicy {
             });
         }
         Ok(())
+    }
+
+    /// Create a new file system policy builder.
+    pub fn builder() -> FileSystemPolicyBuilder {
+        FileSystemPolicyBuilder::default()
+    }
+}
+
+/// Builder for constructing `FileSystemPolicy` with a fluent API.
+#[derive(Debug, Default)]
+pub struct FileSystemPolicyBuilder {
+    access: Option<FileSystemAccess>,
+    allow_paths: Option<Vec<PathBuf>>,
+    deny_patterns: Option<Vec<String>>,
+    max_file_size: Option<FileSizeLimit>,
+    max_files_per_operation: Option<FileCountLimit>,
+}
+
+impl FileSystemPolicyBuilder {
+    /// Set the access mode.
+    pub fn access(mut self, access: FileSystemAccess) -> Self {
+        self.access = Some(access);
+        self
+    }
+
+    /// Disable file system access.
+    pub fn disabled(mut self) -> Self {
+        self.access = Some(FileSystemAccess::Disabled);
+        self
+    }
+
+    /// Set symlink behavior (requires enabled access).
+    pub fn symlink_behavior(mut self, behavior: SymlinkBehavior) -> Self {
+        self.access = Some(FileSystemAccess::Enabled {
+            symlink_behavior: behavior,
+            content_scanning: ContentScanning::default(),
+        });
+        self
+    }
+
+    /// Set content scanning (requires enabled access).
+    pub fn content_scanning(mut self, scanning: ContentScanning) -> Self {
+        let (behavior, _) = match self.access {
+            Some(FileSystemAccess::Enabled {
+                symlink_behavior,
+                content_scanning,
+            }) => (symlink_behavior, content_scanning),
+            _ => (SymlinkBehavior::default(), ContentScanning::default()),
+        };
+        self.access = Some(FileSystemAccess::Enabled {
+            symlink_behavior: behavior,
+            content_scanning: scanning,
+        });
+        self
+    }
+
+    /// Set allowed paths, replacing any existing paths.
+    pub fn allow_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.allow_paths = Some(paths);
+        self
+    }
+
+    /// Add an allowed path.
+    pub fn allow_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.allow_paths
+            .get_or_insert_with(Vec::new)
+            .push(path.into());
+        self
+    }
+
+    /// Set deny patterns, replacing any existing patterns.
+    pub fn deny_patterns(mut self, patterns: Vec<String>) -> Self {
+        self.deny_patterns = Some(patterns);
+        self
+    }
+
+    /// Add a deny pattern.
+    pub fn deny_pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.deny_patterns
+            .get_or_insert_with(Vec::new)
+            .push(pattern.into());
+        self
+    }
+
+    /// Set maximum file size.
+    pub fn max_file_size(mut self, limit: FileSizeLimit) -> Self {
+        self.max_file_size = Some(limit);
+        self
+    }
+
+    /// Set maximum file size in bytes.
+    pub fn max_file_size_bytes(mut self, bytes: u64) -> Result<Self, FileSizeLimitError> {
+        self.max_file_size = Some(FileSizeLimit::new(bytes)?);
+        Ok(self)
+    }
+
+    /// Set maximum files per operation.
+    pub fn max_files_per_operation(mut self, limit: FileCountLimit) -> Self {
+        self.max_files_per_operation = Some(limit);
+        self
+    }
+
+    /// Build the file system policy.
+    pub fn build(self) -> FileSystemPolicy {
+        let default = FileSystemPolicy::default();
+        FileSystemPolicy {
+            access: self.access.unwrap_or(default.access),
+            allow_paths: self.allow_paths.unwrap_or(default.allow_paths),
+            deny_patterns: self.deny_patterns.unwrap_or(default.deny_patterns),
+            max_file_size: self.max_file_size.unwrap_or(default.max_file_size),
+            max_files_per_operation: self
+                .max_files_per_operation
+                .unwrap_or(default.max_files_per_operation),
+        }
     }
 }
 
@@ -707,6 +901,152 @@ impl HttpPolicy {
             }
         }
     }
+
+    /// Create a new HTTP policy builder.
+    pub fn builder() -> HttpPolicyBuilder {
+        HttpPolicyBuilder::default()
+    }
+
+    /// Create a local-only HTTP policy.
+    pub fn local_only() -> Self {
+        Self {
+            access: HttpAccess::LocalOnly(HttpAccessConfig::default()),
+            ..Default::default()
+        }
+    }
+}
+
+/// Builder for constructing `HttpPolicy` with a fluent API.
+#[derive(Debug, Default)]
+pub struct HttpPolicyBuilder {
+    access: Option<HttpAccess>,
+    allow_methods: Option<Vec<String>>,
+    default_headers: Option<Vec<(String, String)>>,
+}
+
+impl HttpPolicyBuilder {
+    /// Set the access mode.
+    pub fn access(mut self, access: HttpAccess) -> Self {
+        self.access = Some(access);
+        self
+    }
+
+    /// Disable HTTP access.
+    pub fn disabled(mut self) -> Self {
+        self.access = Some(HttpAccess::Disabled);
+        self
+    }
+
+    /// Set to local-only access.
+    pub fn local_only(mut self) -> Self {
+        self.access = Some(HttpAccess::LocalOnly(HttpAccessConfig::default()));
+        self
+    }
+
+    /// Set to internet access with default settings.
+    pub fn internet(mut self) -> Self {
+        self.access = Some(HttpAccess::default());
+        self
+    }
+
+    /// Set the domain filter (for internet access).
+    pub fn domain_filter(mut self, filter: DomainFilter) -> Self {
+        if let Some(HttpAccess::Internet {
+            domain_filter,
+            config,
+            include_local,
+            max_redirects,
+            user_agent,
+        }) = self.access.take()
+        {
+            let _ = domain_filter; // discard old filter
+            self.access = Some(HttpAccess::Internet {
+                config,
+                domain_filter: filter,
+                include_local,
+                max_redirects,
+                user_agent,
+            });
+        } else {
+            // Create default internet access with the filter
+            self.access = Some(HttpAccess::Internet {
+                config: HttpAccessConfig::default(),
+                domain_filter: filter,
+                include_local: false,
+                max_redirects: RedirectLimit::default(),
+                user_agent: "skreaver-agent/0.1.0".to_string(),
+            });
+        }
+        self
+    }
+
+    /// Set timeout for HTTP requests.
+    pub fn timeout(mut self, timeout: TimeoutSeconds) -> Self {
+        match self.access.take() {
+            Some(HttpAccess::LocalOnly(mut config)) => {
+                config.timeout = timeout;
+                self.access = Some(HttpAccess::LocalOnly(config));
+            }
+            Some(HttpAccess::Internet {
+                mut config,
+                domain_filter,
+                include_local,
+                max_redirects,
+                user_agent,
+            }) => {
+                config.timeout = timeout;
+                self.access = Some(HttpAccess::Internet {
+                    config,
+                    domain_filter,
+                    include_local,
+                    max_redirects,
+                    user_agent,
+                });
+            }
+            other => {
+                self.access = other;
+            }
+        }
+        self
+    }
+
+    /// Set allowed HTTP methods, replacing any existing methods.
+    pub fn allow_methods(mut self, methods: Vec<String>) -> Self {
+        self.allow_methods = Some(methods);
+        self
+    }
+
+    /// Add an allowed HTTP method.
+    pub fn allow_method(mut self, method: impl Into<String>) -> Self {
+        self.allow_methods
+            .get_or_insert_with(Vec::new)
+            .push(method.into().to_uppercase());
+        self
+    }
+
+    /// Set default headers, replacing any existing headers.
+    pub fn default_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.default_headers = Some(headers);
+        self
+    }
+
+    /// Add a default header.
+    pub fn default_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.default_headers
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Build the HTTP policy.
+    pub fn build(self) -> HttpPolicy {
+        let default = HttpPolicy::default();
+        HttpPolicy {
+            access: self.access.unwrap_or(default.access),
+            allow_methods: self.allow_methods.unwrap_or(default.allow_methods),
+            default_headers: self.default_headers.unwrap_or(default.default_headers),
+        }
+    }
 }
 
 /// Network access control
@@ -817,6 +1157,107 @@ impl NetworkPolicy {
         match NetworkPort::new(port) {
             Ok(network_port) => self.is_port_allowed(network_port),
             Err(_) => Ok(false), // Invalid ports are not allowed
+        }
+    }
+
+    /// Create a new network policy builder.
+    pub fn builder() -> NetworkPolicyBuilder {
+        NetworkPolicyBuilder::default()
+    }
+}
+
+/// Builder for constructing `NetworkPolicy` with a fluent API.
+#[derive(Debug, Default)]
+pub struct NetworkPolicyBuilder {
+    access: Option<NetworkAccess>,
+    allow_ports: Option<Vec<NetworkPort>>,
+    deny_ports: Option<Vec<NetworkPort>>,
+    ttl: Option<TimeoutSeconds>,
+    allow_private_networks: Option<bool>,
+}
+
+impl NetworkPolicyBuilder {
+    /// Set the access mode.
+    pub fn access(mut self, access: NetworkAccess) -> Self {
+        self.access = Some(access);
+        self
+    }
+
+    /// Enable network access.
+    pub fn enabled(mut self) -> Self {
+        self.access = Some(NetworkAccess::Enabled);
+        self
+    }
+
+    /// Disable network access.
+    pub fn disabled(mut self) -> Self {
+        self.access = Some(NetworkAccess::Disabled);
+        self
+    }
+
+    /// Set allowed ports, replacing any existing ports.
+    pub fn allow_ports(mut self, ports: Vec<NetworkPort>) -> Self {
+        self.allow_ports = Some(ports);
+        self
+    }
+
+    /// Add an allowed port.
+    pub fn allow_port(mut self, port: NetworkPort) -> Self {
+        self.allow_ports.get_or_insert_with(Vec::new).push(port);
+        self
+    }
+
+    /// Add an allowed port by number.
+    pub fn allow_port_num(mut self, port: u16) -> Result<Self, NetworkPortError> {
+        self.allow_ports
+            .get_or_insert_with(Vec::new)
+            .push(NetworkPort::new(port)?);
+        Ok(self)
+    }
+
+    /// Set denied ports, replacing any existing ports.
+    pub fn deny_ports(mut self, ports: Vec<NetworkPort>) -> Self {
+        self.deny_ports = Some(ports);
+        self
+    }
+
+    /// Add a denied port.
+    pub fn deny_port(mut self, port: NetworkPort) -> Self {
+        self.deny_ports.get_or_insert_with(Vec::new).push(port);
+        self
+    }
+
+    /// Add a denied port by number.
+    pub fn deny_port_num(mut self, port: u16) -> Result<Self, NetworkPortError> {
+        self.deny_ports
+            .get_or_insert_with(Vec::new)
+            .push(NetworkPort::new(port)?);
+        Ok(self)
+    }
+
+    /// Set the TTL (time-to-live) for connections.
+    pub fn ttl(mut self, ttl: TimeoutSeconds) -> Self {
+        self.ttl = Some(ttl);
+        self
+    }
+
+    /// Set whether private networks are allowed.
+    pub fn allow_private_networks(mut self, allow: bool) -> Self {
+        self.allow_private_networks = Some(allow);
+        self
+    }
+
+    /// Build the network policy.
+    pub fn build(self) -> NetworkPolicy {
+        let default = NetworkPolicy::default();
+        NetworkPolicy {
+            access: self.access.unwrap_or(default.access),
+            allow_ports: self.allow_ports.unwrap_or(default.allow_ports),
+            deny_ports: self.deny_ports.unwrap_or(default.deny_ports),
+            ttl: self.ttl.unwrap_or(default.ttl),
+            allow_private_networks: self
+                .allow_private_networks
+                .unwrap_or(default.allow_private_networks),
         }
     }
 }
@@ -968,5 +1409,129 @@ mod tests {
             RedirectLimit::new(RedirectLimit::MAX + 1),
             Err(RedirectLimitError::TooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn test_security_policy_builder() {
+        // Test default builder
+        let policy = SecurityPolicy::builder().build();
+        assert!(matches!(
+            policy.fs_policy.access,
+            FileSystemAccess::Enabled { .. }
+        ));
+        assert!(matches!(
+            policy.http_policy.access,
+            HttpAccess::Internet { .. }
+        ));
+        assert!(matches!(
+            policy.network_policy.access,
+            NetworkAccess::Disabled
+        ));
+
+        // Test with disabled components
+        let restrictive = SecurityPolicy::builder()
+            .disable_fs()
+            .disable_http()
+            .disable_network()
+            .build();
+        assert!(matches!(
+            restrictive.fs_policy.access,
+            FileSystemAccess::Disabled
+        ));
+        assert!(matches!(
+            restrictive.http_policy.access,
+            HttpAccess::Disabled
+        ));
+        assert!(matches!(
+            restrictive.network_policy.access,
+            NetworkAccess::Disabled
+        ));
+
+        // Test convenience constructors
+        let restrictive2 = SecurityPolicy::restrictive();
+        assert!(matches!(
+            restrictive2.fs_policy.access,
+            FileSystemAccess::Disabled
+        ));
+
+        let permissive = SecurityPolicy::permissive();
+        assert!(matches!(
+            permissive.network_policy.access,
+            NetworkAccess::Enabled
+        ));
+    }
+
+    #[test]
+    fn test_file_system_policy_builder() {
+        // Test with custom paths
+        let policy = FileSystemPolicy::builder()
+            .allow_path("/custom/path")
+            .deny_pattern("*.secret")
+            .max_file_size(FileSizeLimit::megabytes(32).unwrap())
+            .build();
+
+        assert!(
+            policy
+                .allow_paths
+                .iter()
+                .any(|p| p.to_str() == Some("/custom/path"))
+        );
+        assert!(policy.deny_patterns.contains(&"*.secret".to_string()));
+        assert_eq!(policy.max_file_size.megabytes_rounded(), 32);
+
+        // Test disabled
+        let disabled = FileSystemPolicy::builder().disabled().build();
+        assert!(matches!(disabled.access, FileSystemAccess::Disabled));
+    }
+
+    #[test]
+    fn test_http_policy_builder() {
+        // Test local only
+        let local = HttpPolicy::builder().local_only().build();
+        assert!(matches!(local.access, HttpAccess::LocalOnly(_)));
+
+        // Test with custom methods
+        let policy = HttpPolicy::builder()
+            .allow_method("GET")
+            .allow_method("post")
+            .default_header("X-Custom", "value")
+            .build();
+
+        assert!(policy.allow_methods.contains(&"GET".to_string()));
+        assert!(policy.allow_methods.contains(&"POST".to_string()));
+        assert!(
+            policy
+                .default_headers
+                .contains(&("X-Custom".to_string(), "value".to_string()))
+        );
+
+        // Test convenience constructor
+        let local2 = HttpPolicy::local_only();
+        assert!(matches!(local2.access, HttpAccess::LocalOnly(_)));
+    }
+
+    #[test]
+    fn test_network_policy_builder() {
+        // Test enabled with allowed ports
+        let policy = NetworkPolicy::builder()
+            .enabled()
+            .allow_port_num(80)
+            .unwrap()
+            .allow_port_num(443)
+            .unwrap()
+            .allow_private_networks(true)
+            .build();
+
+        assert!(policy.is_enabled());
+        assert_eq!(policy.allow_ports.len(), 2);
+        assert!(policy.allow_private_networks);
+
+        // Test with custom TTL
+        let policy2 = NetworkPolicy::builder()
+            .enabled()
+            .ttl(TimeoutSeconds::new(600).unwrap())
+            .build();
+
+        assert_eq!(policy2.ttl.seconds(), 600);
     }
 }
