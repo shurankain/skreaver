@@ -43,6 +43,21 @@ impl<T> Token<T> {
         }
     }
 
+    /// Create a token from a raw string for validation purposes.
+    ///
+    /// The timestamps are set to placeholder values since they will be
+    /// extracted from the JWT claims during validation. This is useful
+    /// when you have a token string and need to validate it.
+    pub(crate) fn from_raw(value: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            value: value.into(),
+            expires_at: now,
+            issued_at: now,
+            _phantom: PhantomData,
+        }
+    }
+
     /// Get the token value as a string
     pub fn as_str(&self) -> &str {
         &self.value

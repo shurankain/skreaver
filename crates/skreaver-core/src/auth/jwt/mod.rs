@@ -255,46 +255,9 @@ impl JwtManager {
     /// - The refresh token has been revoked
     /// - The token is not a refresh token type
     pub async fn refresh(&self, refresh_token: &str) -> AuthResult<JwtToken> {
-        if !self.config.refresh.is_allowed() {
-            return Err(AuthError::ValidationError(
-                "Token refresh not allowed".to_string(),
-            ));
-        }
-
-        // Decode the refresh token
-        let token_data =
-            decode::<JwtClaims>(refresh_token, &self.decoding_key, &self.validation)
-                .map_err(|e| AuthError::InvalidToken(format!("Invalid refresh token: {e}")))?;
-
-        let claims = token_data.claims;
-
-        // Check if refresh token is blacklisted (revoked)
-        if let Some(ref blacklist) = self.blacklist
-            && blacklist.is_revoked(&claims.jti).await?
-        {
-            return Err(AuthError::InvalidToken(
-                "Refresh token has been revoked".to_string(),
-            ));
-        }
-
-        // Verify it's a refresh token
-        if claims.typ != "refresh" {
-            return Err(AuthError::InvalidToken("Not a refresh token".to_string()));
-        }
-
-        // Create a new principal from refresh token claims
-        let mut principal = Principal::new(
-            claims.sub.clone(),
-            claims.name.clone(),
-            AuthMethod::Bearer(claims.jti.clone()),
-        );
-
-        for role in claims.get_roles() {
-            principal = principal.with_role(role);
-        }
-
-        // Generate new tokens
-        self.generate(&principal).await
+        let typed_token = Token::<RefreshToken>::from_raw(refresh_token);
+        let token_pair = self.refresh_with_token(&typed_token).await?;
+        Ok(token_pair.into())
     }
 
     /// Verify a token without full authentication
