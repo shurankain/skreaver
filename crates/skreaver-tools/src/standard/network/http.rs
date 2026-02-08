@@ -30,6 +30,37 @@ where
     }
 }
 
+/// HTTP method for requests
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Delete,
+}
+
+impl HttpMethod {
+    /// Returns the tool name for this HTTP method
+    fn tool_name(self) -> &'static str {
+        match self {
+            HttpMethod::Get => "http_get",
+            HttpMethod::Post => "http_post",
+            HttpMethod::Put => "http_put",
+            HttpMethod::Delete => "http_delete",
+        }
+    }
+
+    /// Whether this method supports simple URL fallback (GET/DELETE)
+    fn supports_simple_url(self) -> bool {
+        matches!(self, HttpMethod::Get | HttpMethod::Delete)
+    }
+
+    /// Whether this method supports a request body
+    fn supports_body(self) -> bool {
+        matches!(self, HttpMethod::Post | HttpMethod::Put)
+    }
+}
+
 /// Configuration for HTTP requests
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HttpConfig {
@@ -74,6 +105,67 @@ impl ToolConfig for HttpConfig {
     }
 }
 
+/// Core HTTP execution logic shared by all HTTP tools
+async fn execute_http_request(
+    client: &Client,
+    method: HttpMethod,
+    input: String,
+) -> ExecutionResult {
+    // Parse config - methods that support simple URL use fallback parsing
+    let config = if method.supports_simple_url() {
+        HttpConfig::parse(input)
+    } else {
+        match serde_json::from_str(&input) {
+            Ok(config) => config,
+            Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
+        }
+    };
+
+    // Build request based on method
+    let mut request = match method {
+        HttpMethod::Get => client.get(&config.url),
+        HttpMethod::Post => client.post(&config.url),
+        HttpMethod::Put => client.put(&config.url),
+        HttpMethod::Delete => client.delete(&config.url),
+    };
+
+    // Add headers
+    for (key, value) in &config.headers {
+        request = request.header(key, value);
+    }
+
+    // Add body for methods that support it
+    if method.supports_body() {
+        if let Some(body) = &config.body {
+            request = request.body(body.clone());
+        }
+    }
+
+    // Set timeout
+    if let Some(timeout) = config.timeout_secs {
+        request = request.timeout(Duration::from_secs(timeout));
+    }
+
+    // Execute request
+    match request.send().await {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            match response.text().await {
+                Ok(body) => {
+                    let result = serde_json::json!({
+                        "status": status,
+                        "body": body,
+                        "success": (200..300).contains(&status)
+                    });
+                    ExecutionResult::success(result.to_string())
+                }
+                Err(e) => ExecutionResult::failure(format!("Failed to read response body: {}", e)),
+            }
+        }
+        Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
+    }
+}
+
 /// HTTP GET tool for retrieving resources
 pub struct HttpGetTool {
     client: Client,
@@ -95,49 +187,12 @@ impl Default for HttpGetTool {
 
 impl Tool for HttpGetTool {
     fn name(&self) -> &str {
-        "http_get"
+        HttpMethod::Get.tool_name()
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        run_async(|| self.execute_async(input))
-    }
-}
-
-impl HttpGetTool {
-    async fn execute_async(&self, input: String) -> ExecutionResult {
-        let config = HttpConfig::parse(input);
-
-        let mut request = self.client.get(&config.url);
-
-        // Add headers
-        for (key, value) in &config.headers {
-            request = request.header(key, value);
-        }
-
-        // Set timeout
-        if let Some(timeout) = config.timeout_secs {
-            request = request.timeout(Duration::from_secs(timeout));
-        }
-
-        match request.send().await {
-            Ok(response) => {
-                let status = response.status().as_u16();
-                match response.text().await {
-                    Ok(body) => {
-                        let result = serde_json::json!({
-                            "status": status,
-                            "body": body,
-                            "success": (200..300).contains(&status)
-                        });
-                        ExecutionResult::success(result.to_string())
-                    }
-                    Err(e) => {
-                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                    }
-                }
-            }
-            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
-        }
+        let client = self.client.clone();
+        run_async(|| execute_http_request(&client, HttpMethod::Get, input))
     }
 }
 
@@ -162,57 +217,12 @@ impl Default for HttpPostTool {
 
 impl Tool for HttpPostTool {
     fn name(&self) -> &str {
-        "http_post"
+        HttpMethod::Post.tool_name()
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        run_async(|| self.execute_async(input))
-    }
-}
-
-impl HttpPostTool {
-    async fn execute_async(&self, input: String) -> ExecutionResult {
-        let config: HttpConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
-        };
-
-        let mut request = self.client.post(&config.url);
-
-        // Add headers
-        for (key, value) in &config.headers {
-            request = request.header(key, value);
-        }
-
-        // Add body
-        if let Some(body) = &config.body {
-            request = request.body(body.clone());
-        }
-
-        // Set timeout
-        if let Some(timeout) = config.timeout_secs {
-            request = request.timeout(Duration::from_secs(timeout));
-        }
-
-        match request.send().await {
-            Ok(response) => {
-                let status = response.status().as_u16();
-                match response.text().await {
-                    Ok(body) => {
-                        let result = serde_json::json!({
-                            "status": status,
-                            "body": body,
-                            "success": (200..300).contains(&status)
-                        });
-                        ExecutionResult::success(result.to_string())
-                    }
-                    Err(e) => {
-                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                    }
-                }
-            }
-            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
-        }
+        let client = self.client.clone();
+        run_async(|| execute_http_request(&client, HttpMethod::Post, input))
     }
 }
 
@@ -237,57 +247,12 @@ impl Default for HttpPutTool {
 
 impl Tool for HttpPutTool {
     fn name(&self) -> &str {
-        "http_put"
+        HttpMethod::Put.tool_name()
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        run_async(|| self.execute_async(input))
-    }
-}
-
-impl HttpPutTool {
-    async fn execute_async(&self, input: String) -> ExecutionResult {
-        let config: HttpConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(e) => return ExecutionResult::failure(format!("Invalid JSON config: {}", e)),
-        };
-
-        let mut request = self.client.put(&config.url);
-
-        // Add headers
-        for (key, value) in &config.headers {
-            request = request.header(key, value);
-        }
-
-        // Add body
-        if let Some(body) = &config.body {
-            request = request.body(body.clone());
-        }
-
-        // Set timeout
-        if let Some(timeout) = config.timeout_secs {
-            request = request.timeout(Duration::from_secs(timeout));
-        }
-
-        match request.send().await {
-            Ok(response) => {
-                let status = response.status().as_u16();
-                match response.text().await {
-                    Ok(body) => {
-                        let result = serde_json::json!({
-                            "status": status,
-                            "body": body,
-                            "success": (200..300).contains(&status)
-                        });
-                        ExecutionResult::success(result.to_string())
-                    }
-                    Err(e) => {
-                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                    }
-                }
-            }
-            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
-        }
+        let client = self.client.clone();
+        run_async(|| execute_http_request(&client, HttpMethod::Put, input))
     }
 }
 
@@ -312,48 +277,11 @@ impl Default for HttpDeleteTool {
 
 impl Tool for HttpDeleteTool {
     fn name(&self) -> &str {
-        "http_delete"
+        HttpMethod::Delete.tool_name()
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        run_async(|| self.execute_async(input))
-    }
-}
-
-impl HttpDeleteTool {
-    async fn execute_async(&self, input: String) -> ExecutionResult {
-        let config = HttpConfig::parse(input);
-
-        let mut request = self.client.delete(&config.url);
-
-        // Add headers
-        for (key, value) in &config.headers {
-            request = request.header(key, value);
-        }
-
-        // Set timeout
-        if let Some(timeout) = config.timeout_secs {
-            request = request.timeout(Duration::from_secs(timeout));
-        }
-
-        match request.send().await {
-            Ok(response) => {
-                let status = response.status().as_u16();
-                match response.text().await {
-                    Ok(body) => {
-                        let result = serde_json::json!({
-                            "status": status,
-                            "body": body,
-                            "success": (200..300).contains(&status)
-                        });
-                        ExecutionResult::success(result.to_string())
-                    }
-                    Err(e) => {
-                        ExecutionResult::failure(format!("Failed to read response body: {}", e))
-                    }
-                }
-            }
-            Err(e) => ExecutionResult::failure(format!("HTTP request failed: {}", e)),
-        }
+        let client = self.client.clone();
+        run_async(|| execute_http_request(&client, HttpMethod::Delete, input))
     }
 }
