@@ -3,6 +3,7 @@
 //! This module provides HTTP client tools for making REST API requests with
 //! authentication support, error handling, and flexible configuration.
 
+use crate::core::ToolConfig;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use skreaver_core::{ExecutionResult, Tool};
@@ -67,6 +68,12 @@ impl HttpConfig {
     }
 }
 
+impl ToolConfig for HttpConfig {
+    fn from_simple(input: String) -> Self {
+        Self::new(input)
+    }
+}
+
 /// HTTP GET tool for retrieving resources
 pub struct HttpGetTool {
     client: Client,
@@ -98,10 +105,7 @@ impl Tool for HttpGetTool {
 
 impl HttpGetTool {
     async fn execute_async(&self, input: String) -> ExecutionResult {
-        let config: HttpConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => HttpConfig::new(input), // Fallback to simple URL
-        };
+        let config = HttpConfig::parse(input);
 
         let mut request = self.client.get(&config.url);
 
@@ -318,10 +322,7 @@ impl Tool for HttpDeleteTool {
 
 impl HttpDeleteTool {
     async fn execute_async(&self, input: String) -> ExecutionResult {
-        let config: HttpConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => HttpConfig::new(input), // Fallback to simple URL
-        };
+        let config = HttpConfig::parse(input);
 
         let mut request = self.client.delete(&config.url);
 

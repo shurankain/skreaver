@@ -2,6 +2,7 @@
 //!
 //! This module provides tools for text manipulation, analysis, and transformation.
 
+use crate::core::ToolConfig;
 use serde::{Deserialize, Serialize};
 use skreaver_core::{ExecutionResult, Tool};
 
@@ -43,6 +44,12 @@ impl TextConfig {
     }
 }
 
+impl ToolConfig for TextConfig {
+    fn from_simple(input: String) -> Self {
+        Self::new(input)
+    }
+}
+
 /// Text uppercase conversion tool
 pub struct TextUppercaseTool;
 
@@ -64,10 +71,7 @@ impl Tool for TextUppercaseTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: TextConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => TextConfig::new(input), // Fallback to direct text input
-        };
+        let config = TextConfig::parse(input);
 
         let result_text = config.text.to_uppercase();
 
@@ -103,10 +107,7 @@ impl Tool for TextReverseTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: TextConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => TextConfig::new(input), // Fallback to direct text input
-        };
+        let config = TextConfig::parse(input);
 
         let result_text: String = config.text.chars().rev().collect();
 
@@ -193,10 +194,7 @@ impl Tool for TextAnalyzeTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: TextConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => TextConfig::new(input), // Fallback to direct text input
-        };
+        let config = TextConfig::parse(input);
 
         let text = &config.text;
         let char_count = text.chars().count();

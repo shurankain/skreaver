@@ -3,6 +3,7 @@
 //! This module provides file system operation tools for reading, writing,
 //! and managing files and directories safely.
 
+use crate::core::ToolConfig;
 use serde::{Deserialize, Serialize};
 use skreaver_core::{ExecutionResult, Tool};
 use std::fs;
@@ -16,6 +17,12 @@ pub struct FileConfig {
     pub content: Option<String>,
     #[serde(default)]
     pub create_dirs: bool,
+}
+
+impl ToolConfig for FileConfig {
+    fn from_simple(input: String) -> Self {
+        Self::new(input)
+    }
 }
 
 impl FileConfig {
@@ -59,10 +66,7 @@ impl Tool for FileReadTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: FileConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => FileConfig::new(input), // Fallback to simple path
-        };
+        let config = FileConfig::parse(input);
 
         match fs::read_to_string(&config.path) {
             Ok(content) => {
@@ -178,10 +182,7 @@ impl Tool for DirectoryListTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: FileConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => FileConfig::new(input), // Fallback to simple path
-        };
+        let config = FileConfig::parse(input);
 
         match fs::read_dir(&config.path) {
             Ok(entries) => {
@@ -255,10 +256,7 @@ impl Tool for DirectoryCreateTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: FileConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => FileConfig::new(input), // Fallback to simple path
-        };
+        let config = FileConfig::parse(input);
 
         let create_all = config.create_dirs;
 

@@ -3,6 +3,7 @@
 //! This module provides tools for processing and transforming structured data
 //! including JSON and XML parsing, validation, and transformation.
 
+use crate::core::ToolConfig;
 use quick_xml::de::from_str as xml_from_str;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonValue};
@@ -38,6 +39,12 @@ impl DataConfig {
     }
 }
 
+impl ToolConfig for DataConfig {
+    fn from_simple(input: String) -> Self {
+        Self::new(input)
+    }
+}
+
 /// JSON parsing and validation tool
 pub struct JsonParseTool;
 
@@ -59,10 +66,7 @@ impl Tool for JsonParseTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: DataConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => DataConfig::new(input), // Fallback to direct JSON input
-        };
+        let config = DataConfig::parse(input);
 
         match serde_json::from_str::<JsonValue>(&config.input) {
             Ok(parsed) => {
@@ -184,10 +188,7 @@ impl Tool for XmlParseTool {
     }
 
     fn call(&self, input: String) -> ExecutionResult {
-        let config: DataConfig = match serde_json::from_str(&input) {
-            Ok(config) => config,
-            Err(_) => DataConfig::new(input), // Fallback to direct XML input
-        };
+        let config = DataConfig::parse(input);
 
         // First try to parse as generic XML structure
         match xml_from_str::<serde_json::Value>(&config.input) {
