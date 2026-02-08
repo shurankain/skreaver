@@ -85,18 +85,12 @@ impl Task {
 
     /// Check if the task is in a terminal state
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self.status,
-            TaskStatus::Completed
-                | TaskStatus::Failed
-                | TaskStatus::Cancelled
-                | TaskStatus::Rejected
-        )
+        self.status.is_terminal()
     }
 
     /// Check if the task requires input
     pub fn requires_input(&self) -> bool {
-        self.status == TaskStatus::InputRequired
+        self.status.is_input_required()
     }
 }
 
@@ -121,6 +115,31 @@ pub enum TaskStatus {
 
     /// Task requires additional input to proceed
     InputRequired,
+}
+
+impl TaskStatus {
+    /// Check if this status represents a terminal state.
+    ///
+    /// Terminal states are final states where no further processing will occur.
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            TaskStatus::Completed
+                | TaskStatus::Failed
+                | TaskStatus::Cancelled
+                | TaskStatus::Rejected
+        )
+    }
+
+    /// Check if this status indicates the task is still in progress.
+    pub fn is_in_progress(self) -> bool {
+        matches!(self, TaskStatus::Working | TaskStatus::InputRequired)
+    }
+
+    /// Check if this status indicates input is required.
+    pub fn is_input_required(self) -> bool {
+        self == TaskStatus::InputRequired
+    }
 }
 
 impl std::fmt::Display for TaskStatus {

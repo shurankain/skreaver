@@ -713,14 +713,7 @@ fn streaming_event_to_sse(event: &StreamingEvent) -> Event {
 fn is_terminal_event(event: &StreamingEvent) -> bool {
     matches!(
         event,
-        StreamingEvent::TaskStatusUpdate(update)
-            if matches!(
-                update.status,
-                TaskStatus::Completed
-                    | TaskStatus::Failed
-                    | TaskStatus::Cancelled
-                    | TaskStatus::Rejected
-            )
+        StreamingEvent::TaskStatusUpdate(update) if update.status.is_terminal()
     )
 }
 
