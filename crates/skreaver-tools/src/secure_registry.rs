@@ -155,145 +155,82 @@ impl<T: ToolRegistry> SecureToolRegistry<T> {
 
         Ok(())
     }
+
+    /// Check permissions and record metrics for a tool call.
+    ///
+    /// This method combines permission checking with logging and metrics recording.
+    /// Returns `Ok(())` if allowed, or `Err(ExecutionResult::Failure)` if denied.
+    fn check_and_log_permissions(&self, tool_name: &str) -> Result<(), ExecutionResult> {
+        match self.check_permissions(tool_name) {
+            Ok(()) => {
+                // Record RBAC allowed metric
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_rbac_checks_total
+                        .with_label_values(&["allowed", tool_name])
+                        .inc();
+                }
+                Ok(())
+            }
+            Err(error) => {
+                tracing::warn!(
+                    tool_name = tool_name,
+                    error = %error,
+                    "Tool execution blocked by RBAC policy"
+                );
+
+                // Record RBAC denial metric
+                if let Some(registry) = skreaver_observability::get_metrics_registry() {
+                    registry
+                        .core_metrics()
+                        .security_rbac_checks_total
+                        .with_label_values(&["denied", tool_name])
+                        .inc();
+                }
+
+                Err(ExecutionResult::failure(error))
+            }
+        }
+    }
+
+    /// Execute a tool call after checking permissions, returning the failure result if denied.
+    fn dispatch_single(&self, call: &ToolCall) -> ExecutionResult {
+        match self.check_and_log_permissions(call.name()) {
+            Ok(()) => self.inner.dispatch_ref(call).unwrap_or_else(|| {
+                ExecutionResult::failure(format!("Tool not found: {}", call.name()))
+            }),
+            Err(failure) => failure,
+        }
+    }
 }
 
 impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult> {
-        // Check permissions before dispatching
-        if let Err(error) = self.check_permissions(call.name()) {
-            tracing::warn!(
-                tool_name = call.name(),
-                error = %error,
-                "Tool execution blocked by RBAC policy"
-            );
-
-            // Record RBAC denial metric
-            if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                registry
-                    .core_metrics()
-                    .security_rbac_checks_total
-                    .with_label_values(&["denied", call.name()])
-                    .inc();
-            }
-
-            return Some(ExecutionResult::failure(error));
+        if let Err(failure) = self.check_and_log_permissions(call.name()) {
+            return Some(failure);
         }
-
-        // Record RBAC allowed metric
-        if let Some(registry) = skreaver_observability::get_metrics_registry() {
-            registry
-                .core_metrics()
-                .security_rbac_checks_total
-                .with_label_values(&["allowed", call.name()])
-                .inc();
-        }
-
-        // Permissions OK - dispatch to inner registry
         self.inner.dispatch(call)
     }
 
     fn dispatch_ref(&self, call: &ToolCall) -> Option<ExecutionResult> {
-        // Check permissions before dispatching
-        if let Err(error) = self.check_permissions(call.name()) {
-            tracing::warn!(
-                tool_name = call.name(),
-                error = %error,
-                "Tool execution blocked by RBAC policy"
-            );
-
-            // Record RBAC denial metric
-            if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                registry
-                    .core_metrics()
-                    .security_rbac_checks_total
-                    .with_label_values(&["denied", call.name()])
-                    .inc();
-            }
-
-            return Some(ExecutionResult::failure(error));
+        if let Err(failure) = self.check_and_log_permissions(call.name()) {
+            return Some(failure);
         }
-
-        // Record RBAC allowed metric
-        if let Some(registry) = skreaver_observability::get_metrics_registry() {
-            registry
-                .core_metrics()
-                .security_rbac_checks_total
-                .with_label_values(&["allowed", call.name()])
-                .inc();
-        }
-
-        // Permissions OK - dispatch to inner registry
         self.inner.dispatch_ref(call)
     }
 
     fn try_dispatch(&self, call: &ToolCall) -> Result<ExecutionResult, String> {
-        // Check permissions before dispatching
-        if let Err(error) = self.check_permissions(call.name()) {
-            tracing::warn!(
-                tool_name = call.name(),
-                error = %error,
-                "Tool execution blocked by RBAC policy"
-            );
-
-            // Record RBAC denial metric
-            if let Some(registry) = skreaver_observability::get_metrics_registry() {
-                registry
-                    .core_metrics()
-                    .security_rbac_checks_total
-                    .with_label_values(&["denied", call.name()])
-                    .inc();
-            }
-
-            return Ok(ExecutionResult::failure(error));
+        if let Err(failure) = self.check_and_log_permissions(call.name()) {
+            return Ok(failure);
         }
-
-        // Record RBAC allowed metric
-        if let Some(registry) = skreaver_observability::get_metrics_registry() {
-            registry
-                .core_metrics()
-                .security_rbac_checks_total
-                .with_label_values(&["allowed", call.name()])
-                .inc();
-        }
-
-        // Permissions OK - dispatch to inner registry
         self.inner.try_dispatch(call)
     }
 
     fn dispatch_batch(&self, calls: &NonEmptyVec<ToolCall>) -> NonEmptyVec<ExecutionResult> {
-        // Check permissions for each call and dispatch or return failure
-        let head_result = if let Err(error) = self.check_permissions(calls.head().name()) {
-            tracing::warn!(
-                tool_name = calls.head().name(),
-                error = %error,
-                "Tool execution blocked by RBAC policy"
-            );
-            ExecutionResult::failure(error)
-        } else {
-            self.inner.dispatch_ref(calls.head()).unwrap_or_else(|| {
-                ExecutionResult::failure(format!("Tool not found: {}", calls.head().name()))
-            })
-        };
-
-        let tail_results: Vec<ExecutionResult> = calls
-            .tail()
-            .iter()
-            .map(|call| {
-                if let Err(error) = self.check_permissions(call.name()) {
-                    tracing::warn!(
-                        tool_name = call.name(),
-                        error = %error,
-                        "Tool execution blocked by RBAC policy"
-                    );
-                    ExecutionResult::failure(error)
-                } else {
-                    self.inner.dispatch_ref(call).unwrap_or_else(|| {
-                        ExecutionResult::failure(format!("Tool not found: {}", call.name()))
-                    })
-                }
-            })
-            .collect();
-
+        let head_result = self.dispatch_single(calls.head());
+        let tail_results: Vec<ExecutionResult> =
+            calls.tail().iter().map(|c| self.dispatch_single(c)).collect();
         NonEmptyVec::new(head_result, tail_results)
     }
 }
