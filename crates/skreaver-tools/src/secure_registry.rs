@@ -229,8 +229,11 @@ impl<T: ToolRegistry> ToolRegistry for SecureToolRegistry<T> {
 
     fn dispatch_batch(&self, calls: &NonEmptyVec<ToolCall>) -> NonEmptyVec<ExecutionResult> {
         let head_result = self.dispatch_single(calls.head());
-        let tail_results: Vec<ExecutionResult> =
-            calls.tail().iter().map(|c| self.dispatch_single(c)).collect();
+        let tail_results: Vec<ExecutionResult> = calls
+            .tail()
+            .iter()
+            .map(|c| self.dispatch_single(c))
+            .collect();
         NonEmptyVec::new(head_result, tail_results)
     }
 }
