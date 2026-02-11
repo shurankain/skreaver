@@ -130,6 +130,66 @@ impl<S> AgentStatus<S> {
 }
 
 // ============================================================================
+// Macro for common error/stop transitions
+// ============================================================================
+
+/// Implements common error and stop transition methods for a state type.
+/// These transitions are available from most non-terminal states.
+macro_rules! impl_error_transitions {
+    ($state:ty) => {
+        impl AgentStatus<$state> {
+            /// Transition to recoverable error state
+            pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
+                self.transition_to(RecoverableError {
+                    error,
+                    occurred_at: Utc::now(),
+                })
+            }
+
+            /// Transition to fatal error state
+            pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
+                self.transition_to(FatalError {
+                    error,
+                    occurred_at: Utc::now(),
+                })
+            }
+
+            /// Transition to Stopped state
+            pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
+                self.transition_to(Stopped {
+                    reason,
+                    stopped_at: Utc::now(),
+                })
+            }
+
+            /// Transition to Error state (deprecated - use set_recoverable_error or set_fatal_error)
+            #[deprecated(
+                since = "0.5.0",
+                note = "Use set_recoverable_error or set_fatal_error instead"
+            )]
+            #[allow(deprecated)]
+            pub fn set_error(
+                self,
+                error: String,
+                recoverable: bool,
+            ) -> AgentStatus<RecoverableError> {
+                // For backward compatibility, always returns RecoverableError
+                // Ignoring 'recoverable' parameter to maintain return type compatibility
+                let _ = recoverable;
+                self.set_recoverable_error(error)
+            }
+        }
+    };
+}
+
+// Apply error transitions to states that support them
+impl_error_transitions!(Initializing);
+impl_error_transitions!(Ready);
+impl_error_transitions!(Processing);
+impl_error_transitions!(WaitingForTools);
+impl_error_transitions!(Paused);
+
+// ============================================================================
 // Valid state transitions (compile-time enforced)
 // ============================================================================
 
@@ -138,43 +198,7 @@ impl AgentStatus<Initializing> {
     pub fn set_ready(self) -> AgentStatus<Ready> {
         self.transition_to(Ready)
     }
-
-    /// Transition to recoverable error state
-    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
-        self.transition_to(RecoverableError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to fatal error state
-    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
-        self.transition_to(FatalError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to Error state (deprecated - use set_recoverable_error or set_fatal_error)
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use set_recoverable_error or set_fatal_error instead"
-    )]
-    #[allow(deprecated)]
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        // For backward compatibility, always returns RecoverableError
-        // Ignoring 'recoverable' parameter to maintain return type compatibility
-        let _ = recoverable;
-        self.set_recoverable_error(error)
-    }
-
-    /// Transition to Stopped state
-    pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
-        self.transition_to(Stopped {
-            reason,
-            stopped_at: Utc::now(),
-        })
-    }
+    // Error transitions provided by impl_error_transitions! macro
 }
 
 impl AgentStatus<Ready> {
@@ -193,43 +217,7 @@ impl AgentStatus<Ready> {
             paused_at: Utc::now(),
         })
     }
-
-    /// Transition to Stopped state
-    pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
-        self.transition_to(Stopped {
-            reason,
-            stopped_at: Utc::now(),
-        })
-    }
-
-    /// Transition to recoverable error state
-    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
-        self.transition_to(RecoverableError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to fatal error state
-    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
-        self.transition_to(FatalError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to Error state (deprecated)
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use set_recoverable_error or set_fatal_error instead"
-    )]
-    #[allow(deprecated)]
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        // For backward compatibility, always returns RecoverableError
-        // Ignoring 'recoverable' parameter to maintain return type compatibility
-        let _ = recoverable;
-        self.set_recoverable_error(error)
-    }
+    // Error transitions provided by impl_error_transitions! macro
 }
 
 impl AgentStatus<Processing> {
@@ -257,43 +245,7 @@ impl AgentStatus<Processing> {
             completed_at: Utc::now(),
         })
     }
-
-    /// Transition to recoverable error state
-    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
-        self.transition_to(RecoverableError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to fatal error state
-    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
-        self.transition_to(FatalError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to Error state (deprecated)
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use set_recoverable_error or set_fatal_error instead"
-    )]
-    #[allow(deprecated)]
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        // For backward compatibility, always returns RecoverableError
-        // Ignoring 'recoverable' parameter to maintain return type compatibility
-        let _ = recoverable;
-        self.set_recoverable_error(error)
-    }
-
-    /// Transition to Stopped state
-    pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
-        self.transition_to(Stopped {
-            reason,
-            stopped_at: Utc::now(),
-        })
-    }
+    // Error transitions provided by impl_error_transitions! macro
 }
 
 impl AgentStatus<WaitingForTools> {
@@ -321,43 +273,7 @@ impl AgentStatus<WaitingForTools> {
             completed_at: Utc::now(),
         })
     }
-
-    /// Transition to recoverable error state
-    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
-        self.transition_to(RecoverableError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to fatal error state
-    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
-        self.transition_to(FatalError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to Error state (deprecated)
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use set_recoverable_error or set_fatal_error instead"
-    )]
-    #[allow(deprecated)]
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        // For backward compatibility, always returns RecoverableError
-        // Ignoring 'recoverable' parameter to maintain return type compatibility
-        let _ = recoverable;
-        self.set_recoverable_error(error)
-    }
-
-    /// Transition to Stopped state
-    pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
-        self.transition_to(Stopped {
-            reason,
-            stopped_at: Utc::now(),
-        })
-    }
+    // Error transitions provided by impl_error_transitions! macro
 }
 
 impl AgentStatus<Completed> {
@@ -464,43 +380,7 @@ impl AgentStatus<Paused> {
     pub fn resume(self) -> AgentStatus<Ready> {
         self.transition_to(Ready)
     }
-
-    /// Transition to Stopped state
-    pub fn set_stopped(self, reason: String) -> AgentStatus<Stopped> {
-        self.transition_to(Stopped {
-            reason,
-            stopped_at: Utc::now(),
-        })
-    }
-
-    /// Transition to recoverable error state
-    pub fn set_recoverable_error(self, error: String) -> AgentStatus<RecoverableError> {
-        self.transition_to(RecoverableError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to fatal error state
-    pub fn set_fatal_error(self, error: String) -> AgentStatus<FatalError> {
-        self.transition_to(FatalError {
-            error,
-            occurred_at: Utc::now(),
-        })
-    }
-
-    /// Transition to Error state (deprecated)
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use set_recoverable_error or set_fatal_error instead"
-    )]
-    #[allow(deprecated)]
-    pub fn set_error(self, error: String, recoverable: bool) -> AgentStatus<RecoverableError> {
-        // For backward compatibility, always returns RecoverableError
-        // Ignoring 'recoverable' parameter to maintain return type compatibility
-        let _ = recoverable;
-        self.set_recoverable_error(error)
-    }
+    // Error transitions provided by impl_error_transitions! macro
 }
 
 impl AgentStatus<Stopped> {
