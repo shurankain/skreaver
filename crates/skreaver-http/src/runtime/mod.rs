@@ -101,7 +101,7 @@ pub mod types;
 pub use agent_builders::{AdvancedAgentBuilder, AnalyticsAgentBuilder, EchoAgentBuilder};
 pub use agent_factory::{AgentBuilder, AgentFactory, AgentFactoryError};
 pub use agent_instance::{AgentId, AgentInstance, CoordinatorTrait};
-pub use agent_status::{AgentStatus, AgentStatusEnum, AgentStatusManager};
+pub use agent_status::{AgentStatus, AgentStatusEnum, AgentStatusError, AgentStatusManager};
 pub use api_types::{
     AgentObservation, AgentResponse, AgentSpec, AgentType, DeliveryError, ResponseDelivery,
 };

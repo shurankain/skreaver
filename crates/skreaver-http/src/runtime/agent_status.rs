@@ -73,6 +73,37 @@ pub struct Stopped {
 }
 
 // ============================================================================
+// Error type for AgentStatusManager
+// ============================================================================
+
+/// Errors that can occur during agent status transitions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentStatusError {
+    /// Attempted an invalid state transition
+    InvalidTransition {
+        from: &'static str,
+        to: &'static str,
+    },
+    /// Already in the target state (e.g., trying to stop an already stopped agent)
+    AlreadyInState { state: &'static str },
+}
+
+impl fmt::Display for AgentStatusError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AgentStatusError::InvalidTransition { from, to } => {
+                write!(f, "Invalid state transition from '{}' to '{}'", from, to)
+            }
+            AgentStatusError::AlreadyInState { state } => {
+                write!(f, "Already in '{}' state", state)
+            }
+        }
+    }
+}
+
+impl std::error::Error for AgentStatusError {}
+
+// ============================================================================
 // Type-safe AgentStatus with typestate pattern
 // ============================================================================
 
@@ -750,6 +781,23 @@ pub enum DynamicAgentStatus {
 }
 
 impl DynamicAgentStatus {
+    /// Get the simple name of the current state
+    pub fn state_name(&self) -> &'static str {
+        match self {
+            DynamicAgentStatus::Initializing(_) => "initializing",
+            DynamicAgentStatus::Ready(_) => "ready",
+            DynamicAgentStatus::Processing(_) => "processing",
+            DynamicAgentStatus::WaitingForTools(_) => "waiting_for_tools",
+            DynamicAgentStatus::Completed(_) => "completed",
+            DynamicAgentStatus::RecoverableError(_) => "recoverable_error",
+            DynamicAgentStatus::FatalError(_) => "fatal_error",
+            #[allow(deprecated)]
+            DynamicAgentStatus::Error(_) => "error",
+            DynamicAgentStatus::Paused(_) => "paused",
+            DynamicAgentStatus::Stopped(_) => "stopped",
+        }
+    }
+
     /// Convert to type-erased enum for serialization
     pub fn to_enum(&self) -> AgentStatusEnum {
         match self {
@@ -904,7 +952,7 @@ impl AgentStatusManager {
     }
 
     /// Transition to Ready status
-    pub fn set_ready(&mut self) -> Result<(), String> {
+    pub fn set_ready(&mut self) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -918,15 +966,16 @@ impl AgentStatusManager {
             #[allow(deprecated)]
             DynamicAgentStatus::Error(s) => DynamicAgentStatus::Ready(s.recover_to_ready()),
             other => {
+                let from = other.state_name();
                 self.current_status = other;
-                return Err("Invalid state transition to Ready".to_string());
+                return Err(AgentStatusError::InvalidTransition { from, to: "ready" });
             }
         };
         Ok(())
     }
 
     /// Transition to Processing status
-    pub fn set_processing(&mut self, task: String) -> Result<(), String> {
+    pub fn set_processing(&mut self, task: String) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -941,15 +990,19 @@ impl AgentStatusManager {
                 DynamicAgentStatus::Processing(s.resume_processing(task))
             }
             other => {
+                let from = other.state_name();
                 self.current_status = other;
-                return Err("Invalid state transition to Processing".to_string());
+                return Err(AgentStatusError::InvalidTransition {
+                    from,
+                    to: "processing",
+                });
             }
         };
         Ok(())
     }
 
     /// Transition to WaitingForTools status
-    pub fn set_waiting_for_tools(&mut self, tools: Vec<String>) -> Result<(), String> {
+    pub fn set_waiting_for_tools(&mut self, tools: Vec<String>) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -958,15 +1011,19 @@ impl AgentStatusManager {
                 DynamicAgentStatus::WaitingForTools(s.wait_for_tools(tools))
             }
             other => {
+                let from = other.state_name();
                 self.current_status = other;
-                return Err("Invalid state transition to WaitingForTools".to_string());
+                return Err(AgentStatusError::InvalidTransition {
+                    from,
+                    to: "waiting_for_tools",
+                });
             }
         };
         Ok(())
     }
 
     /// Transition to Completed status
-    pub fn set_completed(&mut self) -> Result<(), String> {
+    pub fn set_completed(&mut self) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -974,15 +1031,19 @@ impl AgentStatusManager {
             DynamicAgentStatus::Processing(s) => DynamicAgentStatus::Completed(s.complete()),
             DynamicAgentStatus::WaitingForTools(s) => DynamicAgentStatus::Completed(s.complete()),
             other => {
+                let from = other.state_name();
                 self.current_status = other;
-                return Err("Invalid state transition to Completed".to_string());
+                return Err(AgentStatusError::InvalidTransition {
+                    from,
+                    to: "completed",
+                });
             }
         };
         Ok(())
     }
 
     /// Transition to recoverable error status
-    pub fn set_recoverable_error(&mut self, error: String) -> Result<(), String> {
+    pub fn set_recoverable_error(&mut self, error: String) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -1011,7 +1072,7 @@ impl AgentStatusManager {
     }
 
     /// Transition to fatal error status
-    pub fn set_fatal_error(&mut self, error: String) -> Result<(), String> {
+    pub fn set_fatal_error(&mut self, error: String) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -1045,7 +1106,7 @@ impl AgentStatusManager {
         note = "Use set_recoverable_error or set_fatal_error instead"
     )]
     #[allow(deprecated)]
-    pub fn set_error(&mut self, error: String, recoverable: bool) -> Result<(), String> {
+    pub fn set_error(&mut self, error: String, recoverable: bool) -> Result<(), AgentStatusError> {
         if recoverable {
             self.set_recoverable_error(error)
         } else {
@@ -1054,7 +1115,7 @@ impl AgentStatusManager {
     }
 
     /// Transition to Paused status
-    pub fn set_paused(&mut self, reason: String) -> Result<(), String> {
+    pub fn set_paused(&mut self, reason: String) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -1062,15 +1123,16 @@ impl AgentStatusManager {
             DynamicAgentStatus::Ready(s) => DynamicAgentStatus::Paused(s.set_paused(reason)),
             DynamicAgentStatus::Completed(s) => DynamicAgentStatus::Paused(s.set_paused(reason)),
             other => {
+                let from = other.state_name();
                 self.current_status = other;
-                return Err("Invalid state transition to Paused".to_string());
+                return Err(AgentStatusError::InvalidTransition { from, to: "paused" });
             }
         };
         Ok(())
     }
 
     /// Transition to Stopped status
-    pub fn set_stopped(&mut self, reason: String) -> Result<(), String> {
+    pub fn set_stopped(&mut self, reason: String) -> Result<(), AgentStatusError> {
         self.current_status = match std::mem::replace(
             &mut self.current_status,
             DynamicAgentStatus::Initializing(AgentStatus::new()),
@@ -1092,7 +1154,7 @@ impl AgentStatusManager {
             DynamicAgentStatus::Error(s) => DynamicAgentStatus::Stopped(s.set_stopped(reason)),
             DynamicAgentStatus::Paused(s) => DynamicAgentStatus::Stopped(s.set_stopped(reason)),
             DynamicAgentStatus::Stopped(_) => {
-                return Err("Already in Stopped state".to_string());
+                return Err(AgentStatusError::AlreadyInState { state: "stopped" });
             }
         };
         Ok(())

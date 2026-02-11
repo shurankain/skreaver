@@ -228,6 +228,7 @@ pub use skreaver_http::runtime::{
     AgentSpec,
     AgentStatus,
     AgentStatusEnum,
+    AgentStatusError,
     AgentStatusManager,
     AgentType,
     AnalyticsAgentBuilder,
