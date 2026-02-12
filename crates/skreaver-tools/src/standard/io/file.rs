@@ -46,6 +46,7 @@ impl FileConfig {
 }
 
 /// File reading tool
+#[derive(Debug)]
 pub struct FileReadTool;
 
 impl FileReadTool {
@@ -86,6 +87,7 @@ impl Tool for FileReadTool {
 }
 
 /// File writing tool
+#[derive(Debug)]
 pub struct FileWriteTool;
 
 impl FileWriteTool {
@@ -162,6 +164,7 @@ impl Tool for FileWriteTool {
 }
 
 /// Directory listing tool
+#[derive(Debug)]
 pub struct DirectoryListTool;
 
 impl DirectoryListTool {
@@ -236,6 +239,7 @@ impl Tool for DirectoryListTool {
 }
 
 /// Directory creation tool
+#[derive(Debug)]
 pub struct DirectoryCreateTool;
 
 impl DirectoryCreateTool {

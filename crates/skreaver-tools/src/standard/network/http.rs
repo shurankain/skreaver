@@ -171,6 +171,12 @@ pub struct HttpGetTool {
     client: Client,
 }
 
+impl std::fmt::Debug for HttpGetTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpGetTool").finish_non_exhaustive()
+    }
+}
+
 impl HttpGetTool {
     pub fn new() -> Self {
         Self {
@@ -199,6 +205,12 @@ impl Tool for HttpGetTool {
 /// HTTP POST tool for creating resources
 pub struct HttpPostTool {
     client: Client,
+}
+
+impl std::fmt::Debug for HttpPostTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpPostTool").finish_non_exhaustive()
+    }
 }
 
 impl HttpPostTool {
@@ -231,6 +243,12 @@ pub struct HttpPutTool {
     client: Client,
 }
 
+impl std::fmt::Debug for HttpPutTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpPutTool").finish_non_exhaustive()
+    }
+}
+
 impl HttpPutTool {
     pub fn new() -> Self {
         Self {
@@ -259,6 +277,12 @@ impl Tool for HttpPutTool {
 /// HTTP DELETE tool for removing resources
 pub struct HttpDeleteTool {
     client: Client,
+}
+
+impl std::fmt::Debug for HttpDeleteTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpDeleteTool").finish_non_exhaustive()
+    }
 }
 
 impl HttpDeleteTool {

@@ -51,6 +51,7 @@ impl ToolConfig for TextConfig {
 }
 
 /// Text uppercase conversion tool
+#[derive(Debug)]
 pub struct TextUppercaseTool;
 
 impl TextUppercaseTool {
@@ -87,6 +88,7 @@ impl Tool for TextUppercaseTool {
 }
 
 /// Text reverse tool
+#[derive(Debug)]
 pub struct TextReverseTool;
 
 impl TextReverseTool {
@@ -123,6 +125,7 @@ impl Tool for TextReverseTool {
 }
 
 /// Text splitting tool
+#[derive(Debug)]
 pub struct TextSplitTool;
 
 impl TextSplitTool {
@@ -174,6 +177,7 @@ impl Tool for TextSplitTool {
 }
 
 /// Text analysis tool
+#[derive(Debug)]
 pub struct TextAnalyzeTool;
 
 impl TextAnalyzeTool {
@@ -228,6 +232,7 @@ impl Tool for TextAnalyzeTool {
 }
 
 /// Text search tool
+#[derive(Debug)]
 pub struct TextSearchTool;
 
 impl TextSearchTool {

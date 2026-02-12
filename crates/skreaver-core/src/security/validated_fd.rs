@@ -38,32 +38,13 @@
 //! - The validated descriptor can't be swapped out
 //! - No window for attacker to modify filesystem
 
-use super::{errors::SecurityError, policy::FileSystemPolicy};
+use super::{errors::SecurityError, path_to_string_checked, policy::FileSystemPolicy};
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::OpenOptionsExt;
-
-/// Convert path to string with logging for lossy conversions (LOW-3)
-///
-/// This helper logs when UTF-8 conversion is lossy, which can hide encoding
-/// issues in security-critical paths. The log message includes the original
-/// path bytes for debugging.
-fn path_to_string_checked(path: &Path) -> String {
-    let lossy = path.to_string_lossy();
-    // Check if conversion was lossy by comparing Cow variant
-    if matches!(lossy, std::borrow::Cow::Owned(_)) {
-        // Lossy conversion occurred - log for security audit
-        tracing::warn!(
-            path_debug = ?path,
-            path_lossy = %lossy,
-            "Path contains invalid UTF-8 - using lossy conversion in security context"
-        );
-    }
-    lossy.to_string()
-}
 
 /// A file descriptor that has been validated against security policies
 ///

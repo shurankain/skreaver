@@ -46,6 +46,7 @@ impl ToolConfig for DataConfig {
 }
 
 /// JSON parsing and validation tool
+#[derive(Debug)]
 pub struct JsonParseTool;
 
 impl JsonParseTool {
@@ -101,6 +102,7 @@ impl Tool for JsonParseTool {
 }
 
 /// JSON transformation tool for extracting and modifying JSON data
+#[derive(Debug)]
 pub struct JsonTransformTool;
 
 impl JsonTransformTool {
@@ -168,6 +170,7 @@ impl Tool for JsonTransformTool {
 }
 
 /// XML parsing tool
+#[derive(Debug)]
 pub struct XmlParseTool;
 
 impl XmlParseTool {
