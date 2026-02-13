@@ -80,6 +80,13 @@ use crate::traits::UnifiedAgent;
 use crate::types::{AgentInfo, Capability, Protocol};
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/// Size of broadcast channels for discovery events
+const DISCOVERY_EVENT_CHANNEL_SIZE: usize = 100;
+
+// ============================================================================
 // Core Types
 // ============================================================================
 
@@ -568,7 +575,7 @@ impl Default for InMemoryDiscoveryProvider {
 impl InMemoryDiscoveryProvider {
     /// Create a new in-memory provider.
     pub fn new() -> Self {
-        let (event_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(DISCOVERY_EVENT_CHANNEL_SIZE);
         Self {
             registrations: RwLock::new(HashMap::new()),
             event_tx,

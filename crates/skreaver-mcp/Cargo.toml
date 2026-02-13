@@ -31,9 +31,6 @@ thiserror = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
-# Async traits
-async-trait = { workspace = true }
-
 # UUID for task identifiers
 uuid = { workspace = true }
 

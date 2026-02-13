@@ -100,15 +100,15 @@ pub struct TaskQuery {
     #[serde(default)]
     pub offset: usize,
     /// Sort order (true = newest first)
-    #[serde(default = "default_true")]
+    #[serde(default = "TaskQuery::default_newest_first")]
     pub newest_first: bool,
 }
 
-fn default_true() -> bool {
-    true
-}
-
 impl TaskQuery {
+    /// Default value for newest_first field (used by serde).
+    fn default_newest_first() -> bool {
+        true
+    }
     /// Create a new empty query.
     pub fn new() -> Self {
         Self::default()

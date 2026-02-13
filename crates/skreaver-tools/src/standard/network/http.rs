@@ -135,10 +135,8 @@ async fn execute_http_request(
     }
 
     // Add body for methods that support it
-    if method.supports_body() {
-        if let Some(body) = &config.body {
-            request = request.body(body.clone());
-        }
+    if method.supports_body() && config.body.is_some() {
+        request = request.body(config.body.clone().unwrap());
     }
 
     // Set timeout

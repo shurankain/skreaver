@@ -56,6 +56,13 @@ use tokio::sync::{RwLock, broadcast};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info, warn};
 
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// Size of broadcast channels for streaming events
+const BROADCAST_CHANNEL_SIZE: usize = 64;
+
 /// Trait for implementing A2A agent behavior
 ///
 /// Implement this trait to define how your agent handles incoming messages
@@ -180,7 +187,7 @@ impl TaskStore {
         if let Some(tx) = subscribers.get(task_id) {
             tx.subscribe()
         } else {
-            let (tx, rx) = broadcast::channel(64);
+            let (tx, rx) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
             subscribers.insert(task_id.to_string(), tx);
             rx
         }
@@ -192,7 +199,7 @@ impl TaskStore {
 
     async fn create_sender(&self, task_id: &str) -> broadcast::Sender<StreamingEvent> {
         let mut subscribers = self.subscribers.write().await;
-        let (tx, _) = broadcast::channel(64);
+        let (tx, _) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
         subscribers.insert(task_id.to_string(), tx.clone());
         tx
     }
