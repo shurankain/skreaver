@@ -66,6 +66,48 @@ impl Tool for FileReadTool {
         "file_read"
     }
 
+    fn description(&self) -> &str {
+        "Read the contents of a file at the specified path"
+    }
+
+    fn input_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to read"
+                }
+            },
+            "required": ["path"]
+        }))
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file that was read"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Contents of the file"
+                },
+                "size": {
+                    "type": "integer",
+                    "description": "Size of the file content in bytes"
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": "Whether the operation succeeded"
+                }
+            },
+            "required": ["path", "content", "size", "success"]
+        }))
+    }
+
     fn call(&self, input: String) -> ExecutionResult {
         let config = FileConfig::parse(input);
 
@@ -105,6 +147,53 @@ impl Default for FileWriteTool {
 impl Tool for FileWriteTool {
     fn name(&self) -> &str {
         "file_write"
+    }
+
+    fn description(&self) -> &str {
+        "Write content to a file at the specified path"
+    }
+
+    fn input_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to write"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write to the file"
+                },
+                "create_dirs": {
+                    "type": "boolean",
+                    "description": "Whether to create parent directories if they don't exist",
+                    "default": false
+                }
+            },
+            "required": ["path", "content"]
+        }))
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file that was written"
+                },
+                "bytes_written": {
+                    "type": "integer",
+                    "description": "Number of bytes written"
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": "Whether the operation succeeded"
+                }
+            },
+            "required": ["path", "bytes_written", "success"]
+        }))
     }
 
     fn call(&self, input: String) -> ExecutionResult {
@@ -184,6 +273,68 @@ impl Tool for DirectoryListTool {
         "directory_list"
     }
 
+    fn description(&self) -> &str {
+        "List the contents of a directory"
+    }
+
+    fn input_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the directory to list"
+                }
+            },
+            "required": ["path"]
+        }))
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the directory that was listed"
+                },
+                "files": {
+                    "type": "array",
+                    "description": "List of files in the directory",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "size": { "type": "integer" },
+                            "path": { "type": "string" }
+                        }
+                    }
+                },
+                "directories": {
+                    "type": "array",
+                    "description": "List of subdirectories",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "path": { "type": "string" }
+                        }
+                    }
+                },
+                "errors": {
+                    "type": "array",
+                    "description": "Any errors encountered while listing",
+                    "items": { "type": "string" }
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": "Whether the operation succeeded"
+                }
+            },
+            "required": ["path", "files", "directories", "errors", "success"]
+        }))
+    }
+
     fn call(&self, input: String) -> ExecutionResult {
         let config = FileConfig::parse(input);
 
@@ -257,6 +408,53 @@ impl Default for DirectoryCreateTool {
 impl Tool for DirectoryCreateTool {
     fn name(&self) -> &str {
         "directory_create"
+    }
+
+    fn description(&self) -> &str {
+        "Create a new directory at the specified path"
+    }
+
+    fn input_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path where the directory should be created"
+                },
+                "create_dirs": {
+                    "type": "boolean",
+                    "description": "Whether to create parent directories recursively",
+                    "default": false
+                }
+            },
+            "required": ["path"]
+        }))
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the directory that was created"
+                },
+                "created": {
+                    "type": "boolean",
+                    "description": "Whether the directory was created"
+                },
+                "recursive": {
+                    "type": "boolean",
+                    "description": "Whether parent directories were created"
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": "Whether the operation succeeded"
+                }
+            },
+            "required": ["path", "created", "recursive", "success"]
+        }))
     }
 
     fn call(&self, input: String) -> ExecutionResult {

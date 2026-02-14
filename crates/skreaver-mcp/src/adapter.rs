@@ -79,12 +79,15 @@ impl ToolAdapter {
             })
         });
 
+        // Use tool's own output schema if available
+        let output_schema = self.tool.output_schema();
+
         McpToolDefinition {
             name: self.name().to_string(),
             title: None,
             description,
             input_schema,
-            output_schema: None,
+            output_schema,
             annotations: None,
         }
     }

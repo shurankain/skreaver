@@ -753,6 +753,19 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// Returns the JSON Schema for the tool's output.
+    ///
+    /// Override this to provide a specific output schema for the tool.
+    /// The default implementation returns `None`, indicating the output
+    /// schema is not defined.
+    ///
+    /// # Returns
+    ///
+    /// An optional JSON Value containing the output schema
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// Execute the tool with the provided input.
     ///
     /// This method performs the tool's core functionality, processing
@@ -864,6 +877,18 @@ impl<T: Tool> StructuredToolAdapter<T> {
 impl<T: Tool> Tool for StructuredToolAdapter<T> {
     fn name(&self) -> &str {
         self.inner.name()
+    }
+
+    fn description(&self) -> &str {
+        self.inner.description()
+    }
+
+    fn input_schema(&self) -> Option<serde_json::Value> {
+        self.inner.input_schema()
+    }
+
+    fn output_schema(&self) -> Option<serde_json::Value> {
+        self.inner.output_schema()
     }
 
     fn call(&self, input: String) -> ExecutionResult {
