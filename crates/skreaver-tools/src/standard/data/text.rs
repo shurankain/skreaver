@@ -297,3 +297,199 @@ impl Tool for TextSearchTool {
         ExecutionResult::success(result.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use skreaver_core::Tool;
+
+    #[test]
+    fn test_text_uppercase_success() {
+        let tool = TextUppercaseTool::new();
+        let result = tool.call("hello world".to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["result"], "HELLO WORLD");
+        assert_eq!(output["original"], "hello world");
+        assert!(output["success"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_text_uppercase_json_input() {
+        let tool = TextUppercaseTool::new();
+        let input = serde_json::json!({"text": "mixed Case TEXT"}).to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["result"], "MIXED CASE TEXT");
+    }
+
+    #[test]
+    fn test_text_reverse_success() {
+        let tool = TextReverseTool::new();
+        let result = tool.call("hello".to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["result"], "olleh");
+        assert_eq!(output["operation"], "reverse");
+    }
+
+    #[test]
+    fn test_text_reverse_unicode() {
+        let tool = TextReverseTool::new();
+        let result = tool.call("🎉🎊".to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["result"], "🎊🎉");
+    }
+
+    #[test]
+    fn test_text_split_default_delimiter() {
+        let tool = TextSplitTool::new();
+        let input = serde_json::json!({"text": "one two three"}).to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["count"], 3);
+        assert_eq!(output["parts"][0], "one");
+        assert_eq!(output["parts"][2], "three");
+    }
+
+    #[test]
+    fn test_text_split_custom_delimiter() {
+        let tool = TextSplitTool::new();
+        let input = serde_json::json!({
+            "text": "a,b,c,d",
+            "delimiter": ","
+        })
+        .to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["count"], 4);
+        assert_eq!(output["delimiter"], ",");
+    }
+
+    #[test]
+    fn test_text_split_with_limit() {
+        let tool = TextSplitTool::new();
+        let input = serde_json::json!({
+            "text": "a b c d e",
+            "limit": 3
+        })
+        .to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["count"], 3);
+        assert_eq!(output["parts"][2], "c d e");
+    }
+
+    #[test]
+    fn test_text_analyze_basic() {
+        let tool = TextAnalyzeTool::new();
+        let result = tool.call("Hello World".to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["analysis"]["word_count"], 2);
+        assert_eq!(output["analysis"]["character_count"], 11);
+        assert!(!output["analysis"]["is_empty"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_text_analyze_multiline() {
+        let tool = TextAnalyzeTool::new();
+        let input = serde_json::json!({"text": "line1\nline2\nline3"}).to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["analysis"]["line_count"], 3);
+        assert_eq!(output["analysis"]["word_count"], 3);
+    }
+
+    #[test]
+    fn test_text_analyze_empty() {
+        let tool = TextAnalyzeTool::new();
+        let result = tool.call("".to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["analysis"]["is_empty"].as_bool().unwrap());
+        assert_eq!(output["analysis"]["word_count"], 0);
+    }
+
+    #[test]
+    fn test_text_search_case_sensitive() {
+        let tool = TextSearchTool::new();
+        let input = serde_json::json!({
+            "text": "Hello World Hello",
+            "pattern": "Hello",
+            "case_sensitive": true
+        })
+        .to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["match_count"], 2);
+        assert!(output["found"].as_bool().unwrap());
+        assert_eq!(output["matches"][0], 0);
+        assert_eq!(output["matches"][1], 12);
+    }
+
+    #[test]
+    fn test_text_search_case_insensitive() {
+        let tool = TextSearchTool::new();
+        let input = serde_json::json!({
+            "text": "Hello world HELLO",
+            "pattern": "hello",
+            "case_sensitive": false
+        })
+        .to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["match_count"], 2);
+        assert!(output["found"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_text_search_not_found() {
+        let tool = TextSearchTool::new();
+        let input = serde_json::json!({
+            "text": "Hello World",
+            "pattern": "xyz",
+            "case_sensitive": true
+        })
+        .to_string();
+        let result = tool.call(input);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["match_count"], 0);
+        assert!(!output["found"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_text_config_builder() {
+        let config = TextConfig::new("test")
+            .with_delimiter(",")
+            .with_limit(5)
+            .case_insensitive();
+
+        assert_eq!(config.text, "test");
+        assert_eq!(config.delimiter, Some(",".to_string()));
+        assert_eq!(config.limit, Some(5));
+        assert!(!config.case_sensitive);
+    }
+}

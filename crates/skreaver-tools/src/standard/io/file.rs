@@ -485,3 +485,274 @@ impl Tool for DirectoryCreateTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use skreaver_core::Tool;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_file_read_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "Hello, World!").unwrap();
+
+        let tool = FileReadTool::new();
+        let input = serde_json::json!({
+            "path": file_path.to_str().unwrap()
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["content"], "Hello, World!");
+        assert_eq!(output["size"], 13);
+        assert!(output["success"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_file_read_simple_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("simple.txt");
+        fs::write(&file_path, "Simple").unwrap();
+
+        let tool = FileReadTool::new();
+        let result = tool.call(file_path.to_str().unwrap().to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["content"], "Simple");
+    }
+
+    #[test]
+    fn test_file_read_not_found() {
+        let tool = FileReadTool::new();
+        let result = tool.call("/nonexistent/file.txt".to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("Failed to read file"));
+    }
+
+    #[test]
+    fn test_file_read_has_schemas() {
+        let tool = FileReadTool::new();
+        assert!(tool.input_schema().is_some());
+        assert!(tool.output_schema().is_some());
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn test_file_write_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("output.txt");
+
+        let tool = FileWriteTool::new();
+        let input = serde_json::json!({
+            "path": file_path.to_str().unwrap(),
+            "content": "Test content"
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["bytes_written"], 12);
+        assert!(output["success"].as_bool().unwrap());
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "Test content");
+    }
+
+    #[test]
+    fn test_file_write_with_create_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("subdir/nested/file.txt");
+
+        let tool = FileWriteTool::new();
+        let input = serde_json::json!({
+            "path": file_path.to_str().unwrap(),
+            "content": "Nested content",
+            "create_dirs": true
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "Nested content");
+    }
+
+    #[test]
+    fn test_file_write_simple_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("simple.txt");
+
+        let tool = FileWriteTool::new();
+        let input = format!("{}:Simple content", file_path.to_str().unwrap());
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "Simple content");
+    }
+
+    #[test]
+    fn test_file_write_no_content() {
+        let tool = FileWriteTool::new();
+        let input = serde_json::json!({
+            "path": "/tmp/test.txt"
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_failure());
+        assert!(result.output().contains("No content provided"));
+    }
+
+    #[test]
+    fn test_file_write_has_schemas() {
+        let tool = FileWriteTool::new();
+        assert!(tool.input_schema().is_some());
+        assert!(tool.output_schema().is_some());
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn test_directory_list_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path();
+
+        fs::write(dir_path.join("file1.txt"), "content1").unwrap();
+        fs::write(dir_path.join("file2.txt"), "content2").unwrap();
+        fs::create_dir(dir_path.join("subdir")).unwrap();
+
+        let tool = DirectoryListTool::new();
+        let input = serde_json::json!({
+            "path": dir_path.to_str().unwrap()
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["success"].as_bool().unwrap());
+        assert_eq!(output["files"].as_array().unwrap().len(), 2);
+        assert_eq!(output["directories"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_directory_list_simple_input() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("test.txt"), "test").unwrap();
+
+        let tool = DirectoryListTool::new();
+        let result = tool.call(temp_dir.path().to_str().unwrap().to_string());
+
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_directory_list_not_found() {
+        let tool = DirectoryListTool::new();
+        let result = tool.call("/nonexistent/directory".to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("Failed to list directory"));
+    }
+
+    #[test]
+    fn test_directory_list_has_schemas() {
+        let tool = DirectoryListTool::new();
+        assert!(tool.input_schema().is_some());
+        assert!(tool.output_schema().is_some());
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn test_directory_create_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let new_dir = temp_dir.path().join("newdir");
+
+        let tool = DirectoryCreateTool::new();
+        let input = serde_json::json!({
+            "path": new_dir.to_str().unwrap()
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["created"].as_bool().unwrap());
+        assert!(!output["recursive"].as_bool().unwrap());
+        assert!(new_dir.exists());
+    }
+
+    #[test]
+    fn test_directory_create_recursive() {
+        let temp_dir = TempDir::new().unwrap();
+        let nested_dir = temp_dir.path().join("a/b/c");
+
+        let tool = DirectoryCreateTool::new();
+        let input = serde_json::json!({
+            "path": nested_dir.to_str().unwrap(),
+            "create_dirs": true
+        })
+        .to_string();
+
+        let result = tool.call(input);
+        assert!(result.is_success());
+
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["recursive"].as_bool().unwrap());
+        assert!(nested_dir.exists());
+    }
+
+    #[test]
+    fn test_directory_create_simple_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let new_dir = temp_dir.path().join("simpledir");
+
+        let tool = DirectoryCreateTool::new();
+        let result = tool.call(new_dir.to_str().unwrap().to_string());
+
+        assert!(result.is_success());
+        assert!(new_dir.exists());
+    }
+
+    #[test]
+    fn test_directory_create_has_schemas() {
+        let tool = DirectoryCreateTool::new();
+        assert!(tool.input_schema().is_some());
+        assert!(tool.output_schema().is_some());
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn test_file_config_parse() {
+        let config: FileConfig = serde_json::from_str(r#"{"path":"/tmp/test.txt"}"#).unwrap();
+        assert_eq!(config.path, "/tmp/test.txt");
+
+        let config = FileConfig::parse("/simple/path".to_string());
+        assert_eq!(config.path, "/simple/path");
+    }
+
+    #[test]
+    fn test_file_config_builder() {
+        let config = FileConfig::new("/test/path")
+            .with_content("test content")
+            .with_create_dirs(true);
+
+        assert_eq!(config.path, "/test/path");
+        assert_eq!(config.content, Some("test content".to_string()));
+        assert!(config.create_dirs);
+    }
+}
