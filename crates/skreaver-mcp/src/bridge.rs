@@ -242,6 +242,82 @@ impl McpBridge {
             .map(|t| Arc::clone(t) as Arc<dyn Tool>)
     }
 
+    /// Refresh the tool list from the MCP server
+    ///
+    /// This re-queries the MCP server for available tools and updates
+    /// the internal tool cache. Useful when tools may be dynamically
+    /// added or removed on the server side.
+    ///
+    /// # Returns
+    ///
+    /// The number of tools discovered, or an error
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let mut bridge = McpBridge::connect_stdio("npx server").await?;
+    /// println!("Initial tools: {}", bridge.tool_count());
+    ///
+    /// // ... server may add/remove tools ...
+    ///
+    /// let count = bridge.refresh_tools().await?;
+    /// println!("Updated tools: {}", count);
+    /// ```
+    pub async fn refresh_tools(&mut self) -> McpResult<usize> {
+        info!(server = %self.server_name, "Refreshing tool list from MCP server");
+
+        // Get the peer to make requests
+        let peer = self.service.peer();
+
+        // List all available tools
+        let mcp_tools = peer
+            .list_all_tools()
+            .await
+            .map_err(|e| McpError::ClientError(format!("Failed to list tools: {}", e)))?;
+
+        info!(
+            server = %self.server_name,
+            count = mcp_tools.len(),
+            "Tool list refreshed"
+        );
+
+        // Create bridged tools
+        let tools: Vec<Arc<BridgedTool>> = mcp_tools
+            .into_iter()
+            .map(|tool_info| {
+                debug!(
+                    name = %tool_info.name,
+                    description = ?tool_info.description,
+                    "Creating bridged tool"
+                );
+                Arc::new(BridgedTool::new(tool_info, peer.clone()))
+            })
+            .collect();
+
+        let count = tools.len();
+        self.tools = tools;
+
+        Ok(count)
+    }
+
+    /// Get tool names as a vector of strings
+    ///
+    /// Useful for displaying available tools without cloning all tool instances.
+    pub fn tool_names(&self) -> Vec<String> {
+        self.tools.iter().map(|t| t.name.clone()).collect()
+    }
+
+    /// Get tool information including name, description, and schema
+    ///
+    /// Returns a vector of tuples containing (name, description, input_schema)
+    /// for all available tools.
+    pub fn tool_info(&self) -> Vec<(String, String, &Value)> {
+        self.tools
+            .iter()
+            .map(|t| (t.name.clone(), t.description.clone(), t.input_schema()))
+            .collect()
+    }
+
     /// Check if the connection to the MCP server is closed.
     pub fn is_closed(&self) -> bool {
         self.service.is_closed()
@@ -350,6 +426,14 @@ impl BridgedTool {
 impl Tool for BridgedTool {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn input_schema(&self) -> Option<Value> {
+        Some(self.input_schema.clone())
     }
 
     fn call(&self, input: String) -> ExecutionResult {

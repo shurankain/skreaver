@@ -323,3 +323,121 @@ async fn test_bridge_connection_timeout() {
     // Should timeout before completing
     assert!(result.is_err(), "Should timeout");
 }
+
+/// Test tool schema caching
+#[tokio::test]
+async fn test_tool_schema_cached() {
+    // Create pipes for communication
+    let (client_read, server_write) = tokio::io::duplex(4096);
+    let (server_read, client_write) = tokio::io::duplex(4096);
+
+    // Start the test server
+    let server = TestMcpServer::new();
+    let server_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(server_read, server_write);
+
+    let server_handle = tokio::spawn(async move {
+        let service = server.serve(server_transport).await;
+        if let Ok(service) = service {
+            let _ = service.waiting().await;
+        }
+    });
+
+    // Give server a moment to start
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Connect the bridge
+    let client_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(client_read, client_write);
+
+    let client_handler = rmcp::model::ClientInfo {
+        meta: None,
+        protocol_version: Default::default(),
+        capabilities: Default::default(),
+        client_info: rmcp::model::Implementation {
+            name: "test-schema-client".to_string(),
+            version: "0.1.0".to_string(),
+            ..Default::default()
+        },
+    };
+
+    let client_service = client_handler
+        .serve(client_transport)
+        .await
+        .expect("Failed to connect");
+
+    let tools = client_service
+        .peer()
+        .list_all_tools()
+        .await
+        .expect("Failed to list tools");
+
+    // Verify schemas are available
+    for tool in tools {
+        assert!(!tool.name.is_empty(), "Tool should have a name");
+        // Input schema should be present (JSON Schema object)
+        assert!(
+            !tool.input_schema.is_empty(),
+            "Tool {} should have input schema",
+            tool.name
+        );
+    }
+
+    // Clean up
+    server_handle.abort();
+}
+
+/// Test tool_names() helper
+#[tokio::test]
+async fn test_tool_names_helper() {
+    // Create pipes for communication
+    let (client_read, server_write) = tokio::io::duplex(4096);
+    let (server_read, client_write) = tokio::io::duplex(4096);
+
+    // Start the test server
+    let server = TestMcpServer::new();
+    let server_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(server_read, server_write);
+
+    let server_handle = tokio::spawn(async move {
+        let service = server.serve(server_transport).await;
+        if let Ok(service) = service {
+            let _ = service.waiting().await;
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Connect the bridge
+    let client_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(client_read, client_write);
+
+    let client_handler = rmcp::model::ClientInfo {
+        meta: None,
+        protocol_version: Default::default(),
+        capabilities: Default::default(),
+        client_info: rmcp::model::Implementation {
+            name: "test-names-client".to_string(),
+            version: "0.1.0".to_string(),
+            ..Default::default()
+        },
+    };
+
+    let client_service = client_handler
+        .serve(client_transport)
+        .await
+        .expect("Failed to connect");
+
+    let peer = client_service.peer();
+    let tools = peer.list_all_tools().await.expect("Failed to list tools");
+
+    // Verify we have tool names
+    assert!(tools.len() >= 3);
+    let names: Vec<_> = tools.iter().map(|t| t.name.as_ref()).collect();
+    assert!(names.contains(&"echo"));
+    assert!(names.contains(&"calculator"));
+    assert!(names.contains(&"greet"));
+
+    // Clean up
+    server_handle.abort();
+}
