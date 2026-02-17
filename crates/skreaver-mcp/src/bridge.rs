@@ -487,11 +487,9 @@ impl Tool for BridgedTool {
             Ok(call_result) => {
                 if call_result.is_error.unwrap_or(false) {
                     let error_msg = extract_text_from_contents(&call_result.content);
+                    let mcp_error = McpError::ToolExecutionFailed(error_msg);
                     ExecutionResult::Failure {
-                        reason: skreaver_core::FailureReason::Custom {
-                            category: "mcp_tool_error".to_string(),
-                            message: error_msg,
-                        },
+                        reason: mcp_error.to_failure_reason(),
                     }
                 } else {
                     let output = contents_to_json(&call_result.content);
@@ -503,10 +501,9 @@ impl Tool for BridgedTool {
             }
             Err(e) => {
                 error!(tool = %self.name, error = %e, "MCP tool call failed");
+                let mcp_error = McpError::from_rmcp_error(&e);
                 ExecutionResult::Failure {
-                    reason: skreaver_core::FailureReason::NetworkError {
-                        message: format!("MCP call failed: {}", e),
-                    },
+                    reason: mcp_error.to_failure_reason(),
                 }
             }
         }
