@@ -441,3 +441,367 @@ async fn test_tool_names_helper() {
     // Clean up
     server_handle.abort();
 }
+
+/// Test tool execution via duplex pipes
+#[tokio::test]
+async fn test_tool_execution_via_duplex() {
+    use rmcp::model::CallToolRequestParams;
+    use std::borrow::Cow;
+
+    // Create pipes for communication
+    let (client_read, server_write) = tokio::io::duplex(4096);
+    let (server_read, client_write) = tokio::io::duplex(4096);
+
+    // Start the test server
+    let server = TestMcpServer::new();
+    let server_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(server_read, server_write);
+
+    let server_handle = tokio::spawn(async move {
+        let service = server.serve(server_transport).await;
+        if let Ok(service) = service {
+            let _ = service.waiting().await;
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Connect the client
+    let client_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(client_read, client_write);
+
+    let client_handler = rmcp::model::ClientInfo {
+        meta: None,
+        protocol_version: Default::default(),
+        capabilities: Default::default(),
+        client_info: rmcp::model::Implementation {
+            name: "test-execution-client".to_string(),
+            version: "0.1.0".to_string(),
+            ..Default::default()
+        },
+    };
+
+    let client_service = client_handler
+        .serve(client_transport)
+        .await
+        .expect("Failed to connect");
+
+    let peer = client_service.peer();
+
+    // Test echo tool
+    let echo_params = CallToolRequestParams {
+        meta: None,
+        name: Cow::Borrowed("echo"),
+        arguments: Some(serde_json::json!({"message": "Hello, MCP!"}).as_object().unwrap().clone()),
+        task: None,
+    };
+
+    let result = peer.call_tool(echo_params).await.expect("Echo call failed");
+    assert!(!result.is_error.unwrap_or(false), "Echo should succeed");
+
+    // Extract text content
+    let text = result
+        .content
+        .iter()
+        .filter_map(|c| match &c.raw {
+            rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(text.contains("Hello, MCP!"), "Echo should return input");
+
+    // Test calculator tool - addition
+    let calc_params = CallToolRequestParams {
+        meta: None,
+        name: Cow::Borrowed("calculator"),
+        arguments: Some(
+            serde_json::json!({"a": 10.0, "b": 5.0, "operation": "add"})
+                .as_object()
+                .unwrap()
+                .clone(),
+        ),
+        task: None,
+    };
+
+    let result = peer
+        .call_tool(calc_params)
+        .await
+        .expect("Calculator call failed");
+    assert!(
+        !result.is_error.unwrap_or(false),
+        "Calculator should succeed"
+    );
+
+    let text = result
+        .content
+        .iter()
+        .filter_map(|c| match &c.raw {
+            rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    assert_eq!(text, "15", "10 + 5 = 15");
+
+    // Test greet tool (no parameters)
+    let greet_params = CallToolRequestParams {
+        meta: None,
+        name: Cow::Borrowed("greet"),
+        arguments: None,
+        task: None,
+    };
+
+    let result = peer
+        .call_tool(greet_params)
+        .await
+        .expect("Greet call failed");
+    assert!(!result.is_error.unwrap_or(false), "Greet should succeed");
+
+    let text = result
+        .content
+        .iter()
+        .filter_map(|c| match &c.raw {
+            rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(text.contains("Hello"), "Greet should return greeting");
+
+    server_handle.abort();
+}
+
+/// Test calculator tool with different operations
+#[tokio::test]
+async fn test_calculator_operations() {
+    use rmcp::model::CallToolRequestParams;
+    use std::borrow::Cow;
+
+    let (client_read, server_write) = tokio::io::duplex(4096);
+    let (server_read, client_write) = tokio::io::duplex(4096);
+
+    let server = TestMcpServer::new();
+    let server_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(server_read, server_write);
+
+    let server_handle = tokio::spawn(async move {
+        let service = server.serve(server_transport).await;
+        if let Ok(service) = service {
+            let _ = service.waiting().await;
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let client_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(client_read, client_write);
+
+    let client_handler = rmcp::model::ClientInfo {
+        meta: None,
+        protocol_version: Default::default(),
+        capabilities: Default::default(),
+        client_info: rmcp::model::Implementation {
+            name: "test-calc-client".to_string(),
+            version: "0.1.0".to_string(),
+            ..Default::default()
+        },
+    };
+
+    let client_service = client_handler
+        .serve(client_transport)
+        .await
+        .expect("Failed to connect");
+
+    let peer = client_service.peer();
+
+    // Test all operations
+    let test_cases = [
+        (20.0, 5.0, "subtract", "15"),
+        (6.0, 7.0, "multiply", "42"),
+        (100.0, 4.0, "divide", "25"),
+    ];
+
+    for (a, b, op, expected) in test_cases {
+        let params = CallToolRequestParams {
+            meta: None,
+            name: Cow::Borrowed("calculator"),
+            arguments: Some(
+                serde_json::json!({"a": a, "b": b, "operation": op})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+            task: None,
+        };
+
+        let result = peer.call_tool(params).await.expect("Calculator call failed");
+        assert!(!result.is_error.unwrap_or(false));
+
+        let text = result
+            .content
+            .iter()
+            .filter_map(|c| match &c.raw {
+                rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        assert_eq!(text, expected, "{} {} {} should equal {}", a, op, b, expected);
+    }
+
+    server_handle.abort();
+}
+
+/// Test error handling - division by zero
+#[tokio::test]
+async fn test_tool_error_handling() {
+    use rmcp::model::CallToolRequestParams;
+    use std::borrow::Cow;
+
+    let (client_read, server_write) = tokio::io::duplex(4096);
+    let (server_read, client_write) = tokio::io::duplex(4096);
+
+    let server = TestMcpServer::new();
+    let server_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(server_read, server_write);
+
+    let server_handle = tokio::spawn(async move {
+        let service = server.serve(server_transport).await;
+        if let Ok(service) = service {
+            let _ = service.waiting().await;
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let client_transport =
+        rmcp::transport::async_rw::AsyncRwTransport::new(client_read, client_write);
+
+    let client_handler = rmcp::model::ClientInfo {
+        meta: None,
+        protocol_version: Default::default(),
+        capabilities: Default::default(),
+        client_info: rmcp::model::Implementation {
+            name: "test-error-client".to_string(),
+            version: "0.1.0".to_string(),
+            ..Default::default()
+        },
+    };
+
+    let client_service = client_handler
+        .serve(client_transport)
+        .await
+        .expect("Failed to connect");
+
+    let peer = client_service.peer();
+
+    // Test division by zero
+    let params = CallToolRequestParams {
+        meta: None,
+        name: Cow::Borrowed("calculator"),
+        arguments: Some(
+            serde_json::json!({"a": 10.0, "b": 0.0, "operation": "divide"})
+                .as_object()
+                .unwrap()
+                .clone(),
+        ),
+        task: None,
+    };
+
+    let result = peer.call_tool(params).await.expect("Call should complete");
+    assert!(result.is_error.unwrap_or(false), "Division by zero should error");
+
+    let error_text = result
+        .content
+        .iter()
+        .filter_map(|c| match &c.raw {
+            rmcp::model::RawContent::Text(t) => Some(t.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(
+        error_text.contains("Division by zero"),
+        "Error should mention division by zero"
+    );
+
+    // Test unknown operation
+    let params = CallToolRequestParams {
+        meta: None,
+        name: Cow::Borrowed("calculator"),
+        arguments: Some(
+            serde_json::json!({"a": 10.0, "b": 5.0, "operation": "modulo"})
+                .as_object()
+                .unwrap()
+                .clone(),
+        ),
+        task: None,
+    };
+
+    let result = peer.call_tool(params).await.expect("Call should complete");
+    assert!(
+        result.is_error.unwrap_or(false),
+        "Unknown operation should error"
+    );
+
+    server_handle.abort();
+}
+
+/// Test error mapping from McpError to FailureReason
+mod error_mapping {
+    use skreaver_mcp::error::McpError;
+
+    #[test]
+    fn test_tool_execution_error_mapping() {
+        let err = McpError::ToolExecutionFailed("calculation failed".to_string());
+        let reason = err.to_failure_reason();
+
+        match reason {
+            skreaver_core::FailureReason::Custom { category, message } => {
+                assert_eq!(category, "mcp_tool_error");
+                assert!(message.contains("calculation failed"));
+            }
+            _ => panic!("Expected Custom error type"),
+        }
+    }
+
+    #[test]
+    fn test_connection_error_mapping() {
+        let err = McpError::ConnectionError("connection refused".to_string());
+        let reason = err.to_failure_reason();
+
+        match reason {
+            skreaver_core::FailureReason::NetworkError { message } => {
+                assert!(message.contains("connection refused"));
+            }
+            _ => panic!("Expected NetworkError type"),
+        }
+    }
+
+    #[test]
+    fn test_timeout_error_mapping() {
+        let err = McpError::TaskTimeout("operation timed out".to_string());
+        let reason = err.to_failure_reason();
+
+        match reason {
+            skreaver_core::FailureReason::Timeout { operation } => {
+                assert!(operation.contains("timed out"));
+            }
+            _ => panic!("Expected Timeout type"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_params_error_mapping() {
+        let err = McpError::InvalidParameters("missing required field".to_string());
+        let reason = err.to_failure_reason();
+
+        match reason {
+            skreaver_core::FailureReason::InvalidInput { message } => {
+                assert!(message.contains("missing required field"));
+            }
+            _ => panic!("Expected InvalidInput type"),
+        }
+    }
+}
