@@ -249,6 +249,36 @@ fn extract_json_path(value: &JsonValue, path: &str) -> Option<JsonValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use skreaver_core::Tool;
+
+    // ==================== DataConfig Tests ====================
+
+    #[test]
+    fn test_data_config_new() {
+        let config = DataConfig::new(r#"{"key": "value"}"#);
+        assert_eq!(config.input, r#"{"key": "value"}"#);
+        assert!(config.path.is_none());
+        assert!(config.format.is_none());
+    }
+
+    #[test]
+    fn test_data_config_builder() {
+        let config = DataConfig::new(r#"{"user": "alice"}"#)
+            .with_path("user")
+            .with_format("pretty");
+
+        assert_eq!(config.input, r#"{"user": "alice"}"#);
+        assert_eq!(config.path, Some("user".to_string()));
+        assert_eq!(config.format, Some("pretty".to_string()));
+    }
+
+    #[test]
+    fn test_data_config_from_simple() {
+        let config = DataConfig::from_simple("test input".to_string());
+        assert_eq!(config.input, "test input");
+    }
+
+    // ==================== JSON Path Extraction Tests ====================
 
     #[test]
     fn test_json_path_extraction() {
@@ -271,5 +301,298 @@ mod tests {
         );
 
         assert_eq!(extract_json_path(&json, "user.invalid"), None);
+    }
+
+    #[test]
+    fn test_json_path_extraction_nested() {
+        let json = serde_json::json!({
+            "data": {
+                "items": [
+                    {"id": 1, "name": "first"},
+                    {"id": 2, "name": "second"}
+                ]
+            }
+        });
+
+        assert_eq!(
+            extract_json_path(&json, "data.items.1.name"),
+            Some(JsonValue::String("second".to_string()))
+        );
+
+        assert_eq!(
+            extract_json_path(&json, "data.items.0.id"),
+            Some(JsonValue::Number(1.into()))
+        );
+    }
+
+    #[test]
+    fn test_json_path_extraction_empty_path() {
+        let json = serde_json::json!({"key": "value"});
+        // Empty path returns the original value
+        assert_eq!(extract_json_path(&json, ""), Some(json.clone()));
+    }
+
+    // ==================== JsonParseTool Tests ====================
+
+    #[test]
+    fn test_json_parse_tool_name() {
+        let tool = JsonParseTool::new();
+        assert_eq!(tool.name(), "json_parse");
+    }
+
+    #[test]
+    fn test_json_parse_tool_default() {
+        let tool = JsonParseTool::default();
+        assert_eq!(tool.name(), "json_parse");
+    }
+
+    #[test]
+    fn test_json_parse_valid_json() {
+        let tool = JsonParseTool::new();
+        let input = r#"{"name": "Alice", "age": 30}"#;
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+        assert!(output["success"].as_bool().unwrap());
+        assert_eq!(output["parsed"]["name"], "Alice");
+        assert_eq!(output["parsed"]["age"], 30);
+    }
+
+    #[test]
+    fn test_json_parse_invalid_json() {
+        let tool = JsonParseTool::new();
+        let input = "not valid json {";
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success()); // Tool returns success with valid=false
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(!output["valid"].as_bool().unwrap());
+        assert!(!output["success"].as_bool().unwrap());
+        assert!(output["error"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_json_parse_with_pretty_format() {
+        let tool = JsonParseTool::new();
+        let config = serde_json::json!({
+            "input": r#"{"key":"value"}"#,
+            "format": "pretty"
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+        // Pretty format should have newlines/indentation
+        let formatted = output["formatted"].as_str().unwrap();
+        assert!(formatted.contains('\n') || formatted.contains("  "));
+    }
+
+    #[test]
+    fn test_json_parse_array() {
+        let tool = JsonParseTool::new();
+        let input = r#"[1, 2, 3, "four", true]"#;
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+        assert!(output["parsed"].is_array());
+        assert_eq!(output["parsed"][0], 1);
+        assert_eq!(output["parsed"][3], "four");
+    }
+
+    // ==================== JsonTransformTool Tests ====================
+
+    #[test]
+    fn test_json_transform_tool_name() {
+        let tool = JsonTransformTool::new();
+        assert_eq!(tool.name(), "json_transform");
+    }
+
+    #[test]
+    fn test_json_transform_tool_default() {
+        let tool = JsonTransformTool::default();
+        assert_eq!(tool.name(), "json_transform");
+    }
+
+    #[test]
+    fn test_json_transform_extract_path() {
+        let tool = JsonTransformTool::new();
+        let config = serde_json::json!({
+            "input": r#"{"user": {"name": "Bob", "email": "bob@example.com"}}"#,
+            "path": "user.name"
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["success"].as_bool().unwrap());
+        assert_eq!(output["extracted"], "Bob");
+        assert_eq!(output["path"], "user.name");
+    }
+
+    #[test]
+    fn test_json_transform_no_path() {
+        let tool = JsonTransformTool::new();
+        let config = serde_json::json!({
+            "input": r#"{"status": "ok"}"#
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["success"].as_bool().unwrap());
+        // Without path, extracted should equal original
+        assert_eq!(output["extracted"]["status"], "ok");
+    }
+
+    #[test]
+    fn test_json_transform_path_not_found() {
+        let tool = JsonTransformTool::new();
+        let config = serde_json::json!({
+            "input": r#"{"user": {"name": "Alice"}}"#,
+            "path": "user.email"
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("not found"));
+    }
+
+    #[test]
+    fn test_json_transform_invalid_config() {
+        let tool = JsonTransformTool::new();
+        let result = tool.call("not valid json config".to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("Invalid config JSON"));
+    }
+
+    #[test]
+    fn test_json_transform_invalid_input_json() {
+        let tool = JsonTransformTool::new();
+        let config = serde_json::json!({
+            "input": "not valid json"
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("Invalid input JSON"));
+    }
+
+    #[test]
+    fn test_json_transform_with_pretty_format() {
+        let tool = JsonTransformTool::new();
+        let config = serde_json::json!({
+            "input": r#"{"data": {"nested": {"value": 42}}}"#,
+            "path": "data",
+            "format": "pretty"
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["success"].as_bool().unwrap());
+        let formatted = output["formatted"].as_str().unwrap();
+        assert!(formatted.contains('\n') || formatted.contains("  "));
+    }
+
+    // ==================== XmlParseTool Tests ====================
+
+    #[test]
+    fn test_xml_parse_tool_name() {
+        let tool = XmlParseTool::new();
+        assert_eq!(tool.name(), "xml_parse");
+    }
+
+    #[test]
+    fn test_xml_parse_tool_default() {
+        let tool = XmlParseTool::default();
+        assert_eq!(tool.name(), "xml_parse");
+    }
+
+    #[test]
+    fn test_xml_parse_valid_xml() {
+        let tool = XmlParseTool::new();
+        let input = r#"<root><name>Alice</name><age>30</age></root>"#;
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+        assert!(output["success"].as_bool().unwrap());
+        // Parsed XML should be available
+        assert!(output["parsed"].is_object() || output["parsed"].is_string());
+    }
+
+    #[test]
+    fn test_xml_parse_invalid_xml() {
+        let tool = XmlParseTool::new();
+        let input = "<root><unclosed>";
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success()); // Tool returns success with valid=false
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(!output["valid"].as_bool().unwrap());
+        assert!(!output["success"].as_bool().unwrap());
+        assert!(output["error"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_xml_parse_with_attributes() {
+        let tool = XmlParseTool::new();
+        let input = r#"<person id="123" status="active">John</person>"#;
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+        // JSON representation should be present
+        assert!(output["json_representation"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_xml_parse_nested_elements() {
+        let tool = XmlParseTool::new();
+        let input = r#"<order><item><name>Widget</name><qty>5</qty></item></order>"#;
+        let result = tool.call(input.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+        assert!(output["success"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_xml_parse_with_json_config() {
+        let tool = XmlParseTool::new();
+        let config = serde_json::json!({
+            "input": "<data><value>42</value></data>"
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert!(output["valid"].as_bool().unwrap());
+    }
+
+    // ==================== Debug Implementation Tests ====================
+
+    #[test]
+    fn test_tools_debug() {
+        let json_parse = JsonParseTool::new();
+        let debug_str = format!("{:?}", json_parse);
+        assert!(debug_str.contains("JsonParseTool"));
+
+        let json_transform = JsonTransformTool::new();
+        let debug_str = format!("{:?}", json_transform);
+        assert!(debug_str.contains("JsonTransformTool"));
+
+        let xml_parse = XmlParseTool::new();
+        let debug_str = format!("{:?}", xml_parse);
+        assert!(debug_str.contains("XmlParseTool"));
     }
 }
