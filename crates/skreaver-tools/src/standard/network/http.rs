@@ -307,3 +307,376 @@ impl Tool for HttpDeleteTool {
         run_async(|| execute_http_request(&client, HttpMethod::Delete, input))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use skreaver_core::Tool;
+    use wiremock::matchers::{body_string, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // ==================== HttpConfig Tests ====================
+
+    #[test]
+    fn test_http_config_new() {
+        let config = HttpConfig::new("https://example.com/api");
+        assert_eq!(config.url, "https://example.com/api");
+        assert!(config.headers.is_empty());
+        assert_eq!(config.timeout_secs, Some(30));
+        assert!(config.body.is_none());
+    }
+
+    #[test]
+    fn test_http_config_builder() {
+        let config = HttpConfig::new("https://api.example.com")
+            .with_header("Authorization", "Bearer token123")
+            .with_header("Content-Type", "application/json")
+            .with_timeout(60)
+            .with_body(r#"{"key": "value"}"#);
+
+        assert_eq!(config.url, "https://api.example.com");
+        assert_eq!(config.headers.get("Authorization"), Some(&"Bearer token123".to_string()));
+        assert_eq!(config.headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(config.timeout_secs, Some(60));
+        assert_eq!(config.body, Some(r#"{"key": "value"}"#.to_string()));
+    }
+
+    #[test]
+    fn test_http_config_from_simple() {
+        let config = HttpConfig::from_simple("https://example.com".to_string());
+        assert_eq!(config.url, "https://example.com");
+    }
+
+    #[test]
+    fn test_http_config_parse_json() {
+        let json = r#"{"url": "https://api.example.com", "timeout_secs": 10}"#;
+        let config: HttpConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.url, "https://api.example.com");
+        assert_eq!(config.timeout_secs, Some(10));
+    }
+
+    // ==================== HttpMethod Tests ====================
+
+    #[test]
+    fn test_http_method_tool_names() {
+        assert_eq!(HttpMethod::Get.tool_name(), "http_get");
+        assert_eq!(HttpMethod::Post.tool_name(), "http_post");
+        assert_eq!(HttpMethod::Put.tool_name(), "http_put");
+        assert_eq!(HttpMethod::Delete.tool_name(), "http_delete");
+    }
+
+    #[test]
+    fn test_http_method_supports_simple_url() {
+        assert!(HttpMethod::Get.supports_simple_url());
+        assert!(HttpMethod::Delete.supports_simple_url());
+        assert!(!HttpMethod::Post.supports_simple_url());
+        assert!(!HttpMethod::Put.supports_simple_url());
+    }
+
+    #[test]
+    fn test_http_method_supports_body() {
+        assert!(HttpMethod::Post.supports_body());
+        assert!(HttpMethod::Put.supports_body());
+        assert!(!HttpMethod::Get.supports_body());
+        assert!(!HttpMethod::Delete.supports_body());
+    }
+
+    // ==================== Tool Naming Tests ====================
+
+    #[test]
+    fn test_http_get_tool_name() {
+        let tool = HttpGetTool::new();
+        assert_eq!(tool.name(), "http_get");
+    }
+
+    #[test]
+    fn test_http_post_tool_name() {
+        let tool = HttpPostTool::new();
+        assert_eq!(tool.name(), "http_post");
+    }
+
+    #[test]
+    fn test_http_put_tool_name() {
+        let tool = HttpPutTool::new();
+        assert_eq!(tool.name(), "http_put");
+    }
+
+    #[test]
+    fn test_http_delete_tool_name() {
+        let tool = HttpDeleteTool::new();
+        assert_eq!(tool.name(), "http_delete");
+    }
+
+    // ==================== HTTP GET Tests with Mock Server ====================
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_get_success() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/data"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"result": "success"}"#))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpGetTool::new();
+        let url = format!("{}/api/data", mock_server.uri());
+        let result = tool.call(url);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 200);
+        assert!(output["success"].as_bool().unwrap());
+        assert!(output["body"].as_str().unwrap().contains("success"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_get_with_json_config() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/resource"))
+            .and(header("X-Custom-Header", "custom-value"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("OK"))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpGetTool::new();
+        let config = serde_json::json!({
+            "url": format!("{}/api/resource", mock_server.uri()),
+            "headers": {
+                "X-Custom-Header": "custom-value"
+            }
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 200);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_get_404_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/not-found"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpGetTool::new();
+        let url = format!("{}/not-found", mock_server.uri());
+        let result = tool.call(url);
+
+        assert!(result.is_success()); // HTTP call succeeded, even if response is 404
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 404);
+        assert!(!output["success"].as_bool().unwrap());
+    }
+
+    // ==================== HTTP POST Tests with Mock Server ====================
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_post_with_body() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/create"))
+            .and(body_string(r#"{"name": "test"}"#))
+            .respond_with(ResponseTemplate::new(201).set_body_string(r#"{"id": 123}"#))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpPostTool::new();
+        let config = serde_json::json!({
+            "url": format!("{}/api/create", mock_server.uri()),
+            "body": r#"{"name": "test"}"#
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 201);
+        assert!(output["success"].as_bool().unwrap());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_post_with_headers_and_body() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/submit"))
+            .and(header("Content-Type", "application/json"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("Created"))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpPostTool::new();
+        let config = serde_json::json!({
+            "url": format!("{}/api/submit", mock_server.uri()),
+            "headers": {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer test-token"
+            },
+            "body": r#"{"data": "test"}"#
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 200);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_post_invalid_json_config() {
+        let tool = HttpPostTool::new();
+        let result = tool.call("not valid json".to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("Invalid JSON config"));
+    }
+
+    // ==================== HTTP PUT Tests with Mock Server ====================
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_put_update() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/api/resource/1"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"updated": true}"#))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpPutTool::new();
+        let config = serde_json::json!({
+            "url": format!("{}/api/resource/1", mock_server.uri()),
+            "body": r#"{"name": "updated"}"#
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 200);
+        assert!(output["success"].as_bool().unwrap());
+    }
+
+    // ==================== HTTP DELETE Tests with Mock Server ====================
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_delete_success() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/api/resource/42"))
+            .respond_with(ResponseTemplate::new(204).set_body_string(""))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpDeleteTool::new();
+        let url = format!("{}/api/resource/42", mock_server.uri());
+        let result = tool.call(url);
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 204);
+        assert!(output["success"].as_bool().unwrap());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_delete_with_json_config() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/api/item/99"))
+            .and(header("X-Api-Key", "secret"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("Deleted"))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpDeleteTool::new();
+        let config = serde_json::json!({
+            "url": format!("{}/api/item/99", mock_server.uri()),
+            "headers": {
+                "X-Api-Key": "secret"
+            }
+        });
+        let result = tool.call(config.to_string());
+
+        assert!(result.is_success());
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 200);
+    }
+
+    // ==================== Error Handling Tests ====================
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_get_connection_refused() {
+        let tool = HttpGetTool::new();
+        // Use a port that's very unlikely to be listening
+        let result = tool.call("http://127.0.0.1:59999/does-not-exist".to_string());
+
+        assert!(result.is_failure());
+        assert!(result.output().contains("HTTP request failed"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_http_get_server_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/error"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+            .mount(&mock_server)
+            .await;
+
+        let tool = HttpGetTool::new();
+        let url = format!("{}/error", mock_server.uri());
+        let result = tool.call(url);
+
+        assert!(result.is_success()); // Call succeeded, status indicates error
+        let output: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
+        assert_eq!(output["status"], 500);
+        assert!(!output["success"].as_bool().unwrap());
+    }
+
+    // ==================== Default Implementations ====================
+
+    #[test]
+    fn test_http_tools_default() {
+        let get_tool = HttpGetTool::default();
+        assert_eq!(get_tool.name(), "http_get");
+
+        let post_tool = HttpPostTool::default();
+        assert_eq!(post_tool.name(), "http_post");
+
+        let put_tool = HttpPutTool::default();
+        assert_eq!(put_tool.name(), "http_put");
+
+        let delete_tool = HttpDeleteTool::default();
+        assert_eq!(delete_tool.name(), "http_delete");
+    }
+
+    // ==================== Debug Implementations ====================
+
+    #[test]
+    fn test_http_tools_debug() {
+        let get_tool = HttpGetTool::new();
+        let debug_str = format!("{:?}", get_tool);
+        assert!(debug_str.contains("HttpGetTool"));
+
+        let post_tool = HttpPostTool::new();
+        let debug_str = format!("{:?}", post_tool);
+        assert!(debug_str.contains("HttpPostTool"));
+
+        let put_tool = HttpPutTool::new();
+        let debug_str = format!("{:?}", put_tool);
+        assert!(debug_str.contains("HttpPutTool"));
+
+        let delete_tool = HttpDeleteTool::new();
+        let debug_str = format!("{:?}", delete_tool);
+        assert!(debug_str.contains("HttpDeleteTool"));
+    }
+}
