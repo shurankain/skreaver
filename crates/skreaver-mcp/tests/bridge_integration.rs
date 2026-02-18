@@ -492,7 +492,12 @@ async fn test_tool_execution_via_duplex() {
     let echo_params = CallToolRequestParams {
         meta: None,
         name: Cow::Borrowed("echo"),
-        arguments: Some(serde_json::json!({"message": "Hello, MCP!"}).as_object().unwrap().clone()),
+        arguments: Some(
+            serde_json::json!({"message": "Hello, MCP!"})
+                .as_object()
+                .unwrap()
+                .clone(),
+        ),
         task: None,
     };
 
@@ -635,7 +640,10 @@ async fn test_calculator_operations() {
             task: None,
         };
 
-        let result = peer.call_tool(params).await.expect("Calculator call failed");
+        let result = peer
+            .call_tool(params)
+            .await
+            .expect("Calculator call failed");
         assert!(!result.is_error.unwrap_or(false));
 
         let text = result
@@ -647,7 +655,11 @@ async fn test_calculator_operations() {
             })
             .collect::<Vec<_>>()
             .join("");
-        assert_eq!(text, expected, "{} {} {} should equal {}", a, op, b, expected);
+        assert_eq!(
+            text, expected,
+            "{} {} {} should equal {}",
+            a, op, b, expected
+        );
     }
 
     server_handle.abort();
@@ -710,7 +722,10 @@ async fn test_tool_error_handling() {
     };
 
     let result = peer.call_tool(params).await.expect("Call should complete");
-    assert!(result.is_error.unwrap_or(false), "Division by zero should error");
+    assert!(
+        result.is_error.unwrap_or(false),
+        "Division by zero should error"
+    );
 
     let error_text = result
         .content

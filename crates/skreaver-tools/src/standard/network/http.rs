@@ -335,8 +335,14 @@ mod tests {
             .with_body(r#"{"key": "value"}"#);
 
         assert_eq!(config.url, "https://api.example.com");
-        assert_eq!(config.headers.get("Authorization"), Some(&"Bearer token123".to_string()));
-        assert_eq!(config.headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(
+            config.headers.get("Authorization"),
+            Some(&"Bearer token123".to_string())
+        );
+        assert_eq!(
+            config.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
         assert_eq!(config.timeout_secs, Some(60));
         assert_eq!(config.body, Some(r#"{"key": "value"}"#.to_string()));
     }
