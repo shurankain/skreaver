@@ -110,7 +110,7 @@ pub use config::{ConfigError, HttpRuntimeConfigBuilder};
 pub use connection_limits::{ConnectionLimitConfig, ConnectionStats, ConnectionTracker};
 pub use coordinator::Coordinator;
 pub use error::{
-    ErrorResponse, RequestId, RequestIdExtension, RuntimeError, RuntimeResult,
+    ErrorResponse, RequestId, RequestIdExtension, RuntimeError, RuntimeErrorKind, RuntimeResult,
     request_id_middleware,
 };
 pub use http::{HttpAgentRuntime, HttpRuntimeConfig};
