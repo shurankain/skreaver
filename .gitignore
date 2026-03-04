@@ -10,3 +10,4 @@ Cargo.lock
 
 # Internal development documentation (not for public git)
 .dev/
+.claude/

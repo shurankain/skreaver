@@ -191,6 +191,7 @@ members = [
   "crates/skreaver-mcp",
   "crates/skreaver-a2a",
   "crates/skreaver-agent",
+  "crates/skreaver-gateway",
 ]
 resolver = "2"
 
