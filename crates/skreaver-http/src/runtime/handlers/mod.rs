@@ -2,6 +2,7 @@
 //!
 //! This module contains all the HTTP endpoint handlers organized by functionality.
 
+pub mod a2a;
 pub mod agents;
 pub mod auth;
 pub mod health;
@@ -14,3 +15,6 @@ pub use auth::*;
 pub use health::*;
 pub use metrics::*;
 pub use observations::{batch_observe_agent, observe_agent, observe_agent_stream, stream_agent};
+
+// Re-export A2A types
+pub use a2a::{A2aAgentCardConfig, A2aState, a2a_router};

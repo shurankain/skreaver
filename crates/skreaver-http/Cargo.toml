@@ -24,6 +24,7 @@ websocket = ["streaming"]
 skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
 skreaver-tools = { path = "../skreaver-tools", version = "0.5.0" }
 skreaver-observability = { path = "../skreaver-observability", version = "0.5.0", features = ["metrics", "health", "tracing", "openapi"] }
+skreaver-a2a = { path = "../skreaver-a2a", version = "0.5.0" }
 
 # Prometheus for metrics endpoint
 prometheus = { workspace = true }
