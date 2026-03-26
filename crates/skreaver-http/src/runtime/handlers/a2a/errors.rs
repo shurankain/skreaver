@@ -149,6 +149,9 @@ impl From<A2aError> for A2aApiError {
                 Self::new(502, format!("WebSocket error: {}", message))
             }
             A2aError::InternalError { message } => Self::internal_error(message),
+            // Handle any feature-gated variants (e.g., HttpError when client feature is enabled)
+            #[allow(unreachable_patterns)]
+            _ => Self::internal_error(err.to_string()),
         }
     }
 }

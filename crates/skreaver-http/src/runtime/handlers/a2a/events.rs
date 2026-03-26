@@ -170,11 +170,7 @@ impl A2aEventBroadcaster {
     /// Broadcast task status update
     pub async fn broadcast_task_status(&self, task: &Task) {
         let is_final = task.is_terminal();
-        self.broadcast(A2aEvent::task_status(
-            &task.id,
-            task.status.clone(),
-            is_final,
-        ));
+        self.broadcast(A2aEvent::task_status(&task.id, task.status, is_final));
     }
 
     /// Broadcast task message
@@ -214,12 +210,11 @@ fn create_event_stream(
             match rx.recv().await {
                 Ok(event) => {
                     // Apply task filter if specified
-                    if let Some(ref f) = filter {
-                        if let Some(event_task_id) = event.task_id() {
-                            if event_task_id != f {
-                                continue; // Skip this event and try the next one
-                            }
-                        }
+                    if let Some(ref f) = filter
+                        && let Some(event_task_id) = event.task_id()
+                        && event_task_id != f
+                    {
+                        continue; // Skip this event and try the next one
                     }
 
                     let event_type = event.event_type();
