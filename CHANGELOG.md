@@ -17,65 +17,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-03-31
 
+**201 commits** since v0.5.0 - Major protocol infrastructure release
+
 ### Added
-- **Protocol Gateway** (`skreaver-gateway`): Bidirectional MCP <-> A2A translation
-  - Automatic protocol detection from message format (JSON-RPC vs task-based)
-  - Connection registry with lifecycle management (connect, active, idle, disconnect)
-  - Sub-millisecond translation overhead
-  - 14 comprehensive integration tests for protocol compliance
-  - Protocol translation for tool calls, task status, error responses, and streaming events
 
-- **A2A Protocol Implementation** (`skreaver-a2a`): Full Agent-to-Agent protocol support
-  - Agent card discovery and registration
-  - Task coordination (create, status, cancel, complete)
-  - Streaming events via Server-Sent Events (SSE)
-  - HTTP transport with REST endpoints
-  - Message types: TextPart, FilePart, DataPart for rich content
-  - Full A2A v0.3 spec compliance
+**Protocol Gateway** (`skreaver-gateway`) - NEW CRATE
+- Bidirectional MCP <-> A2A translation
+- Automatic protocol detection from message format (JSON-RPC vs task-based)
+- Connection registry with lifecycle management (connect, active, idle, disconnect)
+- Sub-millisecond translation overhead (<1ms)
+- 14 comprehensive integration tests for protocol compliance
+- Protocol translation for tool calls, task status, error responses, and streaming events
 
-- **A2A HTTP Transport** (`skreaver-http`): REST API for A2A protocol
-  - `POST /a2a/tasks/send` - Create and send tasks
-  - `GET /a2a/tasks/{id}` - Get task status
-  - `POST /a2a/tasks/{id}/cancel` - Cancel running tasks
-  - `GET /a2a/tasks/{id}/events` - SSE stream for task events
-  - `GET /.well-known/agent.json` - Agent card discovery
-  - Full error handling with A2A-compliant error codes
+**A2A Protocol Implementation** (`skreaver-a2a`) - NEW CRATE
+- Full Agent-to-Agent protocol v0.3 spec compliance
+- Agent card discovery and registration
+- Task coordination (create, status, cancel, complete)
+- Streaming events via Server-Sent Events (SSE)
+- HTTP transport with REST endpoints
+- Message types: TextPart, FilePart, DataPart for rich content
+- Client SDK for connecting to A2A agents
+- Server SDK for hosting A2A agents
 
-- **MCP Enhancements** (`skreaver-mcp`): Updated to spec 2025-11-25
-  - Tasks and elicitation support
-  - Tool annotations for better documentation
-  - Full server SDK for Claude Desktop integration
-  - Client SDK for consuming external MCP servers
+**A2A HTTP Transport** (`skreaver-http`)
+- `POST /a2a/tasks/send` - Create and send tasks
+- `GET /a2a/tasks/{id}` - Get task status
+- `POST /a2a/tasks/{id}/cancel` - Cancel running tasks
+- `GET /a2a/tasks/{id}/events` - SSE stream for task events
+- `GET /.well-known/agent.json` - Agent card discovery
+- Full error handling with A2A-compliant error codes (JSON-RPC 2.0 style)
+
+**Unified Agent Interface** (`skreaver-agent`) - NEW CRATE
+- Unified interface for MCP and A2A protocols
+- Agent discovery service for finding available agents
+- Persistent task storage for task state management
+- FanOutAgent and ParallelAgent coordination patterns
+
+**MCP Enhancements** (`skreaver-mcp`)
+- Updated to MCP spec 2025-11-25 (rmcp v0.14.0)
+- Tasks and elicitation support
+- Tool annotations for better documentation
+- Full server SDK for Claude Desktop integration
+- Client SDK for consuming external MCP servers
+- MCP tool discovery and schema generation
+
+**Code Quality Improvements**
+- `impl_error_transitions!` macro for consolidated error handling in agent_status.rs
+- `define_validated_limit!` macro for policy limit types
+- `AgentStatusError` enum replacing `Result<(), String>` return types
+- Builder patterns for security policy types
+- Consolidated SecureToolRegistry implementation
+- Consolidated HTTP tools (HttpTool, HttpGetTool, HttpPostTool)
+- ToolConfig implementation for tool configuration management
 
 ### Changed
-- **Project Positioning**: "The Rust protocol backbone for AI agents"
-  - Focus on protocol infrastructure rather than general-purpose framework
-  - Emphasizes MCP + A2A bridge as unique value proposition
-  - Clear differentiation from Python agent frameworks
 
-- **README**: Complete rewrite with new positioning
-  - Protocol Gateway as primary feature
-  - New architecture diagram showing protocol bridge
-  - Updated quick start examples for gateway, MCP, and A2A
-  - Performance table and roadmap
+**Project Positioning**
+- New tagline: "The Rust protocol backbone for AI agents"
+- Focus on protocol infrastructure rather than general-purpose framework
+- Emphasizes MCP + A2A bridge as unique value proposition
+- Clear differentiation from Python agent frameworks
+
+**README** - Complete rewrite
+- Protocol Gateway as primary feature
+- New architecture diagram showing protocol bridge
+- Updated quick start examples for gateway, MCP, and A2A
+- Performance table and roadmap
+
+**Architecture Refactoring**
+- `types.rs` decoupled into smaller focused modules
+- AgentRegistry removed in favor of DiscoveryService
+- JwtManager::refresh delegated to refresh_with_token
+- InputValidator reworked for better validation
+- ContentScanner binary_patterns field optimization
+- Explicit, organized exports replacing ambiguous glob re-exports
+
+### Fixed
+- Duplicate SSE rendering in A2A server
+- `authenticate_basic` return logic
+- Runtime creation unwrap handling
+- Consolidated `path_to_string_checked` function
+- Build errors in protocol integration
+
+### Removed
+- **Dead code cleanup**: 861 LOC removed
+  - `payload_improved.rs` (129 LOC)
+  - `redis_improved.rs` (191 LOC)
+  - `message_improved.rs` (229 LOC)
+  - `types_improved.rs` (312 LOC)
+- AgentRegistry (replaced by DiscoveryService)
+- Various unused code paths identified during refactoring
 
 ### Testing
 - **Test Suite Expansion**: 1,349+ tests (237% of initial 570 target)
   - 14 gateway integration tests
-  - A2A protocol unit tests
+  - A2A protocol unit tests and compliance tests
   - MCP compliance tests
+  - JSON/XML tool tests
+  - HTTP tools integration tests
   - Property-based testing with proptest
-  - Zero test failures
+  - Zero test failures, zero clippy warnings
 
 ### Documentation
 - **Extended Development Plan**: Comprehensive roadmap in `.dev/EXTENDED_DEVELOPMENT_PLAN.md`
 - **Updated CLAUDE.md**: Project guidelines with new architecture details
-- **ROADMAP.md**: Strategic planning through v0.9.0
+- **ROADMAP.md**: Strategic planning v0.6.0 through v0.9.0
 
 ### Performance
 - Protocol translation: <1ms latency
 - Gateway message handling: 10K+ msg/sec capacity
 - Connection registry: O(1) lookup and update
+- Reduced runtime verbosity for better performance
 
 ### Breaking Changes
 **None** - v0.6.0 is fully backward compatible with v0.5.0
@@ -89,6 +141,18 @@ use skreaver_gateway::{ProtocolGateway, Protocol};
 
 let gateway = ProtocolGateway::new();
 let translated = gateway.translate_to(message, Protocol::A2a)?;
+```
+
+To use A2A protocol:
+```rust
+use skreaver_a2a::{A2aClient, AgentCard, Task};
+
+// Discover agent
+let card = A2aClient::discover("http://agent.example.com").await?;
+
+// Send task
+let task = Task::new("Calculate 2+2");
+let result = client.send_task(&card, task).await?;
 ```
 
 ## [0.5.0] - 2025-10-31
