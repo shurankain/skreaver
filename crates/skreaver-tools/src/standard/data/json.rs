@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_json_parse_tool_default() {
-        let tool = JsonParseTool::default();
+        let tool: JsonParseTool = Default::default();
         assert_eq!(tool.name(), "json_parse");
     }
 
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_json_transform_tool_default() {
-        let tool = JsonTransformTool::default();
+        let tool: JsonTransformTool = Default::default();
         assert_eq!(tool.name(), "json_transform");
     }
 
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_xml_parse_tool_default() {
-        let tool = XmlParseTool::default();
+        let tool: XmlParseTool = Default::default();
         assert_eq!(tool.name(), "xml_parse");
     }
 
