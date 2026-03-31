@@ -1,6 +1,6 @@
 [package]
 name = "skreaver-mcp"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "Model Context Protocol (MCP) integration for Skreaver"
 license = "MIT"
@@ -15,8 +15,8 @@ client = ["rmcp/client", "rmcp/transport-child-process"]
 rmcp = { version = "0.14.0", features = ["server", "transport-io"] }
 
 # Skreaver crates
-skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
-skreaver-tools = { path = "../skreaver-tools", version = "0.5.0" }
+skreaver-core = { path = "../skreaver-core", version = "0.6.0" }
+skreaver-tools = { path = "../skreaver-tools", version = "0.6.0" }
 
 # Async runtime
 tokio = { workspace = true }

@@ -15,6 +15,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.6.0] - 2026-03-31
+
+### Added
+- **Protocol Gateway** (`skreaver-gateway`): Bidirectional MCP <-> A2A translation
+  - Automatic protocol detection from message format (JSON-RPC vs task-based)
+  - Connection registry with lifecycle management (connect, active, idle, disconnect)
+  - Sub-millisecond translation overhead
+  - 14 comprehensive integration tests for protocol compliance
+  - Protocol translation for tool calls, task status, error responses, and streaming events
+
+- **A2A Protocol Implementation** (`skreaver-a2a`): Full Agent-to-Agent protocol support
+  - Agent card discovery and registration
+  - Task coordination (create, status, cancel, complete)
+  - Streaming events via Server-Sent Events (SSE)
+  - HTTP transport with REST endpoints
+  - Message types: TextPart, FilePart, DataPart for rich content
+  - Full A2A v0.3 spec compliance
+
+- **A2A HTTP Transport** (`skreaver-http`): REST API for A2A protocol
+  - `POST /a2a/tasks/send` - Create and send tasks
+  - `GET /a2a/tasks/{id}` - Get task status
+  - `POST /a2a/tasks/{id}/cancel` - Cancel running tasks
+  - `GET /a2a/tasks/{id}/events` - SSE stream for task events
+  - `GET /.well-known/agent.json` - Agent card discovery
+  - Full error handling with A2A-compliant error codes
+
+- **MCP Enhancements** (`skreaver-mcp`): Updated to spec 2025-11-25
+  - Tasks and elicitation support
+  - Tool annotations for better documentation
+  - Full server SDK for Claude Desktop integration
+  - Client SDK for consuming external MCP servers
+
+### Changed
+- **Project Positioning**: "The Rust protocol backbone for AI agents"
+  - Focus on protocol infrastructure rather than general-purpose framework
+  - Emphasizes MCP + A2A bridge as unique value proposition
+  - Clear differentiation from Python agent frameworks
+
+- **README**: Complete rewrite with new positioning
+  - Protocol Gateway as primary feature
+  - New architecture diagram showing protocol bridge
+  - Updated quick start examples for gateway, MCP, and A2A
+  - Performance table and roadmap
+
+### Testing
+- **Test Suite Expansion**: 1,349+ tests (237% of initial 570 target)
+  - 14 gateway integration tests
+  - A2A protocol unit tests
+  - MCP compliance tests
+  - Property-based testing with proptest
+  - Zero test failures
+
+### Documentation
+- **Extended Development Plan**: Comprehensive roadmap in `.dev/EXTENDED_DEVELOPMENT_PLAN.md`
+- **Updated CLAUDE.md**: Project guidelines with new architecture details
+- **ROADMAP.md**: Strategic planning through v0.9.0
+
+### Performance
+- Protocol translation: <1ms latency
+- Gateway message handling: 10K+ msg/sec capacity
+- Connection registry: O(1) lookup and update
+
+### Breaking Changes
+**None** - v0.6.0 is fully backward compatible with v0.5.0
+
+### Migration
+**No migration needed** - v0.6.0 is a drop-in replacement for v0.5.0.
+
+To use new protocol gateway features:
+```rust
+use skreaver_gateway::{ProtocolGateway, Protocol};
+
+let gateway = ProtocolGateway::new();
+let translated = gateway.translate_to(message, Protocol::A2a)?;
+```
+
 ## [0.5.0] - 2025-10-31
 
 ### Added

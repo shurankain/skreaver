@@ -1,6 +1,6 @@
 [package]
 name = "skreaver-gateway"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "Protocol gateway for MCP <-> A2A translation in Skreaver"
 license = "MIT"
@@ -10,8 +10,8 @@ default = []
 
 [dependencies]
 # Skreaver protocol crates
-skreaver-mcp = { path = "../skreaver-mcp", version = "0.5.0" }
-skreaver-a2a = { path = "../skreaver-a2a", version = "0.5.0" }
+skreaver-mcp = { path = "../skreaver-mcp", version = "0.6.0" }
+skreaver-a2a = { path = "../skreaver-a2a", version = "0.6.0" }
 
 # Async runtime
 tokio = { workspace = true }

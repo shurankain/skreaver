@@ -115,7 +115,7 @@ async fn test_health_endpoint() {
     assert_eq!(json["status"], "healthy");
     assert_eq!(json["service"], "skreaver-http-runtime");
     assert!(json["timestamp"].is_string());
-    assert_eq!(json["version"], "0.5.0");
+    assert_eq!(json["version"], "0.6.0");
 }
 
 #[tokio::test]

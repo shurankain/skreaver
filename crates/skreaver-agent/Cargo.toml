@@ -1,6 +1,6 @@
 [package]
 name = "skreaver-agent"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "Unified agent interface for MCP and A2A protocols"
 license = "MIT"
@@ -14,9 +14,9 @@ full = ["mcp", "a2a", "discovery-health"]
 
 [dependencies]
 # Skreaver crates
-skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
-skreaver-mcp = { path = "../skreaver-mcp", version = "0.5.0", optional = true }
-skreaver-a2a = { path = "../skreaver-a2a", version = "0.5.0", optional = true }
+skreaver-core = { path = "../skreaver-core", version = "0.6.0" }
+skreaver-mcp = { path = "../skreaver-mcp", version = "0.6.0", optional = true }
+skreaver-a2a = { path = "../skreaver-a2a", version = "0.6.0", optional = true }
 
 # Async runtime
 tokio = { workspace = true }

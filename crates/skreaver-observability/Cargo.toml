@@ -1,6 +1,6 @@
 [package]
 name = "skreaver-observability"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
 license = "MIT"
@@ -24,7 +24,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
-skreaver-core = { path = "../skreaver-core", version = "0.5.0" }
+skreaver-core = { path = "../skreaver-core", version = "0.6.0" }
 
 # Metrics
 prometheus = { workspace = true, optional = true }
