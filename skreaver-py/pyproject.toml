@@ -1,0 +1,60 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "skreaver"
+description = "High-performance MCP and A2A protocol infrastructure for AI agents"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Oleksandr Husiev", email = "ohusiev@icloud.com" }]
+keywords = ["ai", "agents", "mcp", "a2a", "protocol", "rust"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+# Python 3.10+ required for pyo3-stub-gen compatibility
+requires-python = ">=3.10"
+# Version synced from Cargo.toml
+dynamic = ["version"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.21", "mypy>=1.0"]
+
+[project.urls]
+Homepage = "https://skreaver.com"
+Repository = "https://github.com/shurankain/skreaver"
+Documentation = "https://docs.rs/skreaver"
+Changelog = "https://github.com/shurankain/skreaver/blob/main/CHANGELOG.md"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "skreaver._skreaver"
+bindings = "pyo3"
+strip = true
+# Include type stubs in wheel
+include = [
+    { path = "python/**/*.pyi", format = "wheel" },
+    { path = "python/**/py.typed", format = "wheel" },
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

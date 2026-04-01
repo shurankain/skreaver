@@ -180,6 +180,7 @@ codegen-units = 1
 [workspace]
 members = [
   "skreaver-cli",
+  "skreaver-py",
   "crates/skreaver-core",
   "crates/skreaver-memory",
   "crates/skreaver-tools",

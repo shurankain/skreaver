@@ -1,0 +1,54 @@
+[package]
+name = "skreaver-py"
+version = "0.7.0"
+edition = "2021"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Python bindings for Skreaver - High-performance MCP and A2A protocol infrastructure"
+repository = "https://github.com/shurankain/skreaver"
+homepage = "https://skreaver.com"
+keywords = ["python", "pyo3", "mcp", "a2a", "agent"]
+categories = ["api-bindings", "development-tools"]
+
+[lib]
+name = "_skreaver"
+crate-type = ["cdylib"]
+
+[features]
+default = []
+# Memory backends
+redis = ["skreaver-memory/redis"]
+# Full feature set
+full = ["redis"]
+
+[dependencies]
+# PyO3 bindings - version must match pyo3-async-runtimes
+pyo3 = { version = "0.22", features = ["extension-module"] }
+# Note: Async support will be added in step 7 using pyo3-async-runtimes (NOT pyo3-asyncio which is deprecated)
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+pythonize = "0.22"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Skreaver crates
+skreaver-core = { path = "../crates/skreaver-core", version = "0.6.0" }
+skreaver-a2a = { path = "../crates/skreaver-a2a", version = "0.6.0", features = ["client", "server"] }
+skreaver-gateway = { path = "../crates/skreaver-gateway", version = "0.6.0" }
+skreaver-mcp = { path = "../crates/skreaver-mcp", version = "0.6.0", features = ["server"] }
+skreaver-memory = { path = "../crates/skreaver-memory", version = "0.6.0" }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+
+[lints]
+workspace = true
