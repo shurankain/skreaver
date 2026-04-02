@@ -43,7 +43,7 @@ fn _skreaver(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Register A2A submodule
 fn register_a2a_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    let a2a_module = PyModule::new_bound(py, "a2a")?;
+    let a2a_module = PyModule::new(py, "a2a")?;
 
     // Types
     a2a_module.add_class::<a2a::PyTaskStatus>()?;
@@ -67,7 +67,7 @@ fn register_a2a_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
 
 /// Register Gateway submodule
 fn register_gateway_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    let gateway_module = PyModule::new_bound(py, "gateway")?;
+    let gateway_module = PyModule::new(py, "gateway")?;
 
     gateway_module.add_class::<gateway::PyProtocol>()?;
     gateway_module.add_class::<gateway::PyProtocolDetector>()?;
@@ -84,7 +84,7 @@ fn register_gateway_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyRe
 
 /// Register MCP submodule
 fn register_mcp_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    let mcp_module = PyModule::new_bound(py, "mcp")?;
+    let mcp_module = PyModule::new(py, "mcp")?;
 
     // TODO: Add MCP server wrapper in step 12
 
@@ -94,7 +94,7 @@ fn register_mcp_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
 
 /// Register Memory submodule
 fn register_memory_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    let memory_module = PyModule::new_bound(py, "memory")?;
+    let memory_module = PyModule::new(py, "memory")?;
 
     // TODO: Add memory backends in steps 10-11
 
@@ -104,18 +104,15 @@ fn register_memory_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyRes
 
 /// Register custom exceptions
 fn register_exceptions(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    let exceptions_module = PyModule::new_bound(py, "exceptions")?;
+    let exceptions_module = PyModule::new(py, "exceptions")?;
 
-    exceptions_module.add(
-        "SkreavorError",
-        py.get_type_bound::<errors::SkreavorError>(),
-    )?;
-    exceptions_module.add("A2aError", py.get_type_bound::<errors::A2aError>())?;
+    exceptions_module.add("SkreavorError", py.get_type::<errors::SkreavorError>())?;
+    exceptions_module.add("A2aError", py.get_type::<errors::A2aError>())?;
     exceptions_module.add(
         "TaskNotFoundError",
-        py.get_type_bound::<errors::TaskNotFoundError>(),
+        py.get_type::<errors::TaskNotFoundError>(),
     )?;
-    exceptions_module.add("GatewayError", py.get_type_bound::<errors::GatewayError>())?;
+    exceptions_module.add("GatewayError", py.get_type::<errors::GatewayError>())?;
 
     parent.add_submodule(&exceptions_module)?;
     Ok(())

@@ -22,9 +22,9 @@ redis = ["skreaver-memory/redis"]
 full = ["redis"]
 
 [dependencies]
-# PyO3 bindings - version must match pyo3-async-runtimes
-pyo3 = { version = "0.22", features = ["extension-module"] }
-# Note: Async support will be added in step 7 using pyo3-async-runtimes (NOT pyo3-asyncio which is deprecated)
+# PyO3 bindings - upgraded to 0.24+ for RUSTSEC-2025-0020 fix
+pyo3 = { version = "0.24", features = ["extension-module"] }
+# Note: Async support will be added using pyo3-async-runtimes (NOT pyo3-asyncio which is deprecated)
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -32,7 +32,7 @@ tokio = { version = "1", features = ["full"] }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
-pythonize = "0.22"
+pythonize = "0.24"
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }
