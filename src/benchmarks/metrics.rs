@@ -342,6 +342,9 @@ fn get_memory_usage() -> Result<(u64, u64), MetricsError> {
         let mut info = MaybeUninit::<TaskBasicInfo>::zeroed();
         let mut count = TASK_BASIC_INFO_COUNT;
 
+        // SAFETY: task_info is a macOS system call that fills the TaskBasicInfo struct.
+        // We pass a properly aligned, zeroed MaybeUninit buffer of the correct size.
+        // The FFI call will initialize the struct on success (result == 0).
         let result = unsafe {
             task_info(
                 mach_task_self(),
@@ -361,6 +364,8 @@ fn get_memory_usage() -> Result<(u64, u64), MetricsError> {
             use libc::{RUSAGE_SELF, getrusage, rusage};
             // MEDIUM-40: Use MaybeUninit::zeroed() for safer FFI struct initialization
             let mut usage = MaybeUninit::<rusage>::zeroed();
+            // SAFETY: getrusage is a POSIX system call that fills the rusage struct.
+            // We pass a properly aligned, zeroed MaybeUninit buffer.
             let rusage_result = unsafe { getrusage(RUSAGE_SELF, usage.as_mut_ptr()) };
 
             if rusage_result == 0 {
@@ -436,6 +441,8 @@ fn get_cpu_times() -> Result<(u64, u64), MetricsError> {
 
         // MEDIUM-40: Use MaybeUninit::zeroed() for safer FFI struct initialization
         let mut usage = MaybeUninit::<rusage>::zeroed();
+        // SAFETY: getrusage is a POSIX system call that fills the rusage struct.
+        // We pass a properly aligned, zeroed MaybeUninit buffer.
         let result = unsafe { getrusage(RUSAGE_SELF, usage.as_mut_ptr()) };
 
         if result == 0 {

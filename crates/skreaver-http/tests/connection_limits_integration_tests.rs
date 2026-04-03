@@ -70,7 +70,7 @@ async fn test_connection_limits_can_be_disabled() {
 #[tokio::test]
 #[serial]
 async fn test_connection_limits_from_env() {
-    // Set environment variables
+    // SAFETY: Setting env vars for test. Safe because #[serial] prevents concurrent access.
     unsafe {
         std::env::set_var("SKREAVER_CONNECTION_LIMIT_MAX", "500");
         std::env::set_var("SKREAVER_CONNECTION_LIMIT_PER_IP", "10");
@@ -89,7 +89,7 @@ async fn test_connection_limits_from_env() {
     assert_eq!(stats.max_connections, 500);
     assert_eq!(stats.max_connections_per_ip, 10);
 
-    // Clean up
+    // SAFETY: Cleaning up test env vars. Safe in #[serial] test context.
     unsafe {
         std::env::remove_var("SKREAVER_CONNECTION_LIMIT_MAX");
         std::env::remove_var("SKREAVER_CONNECTION_LIMIT_PER_IP");
@@ -100,7 +100,7 @@ async fn test_connection_limits_from_env() {
 #[tokio::test]
 #[serial]
 async fn test_missing_connect_info_behavior_env() {
-    // Test reject behavior
+    // SAFETY: Setting env vars for test. Safe because #[serial] prevents concurrent access.
     unsafe {
         std::env::set_var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR", "reject");
     }
@@ -123,6 +123,7 @@ async fn test_missing_connect_info_behavior_env() {
         _ => panic!("Expected Reject behavior"),
     }
 
+    // SAFETY: Cleaning up test env var. Safe in #[serial] test context.
     unsafe {
         std::env::remove_var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR");
     }
@@ -131,7 +132,7 @@ async fn test_missing_connect_info_behavior_env() {
 #[tokio::test]
 #[serial]
 async fn test_missing_connect_info_behavior_fallback() {
-    // Test fallback behavior with IP
+    // SAFETY: Setting env vars for test. Safe because #[serial] prevents concurrent access.
     unsafe {
         std::env::set_var(
             "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR",
@@ -159,6 +160,7 @@ async fn test_missing_connect_info_behavior_fallback() {
         other => panic!("Expected UseFallback behavior, got: {:?}", other),
     }
 
+    // SAFETY: Cleaning up test env var. Safe in #[serial] test context.
     unsafe {
         std::env::remove_var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR");
     }
@@ -167,7 +169,7 @@ async fn test_missing_connect_info_behavior_fallback() {
 #[tokio::test]
 #[serial]
 async fn test_missing_connect_info_behavior_disable_per_ip() {
-    // Test disable per-IP limits behavior
+    // SAFETY: Setting env vars for test. Safe because #[serial] prevents concurrent access.
     unsafe {
         std::env::set_var(
             "SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR",
@@ -193,6 +195,7 @@ async fn test_missing_connect_info_behavior_disable_per_ip() {
         _ => panic!("Expected DisablePerIpLimits behavior"),
     }
 
+    // SAFETY: Cleaning up test env var. Safe in #[serial] test context.
     unsafe {
         std::env::remove_var("SKREAVER_CONNECTION_LIMIT_MISSING_BEHAVIOR");
     }

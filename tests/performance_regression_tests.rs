@@ -391,7 +391,11 @@ mod ci_integration_tests {
     fn test_ci_environment_simulation() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
 
-        // Simulate CI environment variables
+        // SAFETY: Setting environment variables is inherently unsafe in multi-threaded contexts
+        // because env vars are process-global. This is safe here because:
+        // 1. This is a test function that runs in isolation
+        // 2. We clean up all variables at the end of the test
+        // 3. These are test-specific CI simulation variables
         unsafe {
             env::set_var("CI", "true");
             env::set_var("GITHUB_SHA", "abc123def456");
@@ -425,7 +429,8 @@ mod ci_integration_tests {
             analysis.mean_change_percent, analysis.details
         );
 
-        // Clean up environment
+        // SAFETY: Cleaning up environment variables set earlier in this test.
+        // Safe because we're in single-threaded test context and only removing our own variables.
         unsafe {
             env::remove_var("CI");
             env::remove_var("GITHUB_SHA");

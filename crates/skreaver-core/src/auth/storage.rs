@@ -357,25 +357,26 @@ mod tests {
         aes_gcm::aead::OsRng.fill_bytes(&mut key_bytes);
         let encoded = BASE64.encode(key_bytes);
 
-        // Set environment variable
+        // SAFETY: Setting environment variable in test context. Safe because:
+        // 1. Tests run in isolation, 2. Variable is cleaned up at end of test
         unsafe { std::env::set_var("TEST_ENCRYPTION_KEY", &encoded) };
 
         // Load from environment
         let key = EncryptionKey::from_env("TEST_ENCRYPTION_KEY").unwrap();
         assert_eq!(key.as_bytes(), &key_bytes);
 
-        // Clean up
+        // SAFETY: Cleaning up test environment variable
         unsafe { std::env::remove_var("TEST_ENCRYPTION_KEY") };
     }
 
     #[test]
     fn test_encryption_key_from_env_invalid() {
-        // Test with missing variable
+        // SAFETY: Ensuring variable doesn't exist for test (test isolation)
         unsafe { std::env::remove_var("NONEXISTENT_KEY") };
         let result = EncryptionKey::from_env("NONEXISTENT_KEY");
         assert!(matches!(result, Err(AuthError::InvalidEncryptionKey)));
 
-        // Test with invalid base64
+        // SAFETY: Setting/removing test env vars in isolated test context
         unsafe { std::env::set_var("INVALID_KEY", "not-valid-base64!!!") };
         let result = EncryptionKey::from_env("INVALID_KEY");
         assert!(matches!(result, Err(AuthError::InvalidEncryptionKey)));
@@ -384,6 +385,7 @@ mod tests {
         // Test with wrong length
         use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
         let short_key = BASE64.encode([0u8; 16]); // Only 16 bytes, not 32
+        // SAFETY: Setting/removing test env vars in isolated test context
         unsafe { std::env::set_var("SHORT_KEY", &short_key) };
         let result = EncryptionKey::from_env("SHORT_KEY");
         assert!(matches!(result, Err(AuthError::InvalidEncryptionKey)));

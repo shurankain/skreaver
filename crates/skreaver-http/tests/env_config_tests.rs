@@ -5,6 +5,11 @@ use skreaver_http::runtime::{ConfigError, HttpRuntimeConfigBuilder};
 use std::env;
 
 /// Helper to set environment variable for test
+///
+/// # Safety
+/// Environment variables are process-global. This is safe because:
+/// - Tests using this are marked `#[serial]` to prevent concurrent access
+/// - Variables are cleaned up after each test
 fn set_env(key: &str, value: &str) {
     unsafe {
         env::set_var(key, value);
@@ -12,6 +17,10 @@ fn set_env(key: &str, value: &str) {
 }
 
 /// Helper to clear environment variable after test
+///
+/// # Safety
+/// Environment variables are process-global. This is safe because:
+/// - Tests using this are marked `#[serial]` to prevent concurrent access
 fn clear_env(key: &str) {
     unsafe {
         env::remove_var(key);
@@ -359,6 +368,10 @@ fn test_env_config_comprehensive() {
 }
 
 /// Helper to clear all SKREAVER_* environment variables
+///
+/// # Safety
+/// Environment variables are process-global. This is safe because:
+/// - Tests using this are marked `#[serial]` to prevent concurrent access
 fn clear_all_skreaver_env_vars() {
     let vars_to_clear = vec![
         "SKREAVER_REQUEST_TIMEOUT_SECS",
@@ -384,6 +397,7 @@ fn clear_all_skreaver_env_vars() {
         "SKREAVER_OBSERVABILITY_NAMESPACE",
     ];
 
+    // SAFETY: Clearing test env vars. Safe in #[serial] test context.
     for var in vars_to_clear {
         unsafe {
             env::remove_var(var);

@@ -773,7 +773,11 @@ mod cli_runner_tests {
 
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
 
-        // Set up environment to use temp directory for baselines
+        // SAFETY: Setting environment variables is inherently unsafe in multi-threaded contexts
+        // because env vars are process-global. This is safe here because:
+        // 1. This is a test function that runs in isolation
+        // 2. We clean up the variable at the end of the test
+        // 3. The variable is test-specific and won't affect other tests
         unsafe {
             env::set_var("SKREAVER_BASELINE_DIR", temp_dir.path());
         }
@@ -802,6 +806,8 @@ mod cli_runner_tests {
             // The actual execution might fail due to missing benchmarks, which is expected
         }
 
+        // SAFETY: Cleaning up the environment variable set earlier in this test.
+        // Safe because we're in single-threaded test context and only removing our own variable.
         unsafe {
             env::remove_var("SKREAVER_BASELINE_DIR");
         }
