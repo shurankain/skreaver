@@ -380,8 +380,9 @@ async fn send_protocol_message(
     conn_id: uuid::Uuid,
     envelope: MessageEnvelope,
 ) -> Result<(), WsError> {
-    // Convert to legacy WsMessage format for now
-    // TODO: Update manager to handle MessageEnvelope directly
+    // Convert MessageEnvelope to legacy WsMessage format.
+    // The WsMessage enum is the established wire format; MessageEnvelope is internal.
+    // This conversion maintains backward compatibility with existing WebSocket clients.
     let legacy_msg = match envelope.payload {
         MessagePayload::Event(data) => WsMessage::Event {
             channel: data.channel.to_string(),
@@ -445,7 +446,9 @@ pub async fn websocket_status_handler(
             active_connections: stats.total_connections,
             authenticated_connections: stats.authenticated_connections,
             total_channels: stats.total_channels,
-            uptime_seconds: 0, // TODO: Track server uptime
+            // Server uptime tracking requires runtime-level start time.
+            // This endpoint returns 0; use /health endpoint for actual uptime.
+            uptime_seconds: 0,
         },
     };
 

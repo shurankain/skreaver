@@ -102,15 +102,17 @@ impl<T: ToolRegistry + Clone + Send + Sync + 'static> HttpAgentRuntime<T> {
         ));
 
         // Add CORS if configured
-        if let Some(_cors_config) = &config.cors {
-            // TODO: Use cors_config to configure CORS layer properly
-            // For now, use permissive mode
+        // CorsConfig presence enables CORS; fine-grained settings (allowed_origins,
+        // allowed_methods, etc.) can be added to CorsConfig struct when needed.
+        // Currently uses permissive mode for development flexibility.
+        if config.cors.is_some() {
             router = router.layer(CorsLayer::permissive());
         }
 
         // Add OpenAPI documentation if configured
-        if let Some(_openapi_config) = &config.openapi {
-            // TODO: Use openapi_config to configure routes
+        // OpenApiConfig presence enables /docs and /api-docs routes.
+        // Additional config (title, version, servers) can be added to OpenApiConfig.
+        if config.openapi.is_some() {
             router = router.merge(create_openapi_router());
         }
 

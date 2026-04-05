@@ -365,7 +365,21 @@ impl SystemHealth {
             status,
             components,
             timestamp: chrono::Utc::now(),
-            uptime_seconds: 0, // TODO: Calculate actual uptime
+            // Uptime must be provided by caller who knows the start time.
+            // Use `with_uptime()` to set actual uptime value.
+            uptime_seconds: 0,
+        }
+    }
+
+    /// Create system health with explicit uptime
+    pub fn with_uptime(components: HashMap<String, ComponentHealth>, uptime_seconds: u64) -> Self {
+        let status = Self::calculate_overall_status(&components);
+
+        Self {
+            status,
+            components,
+            timestamp: chrono::Utc::now(),
+            uptime_seconds,
         }
     }
 

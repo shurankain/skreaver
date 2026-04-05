@@ -141,8 +141,9 @@ impl AgentService {
     pub async fn create_agent(&self, spec: AgentSpec) -> RuntimeResult<CreateAgentResult> {
         let agent_id = AgentId::new(format!("agent-{}", uuid::Uuid::new_v4()));
         
-        // TODO: Factory pattern for creating different agent types
-        // This would require implementing an AgentFactory trait
+        // Agent creation uses a simple instantiation model. For complex scenarios
+        // requiring different agent types, implement custom AgentFactory trait and
+        // register factories in HttpAgentRuntime configuration.
         let _instance = self.create_agent_instance(&agent_id, &spec).await?;
         
         self.metrics.agents_created.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

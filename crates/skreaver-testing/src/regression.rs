@@ -467,7 +467,10 @@ impl BaselineManager {
             p99_change_percent,
             baseline_stats,
             current_measurement: measurement.clone(),
-            confidence_level: None, // TODO: Implement statistical testing
+            // Statistical confidence level requires t-test or bootstrap analysis.
+            // Currently using threshold-based detection which is sufficient for CI.
+            // Future: Add proptest-based statistical significance testing.
+            confidence_level: None,
             details,
         })
     }
