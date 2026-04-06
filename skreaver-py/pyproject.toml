@@ -8,43 +8,61 @@ description = "High-performance MCP and A2A protocol infrastructure for AI agent
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Oleksandr Husiev", email = "ohusiev@icloud.com" }]
-keywords = ["ai", "agents", "mcp", "a2a", "protocol", "rust"]
+keywords = ["ai", "agents", "mcp", "a2a", "protocol", "rust", "llm", "langchain"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-# Python 3.10+ required for pyo3-stub-gen compatibility
+# Python 3.10+ required for pyo3-stub-gen and modern typing features
 requires-python = ">=3.10"
 # Version synced from Cargo.toml
 dynamic = ["version"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-asyncio>=0.21", "mypy>=1.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "mypy>=1.0",
+    "ruff>=0.1.0",
+    "maturin>=1.4,<2.0",
+]
+# For LangChain integration examples
+langchain = ["langchain>=0.1.0"]
+# For CrewAI integration examples
+crewai = ["crewai>=0.1.0"]
 
 [project.urls]
 Homepage = "https://skreaver.com"
 Repository = "https://github.com/shurankain/skreaver"
 Documentation = "https://docs.rs/skreaver"
 Changelog = "https://github.com/shurankain/skreaver/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/shurankain/skreaver/issues"
 
 [tool.maturin]
+# Enable extension-module feature for PyO3
 features = ["pyo3/extension-module"]
+# Python source directory for pure Python code
 python-source = "python"
+# Module name matches lib.rs #[pymodule] name
 module-name = "skreaver._skreaver"
+# Binding type
 bindings = "pyo3"
-strip = true
-# Include type stubs in wheel
+# Include type stubs and py.typed marker in wheel
 include = [
     { path = "python/**/*.pyi", format = "wheel" },
     { path = "python/**/py.typed", format = "wheel" },
@@ -53,8 +71,23 @@ include = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
 
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]  # Line length handled by formatter
+
+[tool.ruff.lint.isort]
+known-first-party = ["skreaver"]
