@@ -24,7 +24,8 @@ full = ["redis"]
 [dependencies]
 # PyO3 bindings - upgraded to 0.24+ for RUSTSEC-2025-0020 fix
 pyo3 = { version = "0.24", features = ["extension-module"] }
-# Note: Async support will be added using pyo3-async-runtimes (NOT pyo3-asyncio which is deprecated)
+# Async runtime bridge - replaces deprecated pyo3-asyncio
+pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

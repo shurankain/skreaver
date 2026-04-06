@@ -54,6 +54,9 @@ fn register_a2a_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
     a2a_module.add_class::<a2a::PyAgentCard>()?;
     a2a_module.add_class::<a2a::PyAgentSkill>()?;
 
+    // Client
+    a2a_module.add_class::<a2a::PyA2aClient>()?;
+
     parent.add_submodule(&a2a_module)?;
 
     // Also expose core types at top level for convenience
@@ -61,6 +64,7 @@ fn register_a2a_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
     parent.add_class::<a2a::PyTask>()?;
     parent.add_class::<a2a::PyMessage>()?;
     parent.add_class::<a2a::PyAgentCard>()?;
+    parent.add_class::<a2a::PyA2aClient>()?;
 
     Ok(())
 }
@@ -86,9 +90,18 @@ fn register_gateway_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyRe
 fn register_mcp_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let mcp_module = PyModule::new(py, "mcp")?;
 
-    // TODO: Add MCP server wrapper in step 12
+    // MCP Types
+    mcp_module.add_class::<mcp::PyMcpTaskStatus>()?;
+    mcp_module.add_class::<mcp::PyMcpTask>()?;
+    mcp_module.add_class::<mcp::PyMcpToolAnnotations>()?;
+    mcp_module.add_class::<mcp::PyMcpToolDefinition>()?;
 
     parent.add_submodule(&mcp_module)?;
+
+    // Also expose at top level for convenience
+    parent.add_class::<mcp::PyMcpTaskStatus>()?;
+    parent.add_class::<mcp::PyMcpToolDefinition>()?;
+
     Ok(())
 }
 
