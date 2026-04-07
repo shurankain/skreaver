@@ -109,7 +109,12 @@ fn register_mcp_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
 fn register_memory_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let memory_module = PyModule::new(py, "memory")?;
 
-    // TODO: Add memory backends in steps 10-11
+    // FileMemory - always available
+    memory_module.add_class::<memory::PyFileMemory>()?;
+
+    // RedisMemory - only with redis feature
+    #[cfg(feature = "redis")]
+    memory_module.add_class::<memory::PyRedisMemory>()?;
 
     parent.add_submodule(&memory_module)?;
     Ok(())
@@ -126,6 +131,7 @@ fn register_exceptions(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
         py.get_type::<errors::TaskNotFoundError>(),
     )?;
     exceptions_module.add("GatewayError", py.get_type::<errors::GatewayError>())?;
+    exceptions_module.add("MemoryError", py.get_type::<errors::MemoryError>())?;
 
     parent.add_submodule(&exceptions_module)?;
     Ok(())
