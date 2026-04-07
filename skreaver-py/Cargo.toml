@@ -47,6 +47,7 @@ skreaver-a2a = { path = "../crates/skreaver-a2a", version = "0.6.0", features = 
 skreaver-gateway = { path = "../crates/skreaver-gateway", version = "0.6.0" }
 skreaver-mcp = { path = "../crates/skreaver-mcp", version = "0.6.0", features = ["server"] }
 skreaver-memory = { path = "../crates/skreaver-memory", version = "0.6.0" }
+skreaver-tools = { path = "../crates/skreaver-tools", version = "0.6.0" }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

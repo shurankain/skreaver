@@ -1,10 +1,15 @@
 //! MCP (Model Context Protocol) Python bindings.
 //!
 //! This module provides Python bindings for MCP types:
+//! - McpServer - MCP server with Python tool handlers
 //! - McpTaskStatus - Task lifecycle status
 //! - McpTask - Long-running operation tracking
 //! - McpToolAnnotations - Tool behavior hints
 //! - McpToolDefinition - Tool metadata
+
+mod server;
+
+pub use server::{PyMcpServer, PyMcpToolBuilder};
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;

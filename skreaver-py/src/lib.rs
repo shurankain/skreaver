@@ -90,6 +90,10 @@ fn register_gateway_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyRe
 fn register_mcp_module(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let mcp_module = PyModule::new(py, "mcp")?;
 
+    // MCP Server
+    mcp_module.add_class::<mcp::PyMcpServer>()?;
+    mcp_module.add_class::<mcp::PyMcpToolBuilder>()?;
+
     // MCP Types
     mcp_module.add_class::<mcp::PyMcpTaskStatus>()?;
     mcp_module.add_class::<mcp::PyMcpTask>()?;
@@ -132,6 +136,7 @@ fn register_exceptions(py: Python<'_>, parent: &Bound<'_, PyModule>) -> PyResult
     )?;
     exceptions_module.add("GatewayError", py.get_type::<errors::GatewayError>())?;
     exceptions_module.add("MemoryError", py.get_type::<errors::MemoryError>())?;
+    exceptions_module.add("McpError", py.get_type::<errors::McpError>())?;
 
     parent.add_submodule(&exceptions_module)?;
     Ok(())
