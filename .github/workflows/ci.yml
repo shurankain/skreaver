@@ -204,7 +204,7 @@ jobs:
           fi
 
       - name: Run cargo-deny
-        run: cargo deny check
+        run: cargo deny check --config cargo-deny.toml
 
       - name: Run cargo-audit
         run: cargo audit
