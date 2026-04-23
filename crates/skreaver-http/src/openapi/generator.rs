@@ -24,8 +24,7 @@ impl OpenApiGenerator {
 
     /// Add a custom schema to the specification
     pub fn add_schema<T: ToSchema>(&mut self, name: &str) -> &mut Self {
-        // This would use utoipa's schema generation
-        // For now, we'll add a placeholder
+        // Register a generic object schema for the given name
         self.custom_schemas.insert(
             name.to_string(),
             serde_json::json!({

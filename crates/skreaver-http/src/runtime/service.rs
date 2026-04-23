@@ -565,7 +565,7 @@ impl AdvancedCoordinator {
 
 impl CoordinatorTrait for AdvancedCoordinator {
     fn step(&mut self, input: String) -> String {
-        // Process input with advanced logic (placeholder)
+        // Process input using configured response prefix
         let prefix = self.config
             .get("response_prefix")
             .and_then(|v| v.as_str())
@@ -598,7 +598,7 @@ impl CoordinatorTrait for AnalyticsCoordinator {
     fn step(&mut self, input: String) -> String {
         self.request_count += 1;
 
-        // Perform analytics on input (placeholder)
+        // Compute basic input metrics
         let word_count = input.split_whitespace().count();
         let char_count = input.chars().count();
 

@@ -76,5 +76,3 @@ pub use postgres::{
 };
 #[cfg(feature = "postgres")]
 pub use postgres_memory::PostgresMemory;
-
-// Future backends (placeholders - will be implemented in future versions)

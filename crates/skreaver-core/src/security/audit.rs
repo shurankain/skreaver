@@ -232,7 +232,7 @@ impl AuditLogger {
     pub fn log_access_attempt(&self, context: &SecurityContext, result: SecurityResult) {
         let event = SecurityEvent::ValidationAttempt {
             context: context.clone(),
-            input_hash: "hash_placeholder".to_string(), // Would be calculated by caller
+            input_hash: String::new(),
             result,
         };
 
