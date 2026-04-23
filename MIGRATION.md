@@ -1,7 +1,7 @@
 # Skreaver Migration Guide
 
-> **Current Version**: v0.5.0
-> **Last Updated**: 2025-10-31
+> **Current Version**: v0.6.0
+> **Last Updated**: 2026-04-23
 
 This document provides step-by-step migration instructions for upgrading between Skreaver versions.
 
@@ -1137,4 +1137,4 @@ Use this checklist when migrating:
 ---
 
 **Last Updated**: 2025-10-31
-**Current Version**: v0.5.0
+**Current Version**: v0.6.0

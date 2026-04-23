@@ -1,7 +1,7 @@
 # Skreaver CLI Guide
 
-**Version**: 0.5.0
-**Last Updated**: 2025-10-17
+**Version**: 0.6.0
+**Last Updated**: 2026-04-23
 
 ## Overview
 

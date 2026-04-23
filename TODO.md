@@ -1,8 +1,8 @@
 # Skreaver TODO
 
 > **Updated**: January 2026
-> **Current Version**: v0.5.0
-> **Next Milestone**: v0.6.0
+> **Current Version**: v0.6.0
+> **Next Milestone**: v0.7.0
 
 ---
 

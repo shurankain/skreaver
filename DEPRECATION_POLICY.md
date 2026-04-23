@@ -2,7 +2,7 @@
 
 > **Version**: 1.0
 > **Effective Date**: 2025-10-08
-> **Current Release**: v0.5.0
+> **Current Release**: v0.6.0
 
 ---
 

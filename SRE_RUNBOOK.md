@@ -1,7 +1,7 @@
 # Skreaver SRE Runbook
 
-**Version**: 0.5.0
-**Last Updated**: 2025-10-27
+**Version**: 0.6.0
+**Last Updated**: 2026-04-23
 **Audience**: Site Reliability Engineers, DevOps, On-Call Engineers
 
 ---

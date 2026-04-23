@@ -2,8 +2,8 @@
 
 > **Status**: Protocol Infrastructure Pivot
 > **Updated**: January 2026
-> **Current Version**: v0.5.0
-> **Next Milestone**: v0.6.0 (Protocol Core)
+> **Current Version**: v0.6.0
+> **Next Milestone**: v0.7.0 (Python Bindings)
 
 ---
 

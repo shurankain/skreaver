@@ -1,6 +1,6 @@
 # WebSocket Guide
 
-**Version**: 0.5.0
+**Version**: 0.6.0
 **Status**: ✅ **STABLE**
 **Feature Flag**: `websocket` (enabled by default)
 
