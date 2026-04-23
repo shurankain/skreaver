@@ -8,6 +8,17 @@ Cargo.lock
 *.tmp
 .vibe-ensemble-mcp
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.dylib
+*.dSYM/
+
+# Test artifacts from running examples locally
+*_memory.json
+
 # Internal development documentation (not for public git)
 .dev/
 .claude/
