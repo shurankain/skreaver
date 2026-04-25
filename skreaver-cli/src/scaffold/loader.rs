@@ -15,10 +15,6 @@ pub enum TemplateError {
 
     #[error("Template rendering failed: {0}")]
     RenderingFailed(#[from] handlebars::RenderError),
-
-    #[error("Template not found: {0}")]
-    #[allow(dead_code)]
-    NotFound(String),
 }
 
 /// Template loader with embedded Handlebars templates

@@ -21,7 +21,6 @@ pub struct RedisTransactionalMemory {
 /// Types of operations that can be performed in a Redis transaction
 #[cfg(feature = "redis")]
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 enum TransactionOperation {
     Set { key: String, value: String },
     Del { key: String },

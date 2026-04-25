@@ -90,19 +90,6 @@ impl ToolTemplate {
         ]
     }
 
-    /// Get the template identifier string
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::HttpClient => "http_client",
-            Self::Database => "database",
-            Self::Custom => "custom",
-            Self::FileSystem => "filesystem",
-            Self::ApiClient => "api_client",
-            Self::Workflow => "workflow",
-            Self::Calculator => "calculator",
-        }
-    }
 }
 
 impl fmt::Display for ToolTemplate {
