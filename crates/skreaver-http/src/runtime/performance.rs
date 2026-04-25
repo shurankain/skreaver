@@ -506,13 +506,6 @@ mod tests {
     #[tokio::test]
     async fn test_optimized_registry() {
         let registry = OptimizedAgentRegistry::new();
-        
-        // Mock agent instance creation would go here
-        // let agent_id = AgentId::new("test".to_string());
-        // registry.insert_agent(agent_id.clone(), mock_agent).await;
-        // let retrieved = registry.get_agent(&agent_id).await;
-        // assert!(retrieved.is_some());
-        
         let metrics = registry.get_metrics();
         assert_eq!(metrics.lookups.load(std::sync::atomic::Ordering::Relaxed), 0);
     }

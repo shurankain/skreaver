@@ -493,27 +493,6 @@ pub async fn validation_middleware(
     // 4. Validate against the operation's requestBody schema
     // 5. If validation fails, return 422 Unprocessable Entity
     // 6. If validation succeeds, reconstruct the request and pass to next
-    //
-    // This requires:
-    // - Access to the OpenAPI spec (via state or extension)
-    // - Buffering the request body (which consumes it)
-    // - Re-creating the request with the buffered body
-    //
-    // Example implementation sketch:
-    //
-    // let (parts, body) = req.into_parts();
-    // let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|_| {
-    //     (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read body").into_response()
-    // })?;
-    //
-    // if let Ok(json_value) = serde_json::from_slice::<Value>(&bytes) {
-    //     // Validate json_value against schema
-    //     // If validation fails, return error response
-    // }
-    //
-    // let new_body = axum::body::Body::from(bytes);
-    // let new_req = axum::http::Request::from_parts(parts, new_body);
-
     Ok(next.run(req).await)
 }
 

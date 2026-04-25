@@ -93,9 +93,6 @@ mod redis_connection_state_tests {
         // Create a dummy pool configuration (won't actually connect)
         let _config = Config::from_url("redis://localhost:6379");
 
-        // This would create a pool in real usage
-        // let pool = config.create_pool(Some(deadpool_redis::Runtime::Tokio1)).unwrap();
-
         // The fact that we can call these methods shows the API design works
         let _configured_manager = |pool: Pool| {
             StatefulConnectionManager::new(pool)
@@ -148,23 +145,4 @@ mod redis_connection_state_tests {
         assert_eq!(disconnected.attempt_count(), 0);
     }
 
-    #[cfg(feature = "redis")]
-    #[tokio::test]
-    async fn test_integration_with_redis_memory() {
-        // This test would demonstrate integration with RedisMemory
-        // In a real test environment with Redis running:
-
-        // use skreaver_memory::RedisMemory;
-        // use skreaver_memory::redis::RedisConfigBuilder;
-
-        // let config = RedisConfigBuilder::new()
-        //     .standalone("redis://localhost:6379")
-        //     .build()
-        //     .expect("Config should be valid");
-
-        // let memory = RedisMemory::new(config).await.expect("Should connect");
-
-        // The RedisMemory now has type-safe connection management built-in
-        // through the StatefulConnectionManager
-    }
 }
