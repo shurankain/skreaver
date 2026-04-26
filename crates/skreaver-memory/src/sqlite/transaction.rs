@@ -58,7 +58,7 @@ impl TransactionalMemory for SqliteMemory {
                 if let Err(rollback_err) =
                     conn.execute(&format!("ROLLBACK TO SAVEPOINT {}", savepoint_name), [])
                 {
-                    eprintln!("Warning: Failed to rollback transaction: {}", rollback_err);
+                    tracing::warn!(error = %rollback_err, "Failed to rollback transaction");
                 }
                 // Also release the savepoint after rollback
                 let _ = conn.execute(&format!("RELEASE SAVEPOINT {}", savepoint_name), []);

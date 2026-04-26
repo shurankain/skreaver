@@ -67,7 +67,7 @@ impl SnapshotableMemory for SqliteMemory {
         match self.create_snapshot() {
             Ok(snapshot) => Some(snapshot),
             Err(e) => {
-                eprintln!("Snapshot creation failed: {}", e);
+                tracing::error!(error = %e, "Snapshot creation failed");
                 None // Interface requires Option, but we log the actual error
             }
         }

@@ -116,7 +116,7 @@ impl PostgresPool {
             // Spawn connection task
             tokio::spawn(async move {
                 if let Err(e) = connection.await {
-                    eprintln!("PostgreSQL connection error: {}", e);
+                    tracing::error!(error = %e, "PostgreSQL connection error");
                 }
             });
 
@@ -211,7 +211,7 @@ impl PostgresPool {
         // Spawn connection task
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                eprintln!("PostgreSQL connection error: {}", e);
+                tracing::error!(error = %e, "PostgreSQL connection error");
             }
         });
 
