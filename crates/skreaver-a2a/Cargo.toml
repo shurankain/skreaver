@@ -44,16 +44,16 @@ async-stream = { version = "0.3", optional = true }
 url = "2.5"
 
 # Time handling
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true }
 
 # UUID for identifiers
-uuid = { version = "1.11", features = ["v4", "serde"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sync", "net"] }
 futures = { workspace = true }
-uuid = { version = "1.11", features = ["v4"] }
+uuid = { workspace = true }
 axum = { workspace = true }
 
 [lints]
