@@ -7,24 +7,6 @@ use std::str::FromStr;
 // Re-export unified types from skreaver-core
 pub use skreaver_core::{AgentId, ValidationError};
 
-// Keep deprecated alias for backward compatibility during transition period
-#[deprecated(
-    since = "0.6.0",
-    note = "Use ValidationError instead. See skreaver_core::ValidationError for migration guide."
-)]
-#[allow(deprecated)]
-pub use skreaver_core::IdValidationError;
-
-/// Legacy AgentId type alias for backward compatibility
-///
-/// **DEPRECATED**: Use `skreaver_core::AgentId` directly instead.
-/// This type alias will be removed in version 0.7.0.
-#[deprecated(
-    since = "0.6.0",
-    note = "Use skreaver_core::AgentId instead. This alias will be removed in 0.7.0"
-)]
-pub type LegacyAgentId = AgentId;
-
 /// Topic identifier for pub/sub messaging
 ///
 /// ## Validation

@@ -416,63 +416,6 @@ pub trait TransactionalMemory: MemoryReader + MemoryWriter {
         F: FnOnce(&mut dyn MemoryWriter) -> Result<R, crate::error::TransactionError>;
 }
 
-/// Adapter to provide backwards compatibility with the legacy Memory trait.
-///
-/// This allows any type that implements MemoryReader + MemoryWriter to also
-/// implement the legacy Memory trait, providing a smooth migration path.
-pub struct MemoryCompat<T> {
-    inner: T,
-}
-
-impl<T> MemoryCompat<T>
-where
-    T: MemoryReader + MemoryWriter,
-{
-    /// Create a new compatibility adapter
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-
-    /// Get a reference to the inner memory implementation
-    pub fn inner(&self) -> &T {
-        &self.inner
-    }
-
-    /// Get a mutable reference to the inner memory implementation
-    pub fn inner_mut(&mut self) -> &mut T {
-        &mut self.inner
-    }
-}
-
-impl<T> MemoryReader for MemoryCompat<T>
-where
-    T: MemoryReader,
-{
-    fn load(&self, key: &MemoryKey) -> Result<Option<String>, crate::error::MemoryError> {
-        self.inner.load(key)
-    }
-
-    fn load_many(
-        &self,
-        keys: &[MemoryKey],
-    ) -> Result<Vec<Option<String>>, crate::error::MemoryError> {
-        self.inner.load_many(keys)
-    }
-}
-
-impl<T> MemoryWriter for MemoryCompat<T>
-where
-    T: MemoryWriter,
-{
-    fn store(&mut self, update: MemoryUpdate) -> Result<(), crate::error::MemoryError> {
-        self.inner.store(update)
-    }
-
-    fn store_many(&mut self, updates: Vec<MemoryUpdate>) -> Result<(), crate::error::MemoryError> {
-        self.inner.store_many(updates)
-    }
-}
-
 /// Optional extension for memory types that support snapshot/restore operations.
 ///
 /// This trait provides backup and restore capabilities for memory systems

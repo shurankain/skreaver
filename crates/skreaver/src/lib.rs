@@ -108,14 +108,6 @@ pub use skreaver_core::{Metadata, MetadataBuilder, MetadataError, MetadataKey, M
 
 pub use skreaver_core::{AgentId, PrincipalId, RequestId, SessionId, ToolId, ValidationError};
 
-// Deprecated - will be removed in v0.6.0
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.5.0",
-    note = "Use `validation::ValidationError` instead. This type will be REMOVED in 0.6.0."
-)]
-pub use skreaver_core::IdValidationError;
-
 // ============================================================================
 // Tools - Execution and dispatch
 // ============================================================================

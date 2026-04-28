@@ -118,8 +118,7 @@ pub enum ToolDispatch {
 
 impl ToolDispatch {
     /// Create a dispatch method from a tool name string.
-    #[allow(deprecated)]
-    pub fn from_name(name: &str) -> Result<Self, crate::IdValidationError> {
+    pub fn from_name(name: &str) -> Result<Self, crate::ValidationError> {
         if let Some(standard_tool) = StandardTool::from_name(name) {
             Ok(ToolDispatch::Standard(standard_tool))
         } else {
@@ -172,9 +171,8 @@ impl ToolCall {
     ///
     /// # Returns
     ///
-    /// `Ok(ToolCall)` if the name is valid, `Err(IdValidationError)` otherwise
-    #[allow(deprecated)]
-    pub fn new(name: &str, input: &str) -> Result<Self, crate::IdValidationError> {
+    /// `Ok(ToolCall)` if the name is valid, `Err(ValidationError)` otherwise
+    pub fn new(name: &str, input: &str) -> Result<Self, crate::ValidationError> {
         Ok(Self {
             dispatch: ToolDispatch::from_name(name)?,
             input: input.to_string(),
@@ -228,9 +226,8 @@ impl ToolCall {
     ///
     /// # Returns
     ///
-    /// `Ok(ToolCall)` if the name is valid, `Err(IdValidationError)` otherwise
-    #[allow(deprecated)]
-    pub fn from_owned(name: String, input: String) -> Result<Self, crate::IdValidationError> {
+    /// `Ok(ToolCall)` if the name is valid, `Err(ValidationError)` otherwise
+    pub fn from_owned(name: String, input: String) -> Result<Self, crate::ValidationError> {
         Ok(Self {
             dispatch: ToolDispatch::from_name(&name)?,
             input,
@@ -305,15 +302,13 @@ impl ToolCallBuilder {
 
 /// Errors that can occur when building a ToolCall.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(deprecated)]
 pub enum ToolCallBuildError {
     /// No tool name was provided.
     MissingName,
     /// The provided tool ID is invalid.
-    InvalidName(crate::IdValidationError),
+    InvalidName(crate::ValidationError),
 }
 
-#[allow(deprecated)]
 impl std::fmt::Display for ToolCallBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -323,7 +318,6 @@ impl std::fmt::Display for ToolCallBuildError {
     }
 }
 
-#[allow(deprecated)]
 impl std::error::Error for ToolCallBuildError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {

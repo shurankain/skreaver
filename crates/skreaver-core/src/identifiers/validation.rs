@@ -1,144 +1,8 @@
-//! Identifier validation rules and utilities
+//! Identifier validation rules and utilities.
 //!
-//! This module provides identifier validation that builds on the shared
-//! validation infrastructure in `crate::validation`.
-//!
-//! # Consolidation Status
-//!
-//! This module has been consolidated with `crate::validation` to reduce duplication:
-//! - `IdValidator` now uses `IdentifierRules::IDENTIFIER` internally
-//! - `IdValidationError` is compatible with `ValidationError` via `From` traits
-//! - New code should prefer `IdentifierRules` directly for more flexibility
-//!
-//! # Migration Path
-//!
-//! For new code, prefer using `IdentifierRules` directly:
-//!
-//! ```rust
-//! use skreaver_core::validation::IdentifierRules;
-//!
-//! // Instead of IdValidator::validate(id)
-//! let id = "my-agent";
-//! let validated = IdentifierRules::IDENTIFIER.validate(id)?;
-//! # Ok::<(), skreaver_core::validation::ValidationError>(())
-//! ```
-//!
-//! Existing code using `IdValidator` will continue to work without changes.
+//! Uses the shared `IdentifierRules` infrastructure from `crate::validation`.
 
 use crate::validation::{IdentifierRules, ValidationError};
-
-/// Maximum length for all identifier types
-/// Note: Uses the same value as `crate::sanitization::MAX_IDENTIFIER_LENGTH`
-#[cfg(test)]
-const MAX_ID_LENGTH: usize = crate::sanitization::MAX_IDENTIFIER_LENGTH;
-
-/// Error type for identifier validation failures
-///
-/// # Deprecation Notice
-///
-/// This type is deprecated in favor of [`crate::validation::ValidationError`].
-/// It is maintained for backward compatibility and will be removed in v0.6.0.
-///
-/// ## Migration Guide
-///
-/// ```rust,ignore
-/// // Old code:
-/// use skreaver_core::IdValidationError;
-/// fn validate(id: &str) -> Result<(), IdValidationError> { ... }
-///
-/// // New code:
-/// use skreaver_core::validation::ValidationError;
-/// fn validate(id: &str) -> Result<(), ValidationError> { ... }
-/// ```
-///
-/// All variants are identical between the two types, so migration is straightforward.
-/// Conversion traits are provided for interoperability during the transition period.
-#[deprecated(
-    since = "0.5.0",
-    note = "Use `crate::validation::ValidationError` instead. This type will be REMOVED in 0.6.0. See type documentation for migration guide."
-)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-// LOW-4: Enhanced deprecation notice - will be removed in v0.6.0
-pub enum IdValidationError {
-    /// The identifier string is empty
-    Empty,
-    /// The identifier contains only whitespace
-    WhitespaceOnly,
-    /// The identifier has leading or trailing whitespace
-    LeadingTrailingWhitespace,
-    /// The identifier contains invalid characters
-    InvalidCharacters,
-    /// The identifier exceeds the maximum length
-    TooLong { length: usize, max: usize },
-    /// The identifier contains path traversal sequences
-    PathTraversal,
-}
-
-#[allow(deprecated)]
-impl std::fmt::Display for IdValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Empty => write!(f, "Identifier cannot be empty"),
-            Self::WhitespaceOnly => write!(f, "Identifier cannot be whitespace-only"),
-            Self::LeadingTrailingWhitespace => {
-                write!(f, "Identifier cannot have leading or trailing whitespace")
-            }
-            Self::InvalidCharacters => write!(
-                f,
-                "Identifier can only contain alphanumeric characters, hyphens, underscores, and dots"
-            ),
-            Self::TooLong { length, max } => {
-                write!(f, "Identifier too long ({} chars, max {})", length, max)
-            }
-            Self::PathTraversal => {
-                write!(
-                    f,
-                    "Identifier cannot contain path traversal sequences (../)"
-                )
-            }
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl std::error::Error for IdValidationError {}
-
-/// Convert ValidationError to IdValidationError for backward compatibility
-#[allow(deprecated)]
-impl From<ValidationError> for IdValidationError {
-    fn from(err: ValidationError) -> Self {
-        match err {
-            ValidationError::Empty => IdValidationError::Empty,
-            ValidationError::WhitespaceOnly => IdValidationError::WhitespaceOnly,
-            ValidationError::LeadingTrailingWhitespace => {
-                IdValidationError::LeadingTrailingWhitespace
-            }
-            ValidationError::TooLong { length, max } => IdValidationError::TooLong { length, max },
-            ValidationError::InvalidChar { .. } => IdValidationError::InvalidCharacters,
-            ValidationError::PathTraversal => IdValidationError::PathTraversal,
-        }
-    }
-}
-
-/// Convert IdValidationError to ValidationError
-#[allow(deprecated)]
-impl From<IdValidationError> for ValidationError {
-    fn from(err: IdValidationError) -> Self {
-        match err {
-            IdValidationError::Empty => ValidationError::Empty,
-            IdValidationError::WhitespaceOnly => ValidationError::WhitespaceOnly,
-            IdValidationError::LeadingTrailingWhitespace => {
-                ValidationError::LeadingTrailingWhitespace
-            }
-            IdValidationError::TooLong { length, max } => ValidationError::TooLong { length, max },
-            IdValidationError::InvalidCharacters => ValidationError::InvalidChar {
-                char: ' ',
-                input: String::new(),
-            },
-            IdValidationError::PathTraversal => ValidationError::PathTraversal,
-        }
-    }
-}
 
 /// Validator for identifier strings
 ///
@@ -185,43 +49,6 @@ impl IdValidator {
         IdentifierRules::IDENTIFIER.validate(id).map(|_| id) // Return original &str instead of String
     }
 
-    /// Validate an identifier (deprecated version returning IdValidationError)
-    ///
-    /// # Deprecation Notice
-    ///
-    /// Use [`validate`](Self::validate) instead, which returns `ValidationError`.
-    #[deprecated(
-        since = "0.5.0",
-        note = "Use `validate` which returns `ValidationError` instead"
-    )]
-    #[allow(deprecated)]
-    pub fn validate_legacy(id: &str) -> Result<&str, IdValidationError> {
-        Self::validate(id).map_err(|e| e.into())
-    }
-
-    /// Check if a character is valid in an identifier
-    pub fn is_valid_char(c: char) -> bool {
-        c.is_alphanumeric() || c == '-' || c == '_' || c == '.'
-    }
-
-    /// Sanitize a string to make it a valid identifier
-    ///
-    /// This replaces invalid characters with underscores and truncates to max length.
-    /// Useful for generating identifiers from user input.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use skreaver_core::identifiers::IdValidator;
-    ///
-    /// assert_eq!(IdValidator::sanitize("Hello World!"), "Hello_World_");
-    /// assert_eq!(IdValidator::sanitize("agent/path"), "agent_path");
-    /// assert_eq!(IdValidator::sanitize("  spaces  "), "spaces");
-    /// ```
-    pub fn sanitize(input: &str) -> String {
-        use crate::sanitization::SanitizeIdentifier;
-        input.sanitize_identifier()
-    }
 }
 
 #[cfg(test)]
@@ -308,7 +135,7 @@ mod tests {
         match IdValidator::validate(&long_id) {
             Err(ValidationError::TooLong { length, max }) => {
                 assert_eq!(length, 129);
-                assert_eq!(max, MAX_ID_LENGTH);
+                assert_eq!(max, 128);
             }
             _ => panic!("Expected TooLong error"),
         }
@@ -320,59 +147,4 @@ mod tests {
         assert!(IdValidator::validate(&max_id).is_ok());
     }
 
-    #[test]
-    fn test_sanitize() {
-        assert_eq!(IdValidator::sanitize("Hello World!"), "Hello_World_");
-        assert_eq!(IdValidator::sanitize("agent/path"), "agent_path");
-        assert_eq!(IdValidator::sanitize("  spaces  "), "spaces");
-        assert_eq!(IdValidator::sanitize("valid-id_123"), "valid-id_123");
-    }
-
-    #[test]
-    fn test_sanitize_empty() {
-        assert_eq!(IdValidator::sanitize(""), "unnamed");
-        assert_eq!(IdValidator::sanitize("   "), "unnamed");
-    }
-
-    #[test]
-    fn test_sanitize_truncates() {
-        let long_input = "a".repeat(200);
-        let sanitized = IdValidator::sanitize(&long_input);
-        assert_eq!(sanitized.len(), MAX_ID_LENGTH);
-    }
-
-    #[test]
-    fn test_is_valid_char() {
-        assert!(IdValidator::is_valid_char('a'));
-        assert!(IdValidator::is_valid_char('Z'));
-        assert!(IdValidator::is_valid_char('0'));
-        assert!(IdValidator::is_valid_char('-'));
-        assert!(IdValidator::is_valid_char('_'));
-        assert!(IdValidator::is_valid_char('.'));
-
-        assert!(!IdValidator::is_valid_char('/'));
-        assert!(!IdValidator::is_valid_char(' '));
-        assert!(!IdValidator::is_valid_char('@'));
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_error_display() {
-        assert_eq!(
-            IdValidationError::Empty.to_string(),
-            "Identifier cannot be empty"
-        );
-        assert_eq!(
-            IdValidationError::PathTraversal.to_string(),
-            "Identifier cannot contain path traversal sequences (../)"
-        );
-        assert_eq!(
-            IdValidationError::TooLong {
-                length: 150,
-                max: 128
-            }
-            .to_string(),
-            "Identifier too long (150 chars, max 128)"
-        );
-    }
 }

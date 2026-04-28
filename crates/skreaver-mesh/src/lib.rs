@@ -70,9 +70,6 @@ pub use patterns::{
     RequestReplyConfig, Supervisor, SupervisorConfig, TaskStatus, WorkerPool,
 };
 pub use types::{AgentId, Topic, ValidationError};
-// Deprecated - use ValidationError instead
-#[allow(deprecated)]
-pub use types::IdValidationError;
 
 #[cfg(feature = "redis")]
 pub use redis::RedisMesh;

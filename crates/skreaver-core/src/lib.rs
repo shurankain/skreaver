@@ -54,15 +54,6 @@ pub use identifiers::{AgentId, PrincipalId, RequestId, SessionId, ToolId};
 // Re-export validation types
 pub use validation::ValidationError;
 
-// LOW-4: Deprecated type - will be REMOVED in v0.6.0
-// Use `validation::ValidationError` instead
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.5.0",
-    note = "Use `validation::ValidationError` instead. This type will be REMOVED in 0.6.0."
-)]
-pub use identifiers::IdValidationError;
-
 // Re-export auth types
 pub use auth::{
     AuthContext, AuthError, AuthManager, AuthMethod, AuthResult, Principal,
