@@ -207,7 +207,9 @@ jobs:
         run: cargo deny check --config cargo-deny.toml
 
       - name: Run cargo-audit
-        run: cargo audit
+        run: |
+          rm -rf ~/.cargo/advisory-db
+          cargo audit
 
   # Matrix testing job - test different feature combinations in parallel
   test:
