@@ -35,7 +35,10 @@ impl Default for StreamMode {
     }
 }
 
-/// Request body for creating a new agent
+/// Simplified agent creation request for OpenAPI documentation.
+///
+/// Handlers use the richer `crate::runtime::api_types::CreateAgentRequest`
+/// which wraps an `AgentSpec`. This struct exists for schema generation only.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAgentRequest {
     /// Type of agent to create

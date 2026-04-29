@@ -58,7 +58,11 @@ pub struct AgentsListResponse {
     pub total: usize,
 }
 
-/// Error response format
+/// Error response format for handler return types and OpenAPI documentation.
+///
+/// This is the lightweight version used in handler signatures.
+/// See also `crate::runtime::error::ErrorResponse` for the full version
+/// with request tracking fields.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
     /// Error code identifier

@@ -197,7 +197,7 @@ impl UnifiedMessage {
 
 /// Status of a task/operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum TaskStatus {
     /// Task is waiting to be processed
     Pending,
