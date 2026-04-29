@@ -478,34 +478,6 @@ impl HttpRuntimeConfigBuilder {
         self
     }
 
-    /// Enable or disable CORS (backward compatibility)
-    #[must_use]
-    #[deprecated(
-        since = "0.5.1",
-        note = "Use `cors()` method with Option pattern instead"
-    )]
-    pub fn enable_cors(self, enable: bool) -> Self {
-        self.cors(if enable {
-            Some(crate::runtime::http::CorsConfig::default())
-        } else {
-            None
-        })
-    }
-
-    /// Enable or disable OpenAPI documentation (backward compatibility)
-    #[must_use]
-    #[deprecated(
-        since = "0.5.1",
-        note = "Use `openapi()` method with Option pattern instead"
-    )]
-    pub fn enable_openapi(self, enable: bool) -> Self {
-        self.openapi(if enable {
-            Some(crate::runtime::http::OpenApiConfig::default())
-        } else {
-            None
-        })
-    }
-
     /// Set observability configuration
     #[must_use]
     pub fn observability(mut self, observability: ObservabilityConfig) -> Self {
@@ -756,16 +728,4 @@ mod tests {
         assert!(config.openapi.is_none());
     }
 
-    #[test]
-    fn test_builder_deprecated_methods() {
-        #[allow(deprecated)]
-        let config = HttpRuntimeConfigBuilder::new()
-            .enable_cors(false)
-            .enable_openapi(false)
-            .build()
-            .unwrap();
-
-        assert!(config.cors.is_none());
-        assert!(config.openapi.is_none());
-    }
 }

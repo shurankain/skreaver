@@ -192,16 +192,6 @@ impl<S> Key<S> {
         self.key.expose_as_str()
     }
 
-    /// Get the key value (deprecated - use expose_key)
-    ///
-    /// # Deprecated
-    ///
-    /// Use [`expose_key()`](Key::expose_key) instead for explicit secret access.
-    #[deprecated(since = "0.6.0", note = "Use expose_key() for explicit secret access")]
-    pub fn key(&self) -> &str {
-        self.expose_key()
-    }
-
     /// Get the key ID
     pub fn id(&self) -> &str {
         &self.id

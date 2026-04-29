@@ -259,20 +259,6 @@ impl WebSocketConfigBuilder {
         self
     }
 
-    /// Enable or disable compression (backward compatibility)
-    #[deprecated(
-        since = "0.5.1",
-        note = "Use `compression()` method with CompressionMode enum instead"
-    )]
-    pub fn enable_compression(mut self, enable: bool) -> Self {
-        self.compression = if enable {
-            CompressionMode::Default
-        } else {
-            CompressionMode::Disabled
-        };
-        self
-    }
-
     /// Set buffer size for incoming messages (must be between 10 and 10,000)
     pub fn buffer_size(mut self, size: usize) -> Result<Self, WebSocketConfigError> {
         if size < 10 {

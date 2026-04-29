@@ -519,14 +519,6 @@ impl SecurityHeadersPolicy {
 
 /// Legacy type alias for backward compatibility.
 ///
-/// This type has been deprecated in favor of `SecurityHeadersPolicy`.
-/// The new enum-based approach prevents security misconfigurations.
-#[deprecated(
-    since = "0.5.1",
-    note = "Use SecurityHeadersPolicy instead. SecurityHeadersConfig's boolean flags can lead to misconfiguration."
-)]
-pub type SecurityHeadersConfig = SecurityHeadersPolicy;
-
 impl Default for SecurityConfig {
     /// Create a default SecurityConfig
     ///
