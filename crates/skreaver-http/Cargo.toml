@@ -11,13 +11,10 @@ keywords = ["agent", "http", "runtime", "ai", "rust"]
 categories = ["web-programming", "development-tools"]
 
 [features]
-default = ["auth", "openapi", "compression", "streaming", "websocket"]
-auth = []
+default = ["openapi", "websocket"]
 openapi = []
 openapi-ui = ["openapi"]
-compression = []
-streaming = []
-websocket = ["streaming"]
+websocket = []
 
 [dependencies]
 # Core dependencies

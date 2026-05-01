@@ -12,14 +12,12 @@ categories = ["development-tools", "ai"]
 
 [features]
 default = []  # Core functionality only by default
-auth = ["skreaver-http/auth"]
 openapi = ["skreaver-http/openapi"]
 openapi-ui = ["openapi", "skreaver-http/openapi-ui"]  # Dev builds only
 sqlite = ["skreaver-memory/sqlite"]
 postgres = ["skreaver-memory/postgres"]
 redis = ["skreaver-memory/redis"]
-streaming = ["skreaver-http/streaming"]
-websocket = ["streaming", "skreaver-http/websocket"]
+websocket = ["skreaver-http/websocket"]
 testing = ["skreaver-testing"]
 # Observability features
 metrics = ["dep:skreaver-observability", "skreaver-observability/metrics"]

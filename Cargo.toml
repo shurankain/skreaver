@@ -126,7 +126,6 @@ skreaver-core = { path = "crates/skreaver-core" }
 skreaver-memory = { path = "crates/skreaver-memory" }
 skreaver-tools = { path = "crates/skreaver-tools" }
 skreaver-http = { path = "crates/skreaver-http" }
-skreaver-mesh = { path = "crates/skreaver-mesh", features = ["redis"] }
 # Meta crate for examples
 skreaver = { path = "crates/skreaver", features = ["testing"] }
 # A2A and Agent crates for protocol examples
