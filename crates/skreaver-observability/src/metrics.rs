@@ -4,7 +4,7 @@
 //! strict cardinality controls and production-ready Prometheus integration.
 
 use crate::LATENCY_BUCKETS;
-use crate::tags::{CardinalTags, ErrorKind, MemoryOp, ToolName};
+use crate::tags::{CardinalTags, ErrorKind, MemoryOp, ToolId};
 use prometheus::{
     CounterVec, Gauge, HistogramOpts, HistogramVec, Opts, Registry, register_counter_vec,
     register_gauge, register_histogram_vec,
@@ -292,7 +292,7 @@ impl MetricsRegistry {
     /// Record tool execution
     pub fn record_tool_execution(
         &self,
-        tool_name: &ToolName,
+        tool_name: &ToolId,
         duration: std::time::Duration,
     ) -> Result<(), MetricsError> {
         // Enforce cardinality limit for tools (≤20)
@@ -501,7 +501,7 @@ impl MetricsRegistry {
 /// Cardinality tracking to prevent metrics explosion
 #[derive(Debug)]
 struct CardinalityTracker {
-    tool_names: std::collections::HashSet<ToolName>,
+    tool_names: std::collections::HashSet<ToolId>,
     http_routes: std::collections::HashSet<String>,
 }
 
@@ -536,7 +536,7 @@ impl MetricsCollector {
     }
 
     /// Start timing a tool execution
-    pub fn start_tool_timer(&self, tool_name: ToolName) -> ToolExecutionTimer {
+    pub fn start_tool_timer(&self, tool_name: ToolId) -> ToolExecutionTimer {
         ToolExecutionTimer::new(tool_name, self.registry.clone())
     }
 
@@ -558,13 +558,13 @@ impl MetricsCollector {
 
 /// Timer for tool execution measurements
 pub struct ToolExecutionTimer {
-    tool_name: ToolName,
+    tool_name: ToolId,
     start_time: Instant,
     registry: Arc<MetricsRegistry>,
 }
 
 impl ToolExecutionTimer {
-    fn new(tool_name: ToolName, registry: Arc<MetricsRegistry>) -> Self {
+    fn new(tool_name: ToolId, registry: Arc<MetricsRegistry>) -> Self {
         Self {
             tool_name,
             start_time: Instant::now(),
@@ -670,7 +670,7 @@ pub enum MetricsError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tags::ToolName;
+    use crate::tags::ToolId;
 
     #[test]
     fn test_metrics_registry_creation() {
@@ -684,7 +684,7 @@ mod tests {
     fn test_tool_execution_recording() {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let registry = Arc::new(MetricsRegistry::new(&format!("test{}", &id[0..8])).unwrap());
-        let tool_name = ToolName::new_unchecked("test_tool");
+        let tool_name = ToolId::new_unchecked("test_tool");
         let duration = std::time::Duration::from_millis(100);
 
         registry
@@ -701,14 +701,14 @@ mod tests {
 
         // Add 20 tools (at limit)
         for i in 0..20 {
-            let tool_name = ToolName::new_unchecked(format!("tool_{}", i));
+            let tool_name = ToolId::new_unchecked(format!("tool_{}", i));
             registry
                 .record_tool_execution(&tool_name, std::time::Duration::from_millis(1))
                 .unwrap();
         }
 
         // 21st tool should fail
-        let tool_name = ToolName::new_unchecked("tool_21");
+        let tool_name = ToolId::new_unchecked("tool_21");
         let result =
             registry.record_tool_execution(&tool_name, std::time::Duration::from_millis(1));
         assert!(matches!(
@@ -723,7 +723,7 @@ mod tests {
         let registry = Arc::new(MetricsRegistry::new(&format!("test{}", &id[0..8])).unwrap());
         let collector = MetricsCollector::new(registry);
 
-        let tool_name = ToolName::new_unchecked("test_tool");
+        let tool_name = ToolId::new_unchecked("test_tool");
         let timer = collector.start_tool_timer(tool_name);
 
         // Timer should finish without error

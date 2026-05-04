@@ -4,7 +4,7 @@
 //! allowing for reliable and controlled agent testing scenarios.
 
 use skreaver_core::{ExecutionResult, Tool, ToolCall};
-use skreaver_tools::{ToolName, ToolRegistry};
+use skreaver_tools::{ToolId, ToolRegistry};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -114,7 +114,7 @@ impl Tool for MockTool {
 /// A registry of mock tools for testing scenarios
 #[derive(Clone)]
 pub struct MockToolRegistry {
-    tools: HashMap<ToolName, Arc<MockTool>>,
+    tools: HashMap<ToolId, Arc<MockTool>>,
 }
 
 impl MockToolRegistry {
@@ -127,7 +127,7 @@ impl MockToolRegistry {
 
     /// Add a mock tool to the registry
     pub fn with_tool(mut self, tool: MockTool) -> Self {
-        let tool_name = ToolName::parse(&tool.name).expect("Valid tool name");
+        let tool_name = ToolId::parse(&tool.name).expect("Valid tool name");
         self.tools.insert(tool_name, Arc::new(tool));
         self
     }
@@ -176,7 +176,7 @@ impl MockToolRegistry {
 
     /// Get a reference to a mock tool for inspection
     pub fn get_mock_tool(&self, name: &str) -> Option<Arc<MockTool>> {
-        let tool_name = ToolName::parse(name).ok()?;
+        let tool_name = ToolId::parse(name).ok()?;
         self.tools.get(&tool_name).cloned()
     }
 
@@ -198,7 +198,7 @@ impl ToolRegistry for MockToolRegistry {
     fn dispatch(&self, call: ToolCall) -> Option<ExecutionResult> {
         // For testing, we look up by name string regardless of dispatch type
         let name_str = call.name();
-        let tool_name = ToolName::parse(name_str).ok()?;
+        let tool_name = ToolId::parse(name_str).ok()?;
         self.tools.get(&tool_name).map(|tool| tool.call(call.input))
     }
 }

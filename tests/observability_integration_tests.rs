@@ -6,7 +6,7 @@
 use skreaver_observability::{
     ObservabilityConfig, ObservabilityMode, init_observability,
     metrics::MetricsRegistry,
-    tags::{AgentId, CardinalTags, ErrorKind, MemoryOp, SessionId, ToolName},
+    tags::{AgentId, CardinalTags, ErrorKind, MemoryOp, SessionId, ToolId},
 };
 use std::time::Duration;
 
@@ -54,7 +54,7 @@ async fn test_core_metrics_collection() {
     assert_eq!(registry.core_metrics().agent_sessions_active.get(), 0.0);
 
     // Test tool execution metrics
-    let tool_name = ToolName::parse("test_tool").expect("Valid tool name");
+    let tool_name = ToolId::parse("test_tool").expect("Valid tool name");
     let duration = Duration::from_millis(150);
 
     registry
@@ -80,13 +80,13 @@ async fn test_cardinality_enforcement() {
 
     // Test tool cardinality limit (≤20)
     for i in 0..20 {
-        let tool_name = ToolName::parse(format!("tool_{}", i)).expect("Valid tool name");
+        let tool_name = ToolId::parse(format!("tool_{}", i)).expect("Valid tool name");
         let result = registry.record_tool_execution(&tool_name, Duration::from_millis(1));
         assert!(result.is_ok(), "Should accept tool within limit");
     }
 
     // 21st tool should fail
-    let tool_name = ToolName::parse("tool_21").expect("Valid tool name");
+    let tool_name = ToolId::parse("tool_21").expect("Valid tool name");
     let result = registry.record_tool_execution(&tool_name, Duration::from_millis(1));
     assert!(result.is_err(), "Should reject tool exceeding limit");
 
@@ -109,7 +109,7 @@ async fn test_metrics_collector() {
     let collector = skreaver_observability::metrics::MetricsCollector::new(registry);
 
     // Test tool timer
-    let tool_name = ToolName::parse("timed_tool").expect("Valid tool name");
+    let tool_name = ToolId::parse("timed_tool").expect("Valid tool name");
     let timer = collector.start_tool_timer(tool_name);
 
     // Simulate some work
@@ -160,7 +160,7 @@ async fn test_http_metrics() {
 async fn test_session_correlation() {
     let agent_id = AgentId::parse("correlation-agent").expect("Valid agent ID");
     let session_id = SessionId::generate();
-    let tool_name = ToolName::parse("correlation_tool").expect("Valid tool name");
+    let tool_name = ToolId::parse("correlation_tool").expect("Valid tool name");
 
     // Create tags for tool execution with session correlation
     let tags =

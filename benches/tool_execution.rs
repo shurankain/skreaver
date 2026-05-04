@@ -4,7 +4,7 @@
 //! Focuses on the overhead of tool dispatch and execution.
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use skreaver_core::ToolId as ToolName;
+use skreaver_core::ToolId;
 use skreaver_core::{Tool, ToolCall};
 use skreaver_testing::{MockTool, MockToolRegistry};
 use skreaver_tools::ToolRegistry;
@@ -208,7 +208,7 @@ fn bench_tool_name_operations(c: &mut Criterion) {
     group.bench_function("valid_tool_names", |b| {
         b.iter(|| {
             for name in &valid_names {
-                let _ = std::hint::black_box(ToolName::parse(std::hint::black_box(name)));
+                let _ = std::hint::black_box(ToolId::parse(std::hint::black_box(name)));
             }
         })
     });
@@ -216,7 +216,7 @@ fn bench_tool_name_operations(c: &mut Criterion) {
     group.bench_function("invalid_tool_names", |b| {
         b.iter(|| {
             for name in &invalid_names {
-                let _ = std::hint::black_box(ToolName::parse(std::hint::black_box(name)));
+                let _ = std::hint::black_box(ToolId::parse(std::hint::black_box(name)));
             }
         })
     });

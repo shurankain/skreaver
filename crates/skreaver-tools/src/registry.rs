@@ -102,7 +102,7 @@ pub trait ToolRegistry {
 /// ```rust
 /// use skreaver_tools::{InMemoryToolRegistry, ToolRegistry};
 /// use skreaver_core::{Tool, ExecutionResult, ToolCall};
-/// use skreaver_tools::ToolName;
+/// use skreaver_tools::ToolId;
 /// use std::sync::Arc;
 ///
 /// struct EchoTool;
@@ -122,7 +122,7 @@ pub trait ToolRegistry {
 #[derive(Clone)]
 pub struct InMemoryToolRegistry {
     standard_tools: HashMap<super::StandardTool, Arc<dyn super::Tool>>,
-    custom_tools: HashMap<super::ToolName, Arc<dyn super::Tool>>,
+    custom_tools: HashMap<super::ToolId, Arc<dyn super::Tool>>,
 }
 
 impl Default for InMemoryToolRegistry {
@@ -165,7 +165,7 @@ impl InMemoryToolRegistry {
         if let Some(standard_tool) = super::StandardTool::from_name(name) {
             self.standard_tools.insert(standard_tool, tool);
         } else {
-            let tool_name = super::ToolName::parse(name).expect("Valid tool name");
+            let tool_name = super::ToolId::parse(name).expect("Valid tool name");
             self.custom_tools.insert(tool_name, tool);
         }
         self
@@ -182,16 +182,16 @@ impl InMemoryToolRegistry {
     ///
     /// # Returns
     ///
-    /// `Ok(Self)` for method chaining, or `Err(InvalidToolName)` if name is invalid
+    /// `Ok(Self)` for method chaining, or `Err(InvalidToolId)` if name is invalid
     pub fn try_with_tool(
         mut self,
         name: &str,
         tool: Arc<dyn super::Tool>,
-    ) -> Result<Self, super::InvalidToolName> {
+    ) -> Result<Self, super::ValidationError> {
         if let Some(standard_tool) = super::StandardTool::from_name(name) {
             self.standard_tools.insert(standard_tool, tool);
         } else {
-            let tool_name = super::ToolName::parse(name)?;
+            let tool_name = super::ToolId::parse(name)?;
             self.custom_tools.insert(tool_name, tool);
         }
         Ok(self)
@@ -218,9 +218,9 @@ impl InMemoryToolRegistry {
         self
     }
 
-    /// Add a tool to the registry with a validated ToolName.
+    /// Add a tool to the registry with a validated ToolId.
     ///
-    /// Use this when you already have a validated ToolName to avoid re-validation.
+    /// Use this when you already have a validated ToolId to avoid re-validation.
     ///
     /// # Parameters
     ///
@@ -232,7 +232,7 @@ impl InMemoryToolRegistry {
     /// Self for method chaining
     pub fn with_tool_validated(
         mut self,
-        name: super::ToolName,
+        name: super::ToolId,
         tool: Arc<dyn super::Tool>,
     ) -> Self {
         self.custom_tools.insert(name, tool);
@@ -273,7 +273,7 @@ impl InMemoryToolRegistry {
         }
 
         // Then try custom tools
-        if let Ok(tool_name) = super::ToolName::parse(name) {
+        if let Ok(tool_name) = super::ToolId::parse(name) {
             return self.custom_tools.get(&tool_name).cloned();
         }
 

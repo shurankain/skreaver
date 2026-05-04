@@ -10,11 +10,9 @@ pub use skreaver_core::tool::{
     ExecutionResult, Tool, ToolCall, ToolCallBuildError, ToolCallBuilder,
 };
 
-// Type aliases for backward compatibility
-#[deprecated(since = "0.5.0", note = "Use ToolId instead")]
-pub use skreaver_core::ToolId as ToolName;
-#[deprecated(since = "0.5.0", note = "Use ValidationError instead")]
-pub use skreaver_core::ValidationError as InvalidToolName;
+// Re-export identifier types used by the registry
+pub use skreaver_core::ToolId;
+pub use skreaver_core::ValidationError;
 
 /// Trait for tool configuration parsing with fallback behavior.
 ///

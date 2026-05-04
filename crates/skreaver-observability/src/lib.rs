@@ -31,7 +31,7 @@ pub use health::{
     Unhealthy,
 };
 
-pub use tags::{AgentId, CardinalTags, ErrorKind, SessionId, ToolName};
+pub use tags::{AgentId, CardinalTags, ErrorKind, SessionId, ToolId};
 
 /// Standard latency buckets as defined in development plan
 /// Covers microseconds to 10+ seconds with production-focused distribution

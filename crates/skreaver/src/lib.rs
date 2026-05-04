@@ -122,8 +122,8 @@ pub use skreaver_core::{StructuredToolResult, ToolExecutionMetadata, ToolResultB
 
 // Tool registry
 pub use skreaver_tools::{
-    InMemoryToolRegistry, InvalidToolName, SecureToolRegistry, ToolCallBuildError, ToolCallBuilder,
-    ToolConfig, ToolName, ToolRegistry,
+    InMemoryToolRegistry, SecureToolRegistry, ToolCallBuildError, ToolCallBuilder, ToolConfig,
+    ToolRegistry,
 };
 
 // Standard tools - I/O

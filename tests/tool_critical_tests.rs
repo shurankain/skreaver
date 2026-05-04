@@ -5,7 +5,7 @@
 
 use skreaver_core::{ExecutionResult, Tool, ToolCall};
 use skreaver_testing::mock_tools::MockTool;
-use skreaver_tools::ToolName;
+use skreaver_tools::ToolId;
 
 /// Test basic tool execution with success response
 #[test]
@@ -49,14 +49,14 @@ fn test_tool_default_response() {
 #[test]
 fn test_tool_name_validation() {
     // Valid tool names should work
-    assert!(ToolName::parse("valid_tool").is_ok());
-    assert!(ToolName::parse("valid-tool-123").is_ok());
-    assert!(ToolName::parse("tool_with_underscores").is_ok());
+    assert!(ToolId::parse("valid_tool").is_ok());
+    assert!(ToolId::parse("valid-tool-123").is_ok());
+    assert!(ToolId::parse("tool_with_underscores").is_ok());
 
     // Invalid tool names should fail
-    assert!(ToolName::parse("").is_err()); // Empty string
-    assert!(ToolName::parse("tool with spaces").is_err()); // Contains spaces
-    assert!(ToolName::parse("tool@symbol").is_err()); // Invalid characters
+    assert!(ToolId::parse("").is_err()); // Empty string
+    assert!(ToolId::parse("tool with spaces").is_err()); // Contains spaces
+    assert!(ToolId::parse("tool@symbol").is_err()); // Invalid characters
 }
 
 /// Test tool call creation and properties

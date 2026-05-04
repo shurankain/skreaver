@@ -3,7 +3,7 @@
 //! Provides distributed tracing capabilities with session correlation and
 //! tool execution tracking as specified in DEVELOPMENT_PLAN.md.
 
-use crate::tags::{AgentId, CardinalTags, SessionId, ToolName};
+use crate::tags::{AgentId, CardinalTags, SessionId, ToolId};
 use crate::{ObservabilityConfig, ObservabilityError};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -87,7 +87,7 @@ impl SessionTracker {
     pub fn start_tool_execution(
         &self,
         session_id: &SessionId,
-        tool_name: &ToolName,
+        tool_name: &ToolId,
     ) -> Result<ToolSpan, TracingError> {
         let sessions = self
             .active_sessions
@@ -165,7 +165,7 @@ impl SessionContext {
 /// Tool execution span for structured tracing
 pub struct ToolSpan {
     session_id: SessionId,
-    tool_name: ToolName,
+    tool_name: ToolId,
     #[cfg(feature = "tracing")]
     span: tracing::Span,
     start_time: std::time::Instant,
@@ -175,7 +175,7 @@ impl ToolSpan {
     /// Create new tool span
     fn new(
         session_id: SessionId,
-        tool_name: ToolName,
+        tool_name: ToolId,
         #[cfg(feature = "tracing")] span: tracing::Span,
     ) -> Self {
         Self {
@@ -193,7 +193,7 @@ impl ToolSpan {
     }
 
     /// Get tool name
-    pub fn tool_name(&self) -> &ToolName {
+    pub fn tool_name(&self) -> &ToolId {
         &self.tool_name
     }
 
@@ -357,7 +357,7 @@ mod tests {
     fn test_tool_span_creation() {
         let tracker = SessionTracker::new();
         let agent_id = AgentId::new_unchecked("test-agent");
-        let tool_name = crate::tags::ToolName::new_unchecked("test_tool");
+        let tool_name = crate::tags::ToolId::new_unchecked("test_tool");
 
         let session_id = tracker.start_session(agent_id).unwrap();
         let span = tracker

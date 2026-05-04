@@ -1,4 +1,4 @@
-// ToolName has been deprecated in favor of ToolId directly.
+// ToolId has been deprecated in favor of ToolId directly.
 // All validation is now handled by ToolId which provides the same security guarantees.
 // This reduces unnecessary type wrapping and allocation overhead.
 
@@ -198,9 +198,9 @@ impl ToolCall {
         }
     }
 
-    /// Create a new ToolCall from a validated ToolName and input string.
+    /// Create a new ToolCall from a validated ToolId and input string.
     ///
-    /// Use this when you already have a validated ToolName to avoid re-validation.
+    /// Use this when you already have a validated ToolId to avoid re-validation.
     ///
     /// # Parameters
     ///
@@ -1135,7 +1135,7 @@ mod tests {
     fn test_tool_id_validation_for_dispatch() {
         use crate::ToolId;
 
-        // Valid tool IDs (same validation as ToolName had)
+        // Valid tool IDs (same validation as ToolId had)
         assert!(ToolId::parse("calculator").is_ok());
         assert!(ToolId::parse("tool_name").is_ok());
         assert!(ToolId::parse("tool-name").is_ok());
