@@ -1,0 +1,28 @@
+[package]
+name = "skreaver-guardrails"
+version = "0.6.0"
+edition = "2024"
+authors = ["Oleksandr Husiev <ohusiev@icloud.com>"]
+license = "MIT"
+description = "Runtime guardrails for AI agent execution in Skreaver"
+repository = "https://github.com/shurankain/skreaver"
+keywords = ["agent", "guardrails", "security", "ai", "rust"]
+categories = ["development-tools"]
+
+[dependencies]
+skreaver-core = { path = "../skreaver-core", version = "0.6.0" }
+skreaver-agent = { path = "../skreaver-agent", version = "0.6.0" }
+
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+
+[lints]
+workspace = true

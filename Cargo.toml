@@ -184,6 +184,7 @@ members = [
   "crates/skreaver-a2a",
   "crates/skreaver-agent",
   "crates/skreaver-gateway",
+  "crates/skreaver-guardrails",
 ]
 resolver = "2"
 
