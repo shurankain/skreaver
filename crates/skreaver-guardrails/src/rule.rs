@@ -1,5 +1,6 @@
 //! Rule trait and RuleSet for composable guardrail checks.
 
+use async_trait::async_trait;
 use skreaver_agent::types::{AgentInfo, UnifiedMessage, UnifiedTask};
 
 use crate::error::GuardrailError;
@@ -42,35 +43,67 @@ pub trait Rule: Send + Sync {
     }
 }
 
+/// An async guardrail check for operations that require I/O
+/// (e.g., approval hooks, external validators).
+///
+/// Separate from `Rule` so sync rules don't pay async overhead.
+#[async_trait]
+pub trait AsyncRule: Send + Sync {
+    fn name(&self) -> &str;
+
+    async fn check_pre(&self, _ctx: &RuleContext<'_>, _message: &UnifiedMessage) -> RuleResult {
+        RuleResult::Allow
+    }
+
+    async fn check_post(&self, _ctx: &RuleContext<'_>, _task: &UnifiedTask) -> RuleResult {
+        RuleResult::Allow
+    }
+}
+
 /// An ordered collection of rules evaluated sequentially.
 ///
-/// Pre-checks short-circuit on the first `Deny`. Warnings accumulate
-/// and are logged but do not block execution.
+/// Sync rules run first, then async rules. Both short-circuit
+/// on the first `Deny`. Warnings accumulate.
 pub struct RuleSet {
     rules: Vec<Box<dyn Rule>>,
+    async_rules: Vec<Box<dyn AsyncRule>>,
 }
 
 impl RuleSet {
     /// Create an empty rule set.
     pub fn new() -> Self {
-        Self { rules: Vec::new() }
+        Self {
+            rules: Vec::new(),
+            async_rules: Vec::new(),
+        }
     }
 
-    /// Add a rule (builder pattern).
+    /// Add a sync rule (builder pattern).
     #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, rule: impl Rule + 'static) -> Self {
         self.rules.push(Box::new(rule));
         self
     }
 
-    /// Number of rules in the set.
-    pub fn len(&self) -> usize {
-        self.rules.len()
+    /// Add an async rule (builder pattern).
+    pub fn add_async(mut self, rule: impl AsyncRule + 'static) -> Self {
+        self.async_rules.push(Box::new(rule));
+        self
     }
 
-    /// Whether the set is empty.
+    /// Total number of rules (sync + async).
+    pub fn len(&self) -> usize {
+        self.rules.len() + self.async_rules.len()
+    }
+
+    /// Whether the set has no rules.
     pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
+        self.rules.is_empty() && self.async_rules.is_empty()
+    }
+
+    /// Whether the set contains async rules.
+    pub fn has_async(&self) -> bool {
+        !self.async_rules.is_empty()
     }
 
     /// Run all pre-execution rules. Returns accumulated warnings on success.
@@ -119,6 +152,62 @@ impl RuleSet {
                 }
                 RuleResult::Deny(reason) => {
                     tracing::warn!(rule = rule.name(), reason = %reason, "Post-execution denied");
+                    return Err(GuardrailError::MessageRejected {
+                        reason: format!("[{}] {}", rule.name(), reason),
+                    });
+                }
+            }
+        }
+
+        Ok(warnings)
+    }
+
+    /// Run all rules (sync then async) for pre-execution. Returns warnings on success.
+    pub async fn check_pre_async(
+        &self,
+        ctx: &RuleContext<'_>,
+        message: &UnifiedMessage,
+    ) -> Result<Vec<String>, GuardrailError> {
+        // Sync rules first
+        let mut warnings = self.check_pre(ctx, message)?;
+
+        // Then async rules
+        for rule in &self.async_rules {
+            match rule.check_pre(ctx, message).await {
+                RuleResult::Allow => {}
+                RuleResult::Warn(msg) => {
+                    tracing::warn!(rule = rule.name(), warning = %msg, "Async guardrail warning");
+                    warnings.push(msg);
+                }
+                RuleResult::Deny(reason) => {
+                    tracing::warn!(rule = rule.name(), reason = %reason, "Async guardrail denied");
+                    return Err(GuardrailError::MessageRejected {
+                        reason: format!("[{}] {}", rule.name(), reason),
+                    });
+                }
+            }
+        }
+
+        Ok(warnings)
+    }
+
+    /// Run all rules (sync then async) for post-execution.
+    pub async fn check_post_async(
+        &self,
+        ctx: &RuleContext<'_>,
+        task: &UnifiedTask,
+    ) -> Result<Vec<String>, GuardrailError> {
+        let mut warnings = self.check_post(ctx, task)?;
+
+        for rule in &self.async_rules {
+            match rule.check_post(ctx, task).await {
+                RuleResult::Allow => {}
+                RuleResult::Warn(msg) => {
+                    tracing::warn!(rule = rule.name(), warning = %msg, "Async post-execution warning");
+                    warnings.push(msg);
+                }
+                RuleResult::Deny(reason) => {
+                    tracing::warn!(rule = rule.name(), reason = %reason, "Async post-execution denied");
                     return Err(GuardrailError::MessageRejected {
                         reason: format!("[{}] {}", rule.name(), reason),
                     });

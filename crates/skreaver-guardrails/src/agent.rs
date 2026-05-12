@@ -12,6 +12,8 @@ use skreaver_agent::traits::UnifiedAgent;
 use skreaver_agent::types::{AgentInfo, ContentPart, StreamEvent, UnifiedMessage, UnifiedTask};
 use skreaver_core::security::SecurityManager;
 
+use crate::anomaly::{AnomalyDetector, AnomalyEvent, AnomalyEventType};
+use crate::dynamic::DynamicPolicy;
 use crate::error::GuardrailError;
 use crate::policy::{GuardrailPolicy, ToolFilter};
 use crate::rule::{RuleContext, RuleSet};
@@ -19,15 +21,16 @@ use crate::rule::{RuleContext, RuleSet};
 /// An agent wrapper that enforces guardrail policies before delegating
 /// to the inner agent.
 ///
-/// Supports two modes:
-/// - **Policy mode** (Phase A): hardcoded tool filter + size checks via `GuardrailPolicy`
-/// - **Rules mode** (Phase B): composable `RuleSet` with pre/post execution hooks
-///
-/// If a `RuleSet` is attached, it takes precedence over hardcoded checks.
+/// Supports three modes (additive):
+/// - **Policy mode** (Phase A): hardcoded tool filter + size checks
+/// - **Rules mode** (Phase B): composable `RuleSet` with pre/post hooks
+/// - **Dynamic mode** (Phase C): threat-level-based policy switching + anomaly detection
 pub struct GuardedAgent<A: UnifiedAgent> {
     inner: A,
     policy: GuardrailPolicy,
     rules: Option<RuleSet>,
+    dynamic_policy: Option<Arc<DynamicPolicy>>,
+    anomaly_detector: Option<Arc<dyn AnomalyDetector>>,
     security_manager: Option<Arc<SecurityManager>>,
 }
 
@@ -38,6 +41,8 @@ impl<A: UnifiedAgent> GuardedAgent<A> {
             inner: agent,
             policy,
             rules: None,
+            dynamic_policy: None,
+            anomaly_detector: None,
             security_manager: None,
         }
     }
@@ -48,6 +53,8 @@ impl<A: UnifiedAgent> GuardedAgent<A> {
             inner: agent,
             policy,
             rules: Some(rules),
+            dynamic_policy: None,
+            anomaly_detector: None,
             security_manager: None,
         }
     }
@@ -58,45 +65,93 @@ impl<A: UnifiedAgent> GuardedAgent<A> {
         self
     }
 
+    /// Attach a dynamic policy for threat-level-based switching.
+    pub fn with_dynamic_policy(mut self, dp: Arc<DynamicPolicy>) -> Self {
+        self.dynamic_policy = Some(dp);
+        self
+    }
+
+    /// Attach an anomaly detector for automatic threat escalation.
+    pub fn with_anomaly_detector(mut self, detector: Arc<dyn AnomalyDetector>) -> Self {
+        self.anomaly_detector = Some(detector);
+        self
+    }
+
     /// Access the inner agent.
     pub fn inner(&self) -> &A {
         &self.inner
     }
 
-    /// Access the active policy.
-    pub fn policy(&self) -> &GuardrailPolicy {
-        &self.policy
+    /// Get the effective policy (dynamic overrides static if set).
+    pub fn effective_policy(&self) -> GuardrailPolicy {
+        self.dynamic_policy
+            .as_ref()
+            .map(|dp| dp.policy())
+            .unwrap_or_else(|| self.policy.clone())
     }
 
-    /// Pre-execution check via rules or fallback to hardcoded policy checks.
-    fn run_pre_checks(&self, message: &UnifiedMessage) -> Result<(), GuardrailError> {
+    /// Pre-execution check: async (rules with async support) or sync fallback.
+    async fn run_pre_checks(&self, message: &UnifiedMessage) -> Result<(), GuardrailError> {
+        let policy = self.effective_policy();
+
         if let Some(rules) = &self.rules {
             let ctx = RuleContext {
                 agent_info: self.inner.info(),
-                policy: &self.policy,
+                policy: &policy,
             };
-            rules.check_pre(&ctx, message)?;
+            if rules.has_async() {
+                rules.check_pre_async(&ctx, message).await?;
+            } else {
+                rules.check_pre(&ctx, message)?;
+            }
         } else {
-            self.check_message_size(message)?;
-            self.check_tool_calls(message)?;
+            self.check_message_size(message, &policy)?;
+            self.check_tool_calls(message, &policy)?;
         }
         Ok(())
     }
 
     /// Post-execution check via rules (no-op if no rules).
-    fn run_post_checks(&self, task: &UnifiedTask) -> Result<(), GuardrailError> {
+    async fn run_post_checks(&self, task: &UnifiedTask) -> Result<(), GuardrailError> {
+        let policy = self.effective_policy();
+
         if let Some(rules) = &self.rules {
             let ctx = RuleContext {
                 agent_info: self.inner.info(),
-                policy: &self.policy,
+                policy: &policy,
             };
-            rules.check_post(&ctx, task)?;
+            if rules.has_async() {
+                rules.check_post_async(&ctx, task).await?;
+            } else {
+                rules.check_post(&ctx, task)?;
+            }
         }
         Ok(())
     }
 
-    fn check_message_size(&self, message: &UnifiedMessage) -> Result<(), GuardrailError> {
-        if let Some(max_size) = self.policy.max_message_size {
+    /// Feed a denial event to the anomaly detector and escalate if needed.
+    fn on_denial(&self, reason: &str) {
+        if let Some(detector) = &self.anomaly_detector {
+            let event = AnomalyEvent {
+                agent_id: self.inner.info().id.clone(),
+                event_type: AnomalyEventType::RuleDenied {
+                    rule_name: reason.to_string(),
+                },
+                timestamp: std::time::Instant::now(),
+            };
+            let score = detector.analyze(&event);
+            if let Some(dp) = &self.dynamic_policy {
+                dp.set_level(score.level);
+            }
+        }
+    }
+
+    fn check_message_size(
+        &self,
+        message: &UnifiedMessage,
+        policy: &GuardrailPolicy,
+    ) -> Result<(), GuardrailError> {
+        if let Some(max_size) = policy.max_message_size {
             let total_size: usize = message.content.iter().map(content_part_size).sum();
             if total_size > max_size {
                 return Err(GuardrailError::MessageRejected {
@@ -110,13 +165,17 @@ impl<A: UnifiedAgent> GuardedAgent<A> {
         Ok(())
     }
 
-    fn check_tool_calls(&self, message: &UnifiedMessage) -> Result<(), GuardrailError> {
+    fn check_tool_calls(
+        &self,
+        message: &UnifiedMessage,
+        policy: &GuardrailPolicy,
+    ) -> Result<(), GuardrailError> {
         for part in &message.content {
             if let ContentPart::ToolCall { name, .. } = part
-                && !self.policy.tool_filter.is_allowed(name)
+                && !policy.tool_filter.is_allowed(name)
             {
-                if self.policy.reject_on_violation {
-                    return Err(to_tool_error(&self.policy.tool_filter, name));
+                if policy.reject_on_violation {
+                    return Err(to_tool_error(&policy.tool_filter, name));
                 }
                 tracing::warn!(tool = %name, "Tool call blocked by guardrail (non-rejecting mode)");
             }
@@ -154,11 +213,15 @@ impl<A: UnifiedAgent> UnifiedAgent for GuardedAgent<A> {
     }
 
     async fn send_message(&self, message: UnifiedMessage) -> AgentResult<UnifiedTask> {
-        self.run_pre_checks(&message)
-            .map_err(GuardrailError::into_agent_error)?;
+        if let Err(e) = self.run_pre_checks(&message).await {
+            self.on_denial(&e.to_string());
+            return Err(e.into_agent_error());
+        }
         let task = self.inner.send_message(message).await?;
-        self.run_post_checks(&task)
-            .map_err(GuardrailError::into_agent_error)?;
+        if let Err(e) = self.run_post_checks(&task).await {
+            self.on_denial(&e.to_string());
+            return Err(e.into_agent_error());
+        }
         Ok(task)
     }
 
@@ -167,11 +230,15 @@ impl<A: UnifiedAgent> UnifiedAgent for GuardedAgent<A> {
         task_id: &str,
         message: UnifiedMessage,
     ) -> AgentResult<UnifiedTask> {
-        self.run_pre_checks(&message)
-            .map_err(GuardrailError::into_agent_error)?;
+        if let Err(e) = self.run_pre_checks(&message).await {
+            self.on_denial(&e.to_string());
+            return Err(e.into_agent_error());
+        }
         let task = self.inner.send_message_to_task(task_id, message).await?;
-        self.run_post_checks(&task)
-            .map_err(GuardrailError::into_agent_error)?;
+        if let Err(e) = self.run_post_checks(&task).await {
+            self.on_denial(&e.to_string());
+            return Err(e.into_agent_error());
+        }
         Ok(task)
     }
 
@@ -179,8 +246,10 @@ impl<A: UnifiedAgent> UnifiedAgent for GuardedAgent<A> {
         &self,
         message: UnifiedMessage,
     ) -> AgentResult<Pin<Box<dyn Stream<Item = AgentResult<StreamEvent>> + Send>>> {
-        self.run_pre_checks(&message)
-            .map_err(GuardrailError::into_agent_error)?;
+        if let Err(e) = self.run_pre_checks(&message).await {
+            self.on_denial(&e.to_string());
+            return Err(e.into_agent_error());
+        }
         self.inner.send_message_streaming(message).await
     }
 

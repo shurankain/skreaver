@@ -6,9 +6,11 @@ use skreaver_agent::traits::UnifiedAgent;
 use skreaver_core::security::SecurityManager;
 
 use crate::agent::GuardedAgent;
+use crate::anomaly::AnomalyDetector;
+use crate::dynamic::DynamicPolicy;
 use crate::policy::{GuardrailPolicy, ToolFilter};
 use crate::preset::Preset;
-use crate::rule::{Rule, RuleSet};
+use crate::rule::{AsyncRule, Rule, RuleSet};
 
 /// Builder for constructing a `GuardedAgent` with a fluent API.
 pub struct GuardedAgentBuilder<A: UnifiedAgent> {
@@ -17,6 +19,8 @@ pub struct GuardedAgentBuilder<A: UnifiedAgent> {
     max_message_size: Option<usize>,
     reject_on_violation: bool,
     rules: Option<RuleSet>,
+    dynamic_policy: Option<Arc<DynamicPolicy>>,
+    anomaly_detector: Option<Arc<dyn AnomalyDetector>>,
     security_manager: Option<Arc<SecurityManager>>,
 }
 
@@ -29,6 +33,8 @@ impl<A: UnifiedAgent> GuardedAgentBuilder<A> {
             max_message_size: None,
             reject_on_violation: true,
             rules: None,
+            dynamic_policy: None,
+            anomaly_detector: None,
             security_manager: None,
         }
     }
@@ -82,6 +88,25 @@ impl<A: UnifiedAgent> GuardedAgentBuilder<A> {
         self
     }
 
+    /// Add an async rule (e.g., `ApprovalRule`).
+    pub fn with_async_rule(mut self, rule: impl AsyncRule + 'static) -> Self {
+        let rules = self.rules.take().unwrap_or_default();
+        self.rules = Some(rules.add_async(rule));
+        self
+    }
+
+    /// Attach a dynamic policy for threat-level-based switching.
+    pub fn with_dynamic_policy(mut self, dp: Arc<DynamicPolicy>) -> Self {
+        self.dynamic_policy = Some(dp);
+        self
+    }
+
+    /// Attach an anomaly detector for automatic threat escalation.
+    pub fn with_anomaly_detector(mut self, detector: Arc<dyn AnomalyDetector>) -> Self {
+        self.anomaly_detector = Some(detector);
+        self
+    }
+
     /// Attach a `SecurityManager` for deeper input validation.
     pub fn security_manager(mut self, manager: Arc<SecurityManager>) -> Self {
         self.security_manager = Some(manager);
@@ -99,6 +124,12 @@ impl<A: UnifiedAgent> GuardedAgentBuilder<A> {
             Some(rules) => GuardedAgent::with_rules(self.agent, policy, rules),
             None => GuardedAgent::new(self.agent, policy),
         };
+        if let Some(dp) = self.dynamic_policy {
+            agent = agent.with_dynamic_policy(dp);
+        }
+        if let Some(ad) = self.anomaly_detector {
+            agent = agent.with_anomaly_detector(ad);
+        }
         if let Some(sm) = self.security_manager {
             agent = agent.with_security_manager(sm);
         }
