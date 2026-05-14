@@ -209,7 +209,7 @@ pub fn execute_tool_by_name(&self, name: &str) -> Result<String, Error> {
     since = "0.4.0",
     note = "Use `ToolDispatch` for type-safe tool selection"
 )]
-pub struct ToolName(String);
+pub struct OldToolName(String);
 ```
 
 ### Module Deprecation
