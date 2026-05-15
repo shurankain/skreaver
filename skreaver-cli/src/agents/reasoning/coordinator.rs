@@ -16,7 +16,7 @@ impl ReasoningCoordinatorExt for Coordinator<ReasoningAgent, InMemoryToolRegistr
         let mut iters = 0;
         while !self.is_complete() && iters < max_iters {
             iters += 1;
-            let calls = self.get_tool_calls();
+            let calls = self.tool_calls();
             if calls.is_empty() {
                 break;
             }

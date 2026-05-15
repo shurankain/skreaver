@@ -115,7 +115,7 @@ mod tests {
 
         // Start: Initial -> Analyzing
         coordinator.observe("test problem".to_string());
-        let tools = coordinator.get_tool_calls();
+        let tools = coordinator.tool_calls();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "analyze");
 
@@ -124,7 +124,7 @@ mod tests {
         }
 
         // Step 2: Analyzing -> Deducing
-        let tools = coordinator.get_tool_calls();
+        let tools = coordinator.tool_calls();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "deduce");
 
@@ -133,7 +133,7 @@ mod tests {
         }
 
         // Step 3: Deducing -> Concluding
-        let tools = coordinator.get_tool_calls();
+        let tools = coordinator.tool_calls();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "conclude");
 
@@ -142,7 +142,7 @@ mod tests {
         }
 
         // Step 4: Concluding -> Complete
-        let tools = coordinator.get_tool_calls();
+        let tools = coordinator.tool_calls();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "reflect");
 
@@ -152,7 +152,7 @@ mod tests {
 
         // Should be complete now
         assert!(coordinator.agent.is_complete());
-        let tools = coordinator.get_tool_calls();
+        let tools = coordinator.tool_calls();
         assert_eq!(tools.len(), 0); // No more tools to call
 
         // Final result should be Complete with 4 steps

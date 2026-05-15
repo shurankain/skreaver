@@ -23,7 +23,7 @@ async fn test_simple_agent_core_execution_path() {
     let processing_agent = agent.observe("test input".to_string());
 
     // Get tool calls from processing state
-    let _tool_calls = processing_agent.get_tool_calls();
+    let _tool_calls = processing_agent.tool_calls();
 
     // Should not crash and return tool calls (empty list is valid)
     // This demonstrates the API works without crashing
@@ -50,7 +50,7 @@ async fn test_memory_agent_integration() {
     let processing_agent = agent.observe("Please search for information".to_string());
 
     // Verify agent has correct state
-    let tool_calls = processing_agent.get_tool_calls();
+    let tool_calls = processing_agent.tool_calls();
 
     // For search-related input, should request search tools
     if !tool_calls.is_empty() {
@@ -90,7 +90,7 @@ async fn test_tool_execution_with_memory_persistence() {
     let processing_agent = agent.observe("Continue with previous results".to_string());
 
     // Agent should be in processing state
-    let _tool_calls = processing_agent.get_tool_calls();
+    let _tool_calls = processing_agent.tool_calls();
     // API verification - should not crash
 }
 

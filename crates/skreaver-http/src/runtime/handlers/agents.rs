@@ -41,7 +41,7 @@ pub async fn list_agents<T: ToolRegistry + Clone + Send + Sync + 'static>(
             agent_type: instance.coordinator.get_agent_type().to_string(),
             status: crate::runtime::agent_status::AgentStatusEnum::Ready,
             created_at: instance.created_at,
-            last_activity: Some(instance.get_last_activity().await),
+            last_activity: Some(instance.last_activity().await),
         });
     }
 
@@ -154,7 +154,7 @@ pub async fn get_agent_status<T: ToolRegistry + Clone + Send + Sync + 'static>(
 
     match agents.get(&parsed_id) {
         Some(instance) => {
-            let last_activity = instance.get_last_activity().await;
+            let last_activity = instance.last_activity().await;
             Ok(Json(AgentStatus {
                 agent_id, // No need to clone, we own it
                 agent_type: instance.coordinator.get_agent_type().to_string(),

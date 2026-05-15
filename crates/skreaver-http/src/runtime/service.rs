@@ -170,7 +170,7 @@ impl AgentService {
         
         // Check agent can accept observations
         if !agent.can_accept_observations().await {
-            let current_status = agent.get_status().await;
+            let current_status = agent.status().await;
             return Err(RuntimeError::Agent(AgentError::InvalidState {
                 agent_id: agent_id.as_str().to_string(),
                 current_state: current_status.to_string(),
@@ -210,23 +210,23 @@ impl AgentService {
         Ok(AgentStatusResponse {
             agent_id: agent_id.as_str().to_string(),
             agent_type: crate::runtime::api_types::AgentType::Advanced, // Would come from agent
-            status: agent.get_status().await,
+            status: agent.status().await,
             resource_usage: ResourceUsage {
                 memory_bytes: 0, // Would be measured from actual agent
                 memory_percent: 0.0,
                 active_tools: 0,
             },
             metrics: AgentMetrics {
-                observations_processed: agent.get_observation_count(),
-                tool_calls_made: agent.get_tool_call_count(),
+                observations_processed: agent.observation_count(),
+                tool_calls_made: agent.tool_call_count(),
                 avg_response_time_ms: 0.0, // Would be calculated from history
                 success_rate: 1.0,
                 last_error: None,
             },
             created_at: agent.created_at,
-            last_activity: agent.get_last_activity().await,
+            last_activity: agent.last_activity().await,
             config: std::collections::HashMap::new(),
-            instance_metadata: Some(agent.get_instance_metadata().await),
+            instance_metadata: Some(agent.instance_metadata().await),
         })
     }
     

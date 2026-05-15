@@ -179,7 +179,7 @@ impl JwtManager {
         );
 
         // Add roles
-        for role in claims.get_roles() {
+        for role in claims.roles() {
             principal = principal.with_role(role);
         }
 
@@ -237,7 +237,7 @@ impl JwtManager {
             AuthMethod::Bearer(claims.jti.clone()),
         );
 
-        for role in claims.get_roles() {
+        for role in claims.roles() {
             principal = principal.with_role(role);
         }
 

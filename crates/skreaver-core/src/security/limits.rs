@@ -41,7 +41,7 @@
 //! let _guard = tracker.start_operation("my_agent");
 //!
 //! // Get current resource usage
-//! if let Some(usage) = tracker.get_usage("my_agent") {
+//! if let Some(usage) = tracker.usage("my_agent") {
 //!     println!("Memory: {} MB", usage.memory_mb);
 //!     println!("CPU: {:.2}%", usage.cpu_percent);
 //! }
@@ -307,7 +307,7 @@ impl ResourceTracker {
         }
     }
 
-    pub fn get_usage(&self, agent_id: &str) -> Option<ResourceUsage> {
+    pub fn usage(&self, agent_id: &str) -> Option<ResourceUsage> {
         self.usage
             .lock()
             .ok()
@@ -609,14 +609,14 @@ mod tests {
         let _guard = tracker.start_operation("test_agent");
 
         // Check that active operations increased
-        let usage = tracker.get_usage("test_agent").unwrap();
+        let usage = tracker.usage("test_agent").unwrap();
         assert_eq!(usage.active_operations, 1);
 
         // Guard drops here, should decrease active operations
         drop(_guard);
 
         // Check that active operations decreased
-        let usage = tracker.get_usage("test_agent").unwrap();
+        let usage = tracker.usage("test_agent").unwrap();
         assert_eq!(usage.active_operations, 0);
     }
 
@@ -693,7 +693,7 @@ mod tests {
         );
 
         // Get usage and verify it's tracked
-        let usage = tracker.get_usage("test_agent").unwrap();
+        let usage = tracker.usage("test_agent").unwrap();
         println!("Tracked usage - Memory: {} MB", usage.memory_mb);
 
         // If monitor is available, memory should be > 0
@@ -806,8 +806,8 @@ mod tests {
         let _guard2 = tracker.start_operation("agent2");
 
         // Both agents should exist
-        assert!(tracker.get_usage("agent1").is_some());
-        assert!(tracker.get_usage("agent2").is_some());
+        assert!(tracker.usage("agent1").is_some());
+        assert!(tracker.usage("agent2").is_some());
 
         // Cleanup with max_age = 0 should remove all agents
         tracker.cleanup_stale_agents(Duration::from_secs(0));
@@ -824,13 +824,13 @@ mod tests {
         }
 
         // Verify old agent exists
-        assert!(tracker.get_usage("old_agent").is_some());
+        assert!(tracker.usage("old_agent").is_some());
 
         // Cleanup agents older than 1 second
         tracker.cleanup_stale_agents(Duration::from_secs(1));
 
         // Old agent should be removed
-        assert!(tracker.get_usage("old_agent").is_none());
+        assert!(tracker.usage("old_agent").is_none());
 
         println!("✅ Stale agent cleanup working!");
     }

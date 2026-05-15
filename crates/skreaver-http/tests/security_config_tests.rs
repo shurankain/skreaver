@@ -176,21 +176,21 @@ async fn test_per_tool_policy_access() {
     let security_config = runtime.security_config();
 
     // Test file_read tool policy
-    let file_read_policy = security_config.get_tool_policy("file_read");
+    let file_read_policy = security_config.tool_policy("file_read");
     assert!(!matches!(
         file_read_policy.fs_policy.access,
         FileSystemAccess::Disabled
     ));
 
     // Test http_get tool policy
-    let http_get_policy = security_config.get_tool_policy("http_get");
+    let http_get_policy = security_config.tool_policy("http_get");
     assert!(!matches!(
         http_get_policy.http_policy.access,
         HttpAccess::Disabled
     ));
 
     // Test non-existent tool (should get default policy)
-    let unknown_policy = security_config.get_tool_policy("unknown_tool");
+    let unknown_policy = security_config.tool_policy("unknown_tool");
     assert!(!matches!(
         unknown_policy.fs_policy.access,
         FileSystemAccess::Disabled
@@ -279,7 +279,7 @@ async fn test_security_config_tool_specific_policies() {
     }
 
     // Verify getting tool policy works (will use defaults if not defined)
-    let _file_read_policy = security_config.get_tool_policy("file_read");
+    let _file_read_policy = security_config.tool_policy("file_read");
     // Policy exists (enabled or disabled) - just verify it's accessible
 }
 

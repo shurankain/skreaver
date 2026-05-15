@@ -90,13 +90,13 @@ impl AgentInstance {
     }
 
     /// Get current agent status
-    pub async fn get_status(&self) -> AgentStatusEnum {
+    pub async fn status(&self) -> AgentStatusEnum {
         self.status.read().await.clone()
     }
 
     /// Check if agent can accept new observations
     pub async fn can_accept_observations(&self) -> bool {
-        let status = self.get_status().await;
+        let status = self.status().await;
         status.can_accept_observations()
     }
 
@@ -107,7 +107,7 @@ impl AgentInstance {
     }
 
     /// Get last activity timestamp
-    pub async fn get_last_activity(&self) -> DateTime<Utc> {
+    pub async fn last_activity(&self) -> DateTime<Utc> {
         *self.last_activity.read().await
     }
 
@@ -122,17 +122,17 @@ impl AgentInstance {
     }
 
     /// Get observation count
-    pub fn get_observation_count(&self) -> u64 {
+    pub fn observation_count(&self) -> u64 {
         self.observation_count.load(Ordering::Relaxed)
     }
 
     /// Get tool call count
-    pub fn get_tool_call_count(&self) -> u64 {
+    pub fn tool_call_count(&self) -> u64 {
         self.tool_call_count.load(Ordering::Relaxed)
     }
 
     /// Get instance metadata
-    pub async fn get_instance_metadata(&self) -> AgentInstanceMetadata {
+    pub async fn instance_metadata(&self) -> AgentInstanceMetadata {
         self.instance_metadata.read().await.clone()
     }
 
@@ -161,7 +161,7 @@ impl AgentInstance {
     pub async fn execute_step(&mut self, input: String) -> Result<String, AgentExecutionError> {
         // Check if agent can accept observations
         if !self.can_accept_observations().await {
-            let current_status = self.get_status().await;
+            let current_status = self.status().await;
             return Err(AgentExecutionError::InvalidState {
                 current_status,
                 attempted_operation: "observe".to_string(),
@@ -252,7 +252,7 @@ mod tests {
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
         // Initially ready
-        assert_eq!(instance.get_status().await, AgentStatusEnum::Ready);
+        assert_eq!(instance.status().await, AgentStatusEnum::Ready);
         assert!(instance.can_accept_observations().await);
 
         // Set to processing
@@ -265,7 +265,7 @@ mod tests {
 
         // Check that it's in processing state
         assert!(matches!(
-            instance.get_status().await,
+            instance.status().await,
             AgentStatusEnum::Processing { .. }
         ));
         assert!(!instance.can_accept_observations().await);
@@ -287,7 +287,7 @@ mod tests {
         let instance =
             AgentInstance::new(agent_id, "MockAgent".to_string(), Box::new(MockCoordinator));
 
-        let metadata = instance.get_instance_metadata().await;
+        let metadata = instance.instance_metadata().await;
 
         // Default metadata should have a generated instance_id and version
         assert!(!metadata.instance_id.is_empty());
@@ -318,7 +318,7 @@ mod tests {
             custom_metadata,
         );
 
-        let metadata = instance.get_instance_metadata().await;
+        let metadata = instance.instance_metadata().await;
 
         assert_eq!(metadata.instance_id, "custom-instance-id");
         assert_eq!(metadata.tags.get("team"), Some(&"data-science".to_string()));
@@ -349,7 +349,7 @@ mod tests {
             .add_tag("purpose".to_string(), "testing".to_string())
             .await;
 
-        let metadata = instance.get_instance_metadata().await;
+        let metadata = instance.instance_metadata().await;
 
         assert_eq!(metadata.tags.get("region"), Some(&"us-east-1".to_string()));
         assert_eq!(metadata.tags.get("purpose"), Some(&"testing".to_string()));
@@ -380,7 +380,7 @@ mod tests {
             .add_custom_metadata("config_version".to_string(), serde_json::json!("v2.1.0"))
             .await;
 
-        let metadata = instance.get_instance_metadata().await;
+        let metadata = instance.instance_metadata().await;
 
         assert_eq!(
             metadata.custom.get("deployment_id"),
@@ -419,7 +419,7 @@ mod tests {
             })
             .await;
 
-        let metadata = instance.get_instance_metadata().await;
+        let metadata = instance.instance_metadata().await;
 
         assert_eq!(metadata.environment, Some("production".to_string()));
         assert_eq!(metadata.tags.get("critical"), Some(&"true".to_string()));

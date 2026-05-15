@@ -322,7 +322,7 @@ fn display_runtime_checks(config: &SecurityConfig) {
     println!("   Alert on LOW level: {}", should_alert_low);
 
     // Example: Get log level
-    println!("   Current log level: {:?}\n", config.get_log_level());
+    println!("   Current log level: {:?}\n", config.log_level());
 }
 
 fn demonstrate_resource_monitoring(config: &SecurityConfig) {
@@ -339,7 +339,7 @@ fn demonstrate_resource_monitoring(config: &SecurityConfig) {
     let _guard = tracker.start_operation("demo_agent");
 
     // Get current usage
-    if let Some(usage) = tracker.get_usage("demo_agent") {
+    if let Some(usage) = tracker.usage("demo_agent") {
         println!("   Current Process Usage:");
         println!(
             "      Memory: {} MB (limit: {} MB)",

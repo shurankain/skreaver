@@ -893,7 +893,7 @@ impl HttpPolicy {
         self.allow_methods.contains(&method.to_uppercase())
     }
 
-    pub fn get_timeout(&self) -> Duration {
+    pub fn timeout(&self) -> Duration {
         match &self.access {
             HttpAccess::Disabled => Duration::from_secs(0),
             HttpAccess::LocalOnly(config) | HttpAccess::Internet { config, .. } => {

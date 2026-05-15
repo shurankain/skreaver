@@ -75,7 +75,7 @@ impl JwtClaims {
 
     /// Convert role strings back to Role enums
     #[must_use]
-    pub fn get_roles(&self) -> Vec<Role> {
+    pub fn roles(&self) -> Vec<Role> {
         self.roles
             .iter()
             .filter_map(|r| match r.as_str() {

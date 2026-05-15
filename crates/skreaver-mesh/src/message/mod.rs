@@ -64,7 +64,7 @@ mod tests {
         assert!(msg.is_unicast());
         assert_eq!(msg.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(msg.recipient().map(|a| a.as_str()), Some("agent-2"));
-        assert_eq!(msg.get_metadata("priority"), Some("high"));
+        assert_eq!(msg.metadata("priority"), Some("high"));
         assert_eq!(msg.correlation_id.as_deref(), Some("req-123"));
     }
 
@@ -82,7 +82,7 @@ mod tests {
         assert!(msg.is_unicast());
         assert_eq!(msg.sender().map(|a| a.as_str()), Some("agent-1"));
         assert_eq!(msg.recipient().map(|a| a.as_str()), Some("agent-2"));
-        assert_eq!(msg.get_metadata("priority"), Some("high"));
+        assert_eq!(msg.metadata("priority"), Some("high"));
         assert_eq!(msg.correlation_id.as_deref(), Some("req-123"));
     }
 

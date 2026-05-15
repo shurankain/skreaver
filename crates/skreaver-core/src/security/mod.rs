@@ -166,7 +166,7 @@ impl SecurityManager {
     }
 
     pub fn create_context(&self, agent_id: AgentId, tool_name: ToolId) -> SecurityContext {
-        let policy = self.config.get_tool_policy(tool_name.as_str());
+        let policy = self.config.tool_policy(tool_name.as_str());
         let limits = self.config.resources.clone();
 
         SecurityContext::new(agent_id, tool_name, policy).with_limits(limits)

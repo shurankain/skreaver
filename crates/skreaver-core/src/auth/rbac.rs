@@ -393,7 +393,7 @@ impl RoleManager {
     }
 
     /// Get permissions for a custom role
-    pub fn get_custom_role_permissions(&self, role_name: &str) -> Option<&HashSet<Permission>> {
+    pub fn custom_role_permissions(&self, role_name: &str) -> Option<&HashSet<Permission>> {
         self.custom_roles.get(role_name)
     }
 }

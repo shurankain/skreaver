@@ -92,7 +92,7 @@ impl SimpleStatefulAgent<SimpleInitial> {
 // Implementation for Processing state
 impl SimpleStatefulAgent<SimpleProcessing> {
     /// Get tool calls needed for this input
-    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
+    pub fn tool_calls(&self) -> Vec<ToolCall> {
         // Simple logic: if input contains "search", request search tool
         if self.state.input.to_lowercase().contains("search") {
             vec![
@@ -107,12 +107,12 @@ impl SimpleStatefulAgent<SimpleProcessing> {
 
     /// Check if this agent needs tool execution
     pub fn needs_tools(&self) -> bool {
-        !self.get_tool_calls().is_empty()
+        !self.tool_calls().is_empty()
     }
 
     /// Transition to tool execution state (if tools are needed)
     pub fn request_tools(self) -> SimpleStatefulAgent<SimpleToolExecution> {
-        let tools = self.get_tool_calls();
+        let tools = self.tool_calls();
         SimpleStatefulAgent {
             memory: self.memory,
             state: SimpleToolExecution {
@@ -213,7 +213,7 @@ impl<State> crate::agent::stateful::StatefulAgent<State> for SimpleStatefulAgent
         &*self.memory
     }
 
-    fn get_tool_calls(&self) -> Vec<ToolCall> {
+    fn tool_calls(&self) -> Vec<ToolCall> {
         // Default empty - specific states override this via their own methods
         Vec::new()
     }
@@ -305,6 +305,6 @@ mod tests {
         };
 
         // Should be back in processing state, can try different approach
-        assert!(!back_to_processing.get_tool_calls().is_empty());
+        assert!(!back_to_processing.tool_calls().is_empty());
     }
 }

@@ -199,11 +199,11 @@ where
     fn call_tools(&self) -> Vec<ToolCall> {
         match &self.agent {
             ReasoningAgentEnum::Initial(_) => vec![], // Should be moved to Analyzing first
-            ReasoningAgentEnum::Analyzing(agent) => agent.get_tool_calls(),
-            ReasoningAgentEnum::Deducing(agent) => agent.get_tool_calls(),
-            ReasoningAgentEnum::Concluding(agent) => agent.get_tool_calls(),
-            ReasoningAgentEnum::Reflecting(agent) => agent.get_tool_calls(),
-            ReasoningAgentEnum::Complete(agent) => agent.get_tool_calls(),
+            ReasoningAgentEnum::Analyzing(agent) => agent.tool_calls(),
+            ReasoningAgentEnum::Deducing(agent) => agent.tool_calls(),
+            ReasoningAgentEnum::Concluding(agent) => agent.tool_calls(),
+            ReasoningAgentEnum::Reflecting(agent) => agent.tool_calls(),
+            ReasoningAgentEnum::Complete(agent) => agent.tool_calls(),
         }
     }
 

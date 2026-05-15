@@ -108,7 +108,7 @@ impl<T: ToolRegistry> SecureToolRegistry<T> {
     /// `Ok(())` if the tool is allowed, `Err(String)` with error message if denied
     fn check_permissions(&self, tool_name: &str) -> Result<(), String> {
         // Step 1: Check security configuration (capability-based)
-        let policy = self.security_config.get_tool_policy(tool_name);
+        let policy = self.security_config.tool_policy(tool_name);
 
         use skreaver_core::security::{FileSystemAccess, HttpAccess, NetworkAccess};
 

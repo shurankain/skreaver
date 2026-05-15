@@ -144,5 +144,4 @@ mod redis_connection_state_tests {
 
         assert_eq!(disconnected.attempt_count(), 0);
     }
-
 }

@@ -19,7 +19,7 @@ use crate::tool::ToolCall;
 ///
 /// The typical agent lifecycle follows this pattern:
 /// 1. **Initial** → **Processing** (via `observe()`)
-/// 2. **Processing** → **ToolExecution** (via `get_tool_calls()` + external execution)
+/// 2. **Processing** → **ToolExecution** (via `tool_calls()` + external execution)
 /// 3. **ToolExecution** → **Processing** or **Complete** (via `handle_result()`)
 /// 4. **Processing** → **Complete** (via `act()`)
 ///
@@ -67,7 +67,7 @@ pub trait StatefulAgent<State> {
     /// # Returns
     ///
     /// Vector of tool calls to be executed, or empty vector if no tools needed
-    fn get_tool_calls(&self) -> Vec<ToolCall>;
+    fn tool_calls(&self) -> Vec<ToolCall>;
 
     /// Check if the agent has completed its processing.
     ///
@@ -129,7 +129,7 @@ pub trait CompleteState {}
 //         self.memory.as_ref()
 //     }
 //
-//     fn get_tool_calls(&self) -> Vec<ToolCall> {
+//     fn tool_calls(&self) -> Vec<ToolCall> {
 //         vec![] // Return actual tool calls
 //     }
 //
@@ -276,7 +276,7 @@ mod tests {
             &self.memory
         }
 
-        fn get_tool_calls(&self) -> Vec<ToolCall> {
+        fn tool_calls(&self) -> Vec<ToolCall> {
             vec![]
         }
 
@@ -309,7 +309,7 @@ mod tests {
         let _memory = agent.memory_reader();
 
         // Verify we can get tool calls
-        let _tools = agent.get_tool_calls();
+        let _tools = agent.tool_calls();
         assert!(!agent.is_complete());
     }
 

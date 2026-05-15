@@ -48,7 +48,6 @@ impl IdValidator {
         // Use shared validation infrastructure
         IdentifierRules::IDENTIFIER.validate(id).map(|_| id) // Return original &str instead of String
     }
-
 }
 
 #[cfg(test)]
@@ -146,5 +145,4 @@ mod tests {
         let max_id = "a".repeat(128);
         assert!(IdValidator::validate(&max_id).is_ok());
     }
-
 }

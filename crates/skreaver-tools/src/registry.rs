@@ -230,11 +230,7 @@ impl InMemoryToolRegistry {
     /// # Returns
     ///
     /// Self for method chaining
-    pub fn with_tool_validated(
-        mut self,
-        name: super::ToolId,
-        tool: Arc<dyn super::Tool>,
-    ) -> Self {
+    pub fn with_tool_validated(mut self, name: super::ToolId, tool: Arc<dyn super::Tool>) -> Self {
         self.custom_tools.insert(name, tool);
         self
     }

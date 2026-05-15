@@ -178,7 +178,7 @@ impl AgentFactory {
 
         // Capture values needed for response before moving agent_instance
         let created_at = agent_instance.created_at;
-        let current_status = agent_instance.get_status().await;
+        let current_status = agent_instance.status().await;
 
         // ATOMIC CHECK-AND-INSERT: Single write lock for the entire critical section
         // This prevents TOCTOU race conditions where two threads could create the same agent

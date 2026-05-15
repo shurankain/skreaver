@@ -183,8 +183,8 @@ mod redis_tests {
 
         // Receive and verify metadata
         let received = mesh.receive(&receiver, 5).await.unwrap().unwrap();
-        assert_eq!(received.get_metadata("priority"), Some("high"));
-        assert_eq!(received.get_metadata("type"), Some("command"));
+        assert_eq!(received.metadata("priority"), Some("high"));
+        assert_eq!(received.metadata("type"), Some("command"));
 
         // Cleanup
         mesh.deregister_presence(&sender).await.unwrap();

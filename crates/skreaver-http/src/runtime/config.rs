@@ -727,5 +727,4 @@ mod tests {
         assert!(config.cors.is_none());
         assert!(config.openapi.is_none());
     }
-
 }

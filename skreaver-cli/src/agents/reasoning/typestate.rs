@@ -80,7 +80,7 @@ where
         })
     }
 
-    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
+    pub fn tool_calls(&self) -> Vec<ToolCall> {
         vec![ToolCall::new("analyze", &self.state.problem).expect("Valid tool name")]
     }
 }
@@ -117,7 +117,7 @@ where
         })
     }
 
-    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
+    pub fn tool_calls(&self) -> Vec<ToolCall> {
         if let Some(last_step) = self.state.reasoning_chain.last() {
             let clipped_output = self.clip_utf8(&last_step.output, self.profile.max_prev_output);
             let mut input =
@@ -167,7 +167,7 @@ where
         })
     }
 
-    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
+    pub fn tool_calls(&self) -> Vec<ToolCall> {
         if let Some(last_step) = self.state.reasoning_chain.last() {
             let clipped_output = self.clip_utf8(&last_step.output, self.profile.max_prev_output);
             let mut input =
@@ -217,7 +217,7 @@ where
         })
     }
 
-    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
+    pub fn tool_calls(&self) -> Vec<ToolCall> {
         let mut chain_summary = String::new();
         let recent_steps: Vec<_> = self.state.reasoning_chain.iter().rev().take(5).collect();
 
@@ -260,7 +260,7 @@ where
         }
     }
 
-    pub fn get_tool_calls(&self) -> Vec<ToolCall> {
+    pub fn tool_calls(&self) -> Vec<ToolCall> {
         vec![] // Complete state has no more tools to call
     }
 }

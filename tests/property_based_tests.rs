@@ -6,8 +6,7 @@
 
 use proptest::prelude::*;
 use skreaver_core::{
-    InMemoryMemory,
-    ToolId,
+    InMemoryMemory, ToolId,
     error::TransactionError,
     memory::{
         MemoryKey, MemoryReader, MemoryUpdate, MemoryWriter, SnapshotableMemory,

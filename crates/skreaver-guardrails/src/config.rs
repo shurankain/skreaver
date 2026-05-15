@@ -7,7 +7,7 @@ use std::collections::HashMap;
 /// Configuration for guardrails, supporting per-agent overrides.
 ///
 /// Follows the same hierarchical override pattern as
-/// `skreaver_core::security::SecurityConfig::get_tool_policy()`.
+/// `skreaver_core::security::SecurityConfig::tool_policy()`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GuardrailConfig {
     /// Default policy applied to all agents unless overridden.

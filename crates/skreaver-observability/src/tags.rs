@@ -41,11 +41,7 @@ impl CardinalTags {
     }
 
     /// Create tags for tool execution
-    pub fn for_tool_execution(
-        agent_id: AgentId,
-        session_id: SessionId,
-        tool_name: ToolId,
-    ) -> Self {
+    pub fn for_tool_execution(agent_id: AgentId, session_id: SessionId, tool_name: ToolId) -> Self {
         Self {
             agent_id: Some(agent_id),
             tool_name: Some(tool_name),

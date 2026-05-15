@@ -103,7 +103,7 @@ impl SecurityConfig {
     }
 
     /// Get security policy for a specific tool
-    pub fn get_tool_policy(&self, tool_name: &str) -> SecurityPolicy {
+    pub fn tool_policy(&self, tool_name: &str) -> SecurityPolicy {
         let tool_policy = self.tools.get(tool_name).cloned().unwrap_or_default();
 
         let fs_enabled = tool_policy
@@ -317,12 +317,12 @@ impl SecurityConfig {
     }
 
     /// Get effective log level for tool operations
-    pub fn get_log_level(&self) -> LogLevel {
+    pub fn log_level(&self) -> LogLevel {
         self.audit.log_level
     }
 
     /// Get effective log format for tool operations
-    pub fn get_log_format(&self) -> LogFormat {
+    pub fn log_format(&self) -> LogFormat {
         self.audit.log_format
     }
 }
@@ -514,11 +514,11 @@ version = "0.1.0"
     }
 
     #[test]
-    fn test_get_tool_policy() {
+    fn test_tool_policy() {
         let config = SecurityConfig::create_default();
 
         // Test with non-existent tool
-        let policy = config.get_tool_policy("nonexistent");
+        let policy = config.tool_policy("nonexistent");
         // Check that it matches the global config
         let fs_enabled = !matches!(config.fs.access, FileSystemAccess::Disabled);
         let policy_fs_enabled = !matches!(policy.fs_policy.access, FileSystemAccess::Disabled);
@@ -534,7 +534,7 @@ version = "0.1.0"
             .tools
             .insert("restricted_tool".to_string(), tool_policy);
 
-        let policy = config_with_tools.get_tool_policy("restricted_tool");
+        let policy = config_with_tools.tool_policy("restricted_tool");
         assert!(matches!(
             policy.fs_policy.access,
             FileSystemAccess::Disabled

@@ -89,7 +89,6 @@ impl ToolTemplate {
             ("custom", "Empty custom tool template"),
         ]
     }
-
 }
 
 impl fmt::Display for ToolTemplate {

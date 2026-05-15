@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Get and display current usage
-    if let Some(usage) = tracker.get_usage("demo_agent") {
+    if let Some(usage) = tracker.usage("demo_agent") {
         println!("\nCurrent Resource Usage:");
         println!("  • Memory: {} MB", usage.memory_mb);
         println!("  • CPU: {:.2}%", usage.cpu_percent);
@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _guard3 = tracker.start_operation("demo_agent");
     println!("✅ Operation 3 started");
 
-    if let Some(usage) = tracker.get_usage("demo_agent") {
+    if let Some(usage) = tracker.usage("demo_agent") {
         println!("\n📊 Active operations: {}", usage.active_operations);
     }
 
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Check resources
-        if let Some(usage) = tracker.get_usage("demo_agent") {
+        if let Some(usage) = tracker.usage("demo_agent") {
             println!(
                 "Iteration {}: Memory: {} MB | CPU: {:.2}% | Open Files: {}",
                 i, usage.memory_mb, usage.cpu_percent, usage.open_files
@@ -183,7 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => println!("\n❌ Exceeded concurrent operation limit: {:?}", e),
     }
 
-    if let Some(usage) = strict_tracker.get_usage("strict_agent") {
+    if let Some(usage) = strict_tracker.usage("strict_agent") {
         println!(
             "Active operations: {} (limit: {})",
             usage.active_operations, strict_limits.max_concurrent_operations
