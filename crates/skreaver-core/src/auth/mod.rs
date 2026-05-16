@@ -15,6 +15,7 @@ pub mod api_key;
 pub mod jwt;
 pub mod jwt_revocation;
 pub mod middleware;
+pub mod oauth;
 pub mod rbac;
 pub mod storage;
 
